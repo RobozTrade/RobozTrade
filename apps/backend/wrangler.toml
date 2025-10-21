@@ -1,0 +1,24 @@
+account_id = "de6abc05e3316338d8ee2c1ecadcb407"
+name = "roboz-trade"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "roboz-trade"
+database_id = "21149666-00d4-4966-9065-b2769cc71a5a"
+
+[durable_objects]
+bindings = [
+  { name = "MARKET_WS", class_name = "MarketDataWebSocket" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["MarketDataWebSocket"]
+
+[vars]
+JWT_SECRET = "your-jwt-secret-change-in-production"
+ASTER_API_BASE_URL = "https://fapi.asterdex.com"
+

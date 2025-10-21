@@ -1,0 +1,32 @@
+{
+  "name": "@roboz-trade/backend",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "tsc",
+    "deploy": "wrangler deploy",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "wrangler d1 migrations apply roboz-trade",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.10.1",
+    "drizzle-orm": "^0.38.3",
+    "@hono/zod-validator": "^0.4.1",
+    "zod": "^3.24.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "nanoid": "^5.0.9",
+    "@roboz-trade/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251014.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.7",
+    "drizzle-kit": "^0.31.5",
+    "typescript": "^5.7.3",
+    "wrangler": "^4.0.0"
+  }
+}
