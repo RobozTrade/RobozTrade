@@ -2,7 +2,6 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./stores/authStore";
 import Layout from "./components/layout/Layout";
 import PublicLayout from "./components/layout/PublicLayout";
-import LoginPage from "./features/auth/LoginPage";
 import DashboardPage from "./features/dashboard/DashboardPage";
 import BotsPage from "./features/bots/BotsPage";
 import BotDetailPage from "./features/bots/BotDetailPage";
@@ -15,12 +14,8 @@ import SettingsPage from "./features/settings/SettingsPage";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore();
-  return token ? <>{children}</> : <Navigate to="/login" />;
-}
-
-function AuthOnlyRoute({ children }: { children: React.ReactNode }) {
-  const { token } = useAuthStore();
-  return !token ? <>{children}</> : <Navigate to="/" />;
+  // If not authenticated, redirect to home page where they can connect wallet
+  return token ? <>{children}</> : <Navigate to="/" />;
 }
 
 function App() {
@@ -31,17 +26,9 @@ function App() {
         <Route index element={<DashboardPage />} />
       </Route>
 
-      {/* Auth routes */}
-      <Route
-        path="/login"
-        element={
-          <AuthOnlyRoute>
-            <LoginPage />
-          </AuthOnlyRoute>
-        }
-      />
-      {/* Redirect /register to /login since we only use wallet auth now */}
-      <Route path="/register" element={<Navigate to="/login" />} />
+      {/* Redirect old auth routes to home (wallet auth is in navbar) */}
+      <Route path="/login" element={<Navigate to="/" />} />
+      <Route path="/register" element={<Navigate to="/" />} />
 
       {/* Private routes with sidebar */}
       <Route

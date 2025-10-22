@@ -163,26 +163,14 @@ walletAuthRoutes.post('/verify', zValidator('json', walletAuthSchema), async (c)
 
     // 3. Verify signature
     const message = `Sign this message to authenticate with RobozTrade\n\nNonce: ${providedNonce}\nTimestamp: ${timestamp}`;
-
-    console.log('=== Signature Verification Debug ===');
-    console.log('Message to verify:', message);
-    console.log('Signature:', signature);
-    console.log('Expected address:', normalizedAddress);
-    console.log('Provided nonce:', providedNonce);
-    console.log('Timestamp:', timestamp);
-
     const isValidSignature = await verifySignature(message, signature, normalizedAddress);
-
-    console.log('Signature valid:', isValidSignature);
 
     if (!isValidSignature) {
       return c.json(
         { success: false, error: 'Invalid signature' },
         401
       );
-    }
-
-    // 4. Mark nonce as used
+    }    // 4. Mark nonce as used
     await db.update(nonces)
       .set({ used: true })
       .where(eq(nonces.id, nonceRecord.id));

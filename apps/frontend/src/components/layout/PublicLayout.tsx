@@ -1,13 +1,10 @@
-import { Outlet, Link, useNavigate } from "react-router-dom";
-import { LogIn, UserPlus, Activity, Sun, Moon } from "lucide-react";
-import { useAuthStore } from "@/stores/authStore";
+import { Outlet, Link } from "react-router-dom";
+import { Activity, Sun, Moon } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
-import { GlassButton } from "@/components/ui/GlassCard";
+import { NavbarWalletAuth } from "@/components/auth/NavbarWalletAuth";
 
 export default function PublicLayout() {
-  const { token, user } = useAuthStore();
   const { theme, toggleTheme } = useTheme();
-  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-light-bg-secondary dark:bg-dark-bg-primary transition-colors duration-300">
@@ -40,40 +37,8 @@ export default function PublicLayout() {
                 )}
               </button>
 
-              {/* Auth Buttons */}
-              {token && user ? (
-                <>
-                  <span className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
-                    {user.displayName}
-                  </span>
-                  <GlassButton
-                    onClick={() => navigate("/app/dashboard")}
-                    variant="primary"
-                    size="sm"
-                  >
-                    Dashboard
-                  </GlassButton>
-                </>
-              ) : (
-                <>
-                  <Link to="/login">
-                    <GlassButton variant="secondary" size="sm">
-                      <div className="flex items-center gap-2">
-                        <LogIn className="w-4 h-4" />
-                        <span>Login</span>
-                      </div>
-                    </GlassButton>
-                  </Link>
-                  <Link to="/register">
-                    <GlassButton variant="primary" size="sm">
-                      <div className="flex items-center gap-2">
-                        <UserPlus className="w-4 h-4" />
-                        <span>Sign Up</span>
-                      </div>
-                    </GlassButton>
-                  </Link>
-                </>
-              )}
+              {/* Wallet Auth */}
+              <NavbarWalletAuth />
             </div>
           </div>
         </div>

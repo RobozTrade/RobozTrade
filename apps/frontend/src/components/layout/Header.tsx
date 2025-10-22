@@ -38,7 +38,17 @@ export default function Header() {
 
         <div className="flex items-center gap-2 text-light-text-secondary dark:text-dark-text-secondary">
           <User className="w-5 h-5" />
-          <span className="text-sm">{user?.email}</span>
+          <div className="flex flex-col items-end">
+            <span className="text-sm font-medium text-light-text-primary dark:text-dark-text-primary">
+              {user?.displayName}
+            </span>
+            {user?.walletAddress && (
+              <span className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+                {user.walletAddress.slice(0, 6)}...
+                {user.walletAddress.slice(-4)}
+              </span>
+            )}
+          </div>
         </div>
 
         <GlassButton onClick={handleLogout} variant="secondary" size="sm">
