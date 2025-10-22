@@ -12,6 +12,36 @@ const validatePaymentSchema = z.object({
   txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid transaction hash'),
 });
 
+// JSON-RPC response types
+interface JsonRpcResponse<T> {
+  jsonrpc: string;
+  id: number;
+  result?: T;
+  error?: {
+    code: number;
+    message: string;
+  };
+}
+
+interface TransactionData {
+  from: string;
+  to: string;
+  value: string;
+  input: string;
+  blockNumber: string;
+  hash: string;
+}
+
+interface TransactionReceipt {
+  status: string;
+  blockNumber: string;
+  logs: Array<{
+    address: string;
+    topics: string[];
+    data: string;
+  }>;
+}
+
 // BSC Mainnet configuration - now from environment variables
 type PaymentBindings = {
   DB: D1Database;
@@ -79,7 +109,7 @@ paymentsRoutes.post('/validate', zValidator('json', validatePaymentSchema), asyn
       }),
     });
 
-    const txData = await txResponse.json();
+    const txData = await txResponse.json() as JsonRpcResponse<TransactionData>;
 
     if (!txData.result) {
       return c.json({
@@ -102,7 +132,7 @@ paymentsRoutes.post('/validate', zValidator('json', validatePaymentSchema), asyn
       }),
     });
 
-    const receiptData = await receiptResponse.json();
+    const receiptData = await receiptResponse.json() as JsonRpcResponse<TransactionReceipt>;
 
     if (!receiptData.result) {
       return c.json({
@@ -193,8 +223,8 @@ paymentsRoutes.post('/validate', zValidator('json', validatePaymentSchema), asyn
       }),
     });
 
-    const blockNumberData = await blockNumberResponse.json();
-    const currentBlock = parseInt(blockNumberData.result, 16);
+    const blockNumberData = await blockNumberResponse.json() as JsonRpcResponse<string>;
+    const currentBlock = parseInt(blockNumberData.result!, 16);
     const txBlock = parseInt(receipt.blockNumber, 16);
     const confirmations = currentBlock - txBlock + 1;
 
