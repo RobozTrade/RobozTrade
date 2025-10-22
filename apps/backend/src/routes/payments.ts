@@ -66,11 +66,45 @@ paymentsRoutes.post('/validate', zValidator('json', validatePaymentSchema), asyn
   const db = getDb(c.env.DB);
 
   // Get configuration from environment variables with defaults
-  const BSC_RPC_URL = c.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org';
+  const BSC_RPC_URLS = [
+    c.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org',
+    'https://bsc-dataseed1.binance.org',
+    'https://bsc-dataseed2.binance.org',
+    'https://bsc.publicnode.com',
+  ];
   const USDT_CONTRACT_ADDRESS = (c.env.USDT_CONTRACT_ADDRESS || '0x55d398326f99059fF775485246999027B3197955').toLowerCase();
   const RECIPIENT_ADDRESS = (c.env.PAYMENT_RECIPIENT_ADDRESS || '0xB8b687E16BD6Ce3E37e6f9fd534542F75009c86B').toLowerCase();
   const REQUIRED_AMOUNT = parseFloat(c.env.REQUIRED_PAYMENT_AMOUNT || '10');
   const MIN_CONFIRMATIONS = parseInt(c.env.MIN_CONFIRMATIONS || '3', 10);
+
+  // Helper function to try multiple RPC endpoints
+  const fetchFromRpc = async <T>(method: string, params: any[]): Promise<T | null> => {
+    for (const rpcUrl of BSC_RPC_URLS) {
+      try {
+        const response = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: Math.floor(Math.random() * 1000),
+            method,
+            params,
+          }),
+        });
+
+        if (!response.ok) continue;
+
+        const data = await response.json() as JsonRpcResponse<T>;
+        if (data.result) {
+          return data.result;
+        }
+      } catch (error) {
+        console.error(`RPC ${rpcUrl} failed:`, error);
+        continue;
+      }
+    }
+    return null;
+  };
 
   try {
     // Check if transaction hash already exists
@@ -97,51 +131,25 @@ paymentsRoutes.post('/validate', zValidator('json', validatePaymentSchema), asyn
       }
     }
 
-    // Fetch transaction from BSC
-    const txResponse = await fetch(BSC_RPC_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'eth_getTransactionByHash',
-        params: [txHash],
-      }),
-    });
+    // Fetch transaction from BSC with retry logic
+    const tx = await fetchFromRpc<TransactionData>('eth_getTransactionByHash', [txHash]);
 
-    const txData = await txResponse.json() as JsonRpcResponse<TransactionData>;
-
-    if (!txData.result) {
+    if (!tx) {
       return c.json({
         success: false,
-        error: 'Transaction not found on BSC network',
+        error: 'Transaction not found on BSC network. It may still be pending or you may be on the wrong network. Please wait a few moments and try again.',
       }, 404);
     }
-
-    const tx = txData.result;
 
     // Fetch transaction receipt for confirmation status
-    const receiptResponse = await fetch(BSC_RPC_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 2,
-        method: 'eth_getTransactionReceipt',
-        params: [txHash],
-      }),
-    });
+    const receipt = await fetchFromRpc<TransactionReceipt>('eth_getTransactionReceipt', [txHash]);
 
-    const receiptData = await receiptResponse.json() as JsonRpcResponse<TransactionReceipt>;
-
-    if (!receiptData.result) {
+    if (!receipt) {
       return c.json({
         success: false,
-        error: 'Transaction receipt not found',
+        error: 'Transaction receipt not found. The transaction may still be pending confirmation. Please wait a few moments and try again.',
       }, 404);
     }
-
-    const receipt = receiptData.result;
 
     // Check if transaction was successful
     if (receipt.status !== '0x1') {
@@ -212,19 +220,16 @@ paymentsRoutes.post('/validate', zValidator('json', validatePaymentSchema), asyn
     }
 
     // Get current block number to calculate confirmations
-    const blockNumberResponse = await fetch(BSC_RPC_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 3,
-        method: 'eth_blockNumber',
-        params: [],
-      }),
-    });
+    const currentBlockHex = await fetchFromRpc<string>('eth_blockNumber', []);
 
-    const blockNumberData = await blockNumberResponse.json() as JsonRpcResponse<string>;
-    const currentBlock = parseInt(blockNumberData.result!, 16);
+    if (!currentBlockHex) {
+      return c.json({
+        success: false,
+        error: 'Unable to fetch current block number. Please try again.',
+      }, 500);
+    }
+
+    const currentBlock = parseInt(currentBlockHex, 16);
     const txBlock = parseInt(receipt.blockNumber, 16);
     const confirmations = currentBlock - txBlock + 1;
 

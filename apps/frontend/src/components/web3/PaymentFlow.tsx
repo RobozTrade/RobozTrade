@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   useAccount,
   useWriteContract,
@@ -20,6 +20,7 @@ interface PaymentFlowProps {
 export function PaymentFlow({ onPaymentComplete }: PaymentFlowProps) {
   const { address } = useAccount();
   const [error, setError] = useState<string>("");
+  const hasNotified = useRef(false);
 
   const {
     data: hash,
@@ -39,6 +40,7 @@ export function PaymentFlow({ onPaymentComplete }: PaymentFlowProps) {
     }
 
     setError("");
+    hasNotified.current = false; // Reset when starting new payment
 
     try {
       // Convert 10 USDT to wei (USDT has 18 decimals on BSC)
@@ -56,10 +58,13 @@ export function PaymentFlow({ onPaymentComplete }: PaymentFlowProps) {
     }
   };
 
-  // When transaction is confirmed, notify parent
-  if (isConfirmed && hash) {
-    onPaymentComplete(hash);
-  }
+  // When transaction is confirmed, notify parent (only once)
+  useEffect(() => {
+    if (isConfirmed && hash && !hasNotified.current) {
+      hasNotified.current = true;
+      onPaymentComplete(hash);
+    }
+  }, [isConfirmed, hash, onPaymentComplete]);
 
   return (
     <div className="space-y-4">
@@ -152,7 +157,8 @@ export function PaymentFlow({ onPaymentComplete }: PaymentFlowProps) {
             <div className="flex-1">
               <p className="font-medium text-success">Payment Confirmed!</p>
               <p className="text-sm text-text-secondary mt-1">
-                Your payment has been confirmed on the blockchain.
+                Your payment has been confirmed on the blockchain. Validating
+                with our backend...
               </p>
               <a
                 href={`https://bscscan.com/tx/${hash}`}

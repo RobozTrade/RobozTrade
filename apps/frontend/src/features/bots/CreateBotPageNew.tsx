@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { useAccount } from "wagmi";
@@ -35,13 +35,19 @@ export default function CreateBotPageNew() {
   const [maxOpenTrades, setMaxOpenTrades] = useState(3);
 
   const validatePaymentMutation = useMutation({
-    mutationFn: (txHash: string) => api.validatePayment(txHash),
+    mutationFn: async (txHash: string) => {
+      // Add a delay to allow transaction to propagate to RPC nodes
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      return api.validatePayment(txHash);
+    },
     onSuccess: (response) => {
       if (response.success && response.data?.valid) {
         setPaymentValidated(true);
         setCurrentStep("config");
       }
     },
+    retry: 3,
+    retryDelay: 5000, // Wait 5 seconds between retries
   });
 
   const createBotMutation = useMutation({
@@ -51,11 +57,12 @@ export default function CreateBotPageNew() {
     },
   });
 
-  const handlePaymentComplete = (txHash: string) => {
+  const handlePaymentComplete = useCallback((txHash: string) => {
     setPaymentTxHash(txHash);
-    // Validate payment with backend
+    // Validate payment with backend - mutation is stable, safe to use here
     validatePaymentMutation.mutate(txHash);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,17 +189,56 @@ export default function CreateBotPageNew() {
           <PaymentFlow onPaymentComplete={handlePaymentComplete} />
 
           {validatePaymentMutation.isPending && (
-            <div className="card flex items-center justify-center gap-3 py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-primary" />
-              <span className="text-text-primary">Validating payment...</span>
+            <div className="card flex flex-col items-center justify-center gap-3 py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <div className="text-center">
+                <p className="text-text-primary font-medium">
+                  Validating payment...
+                </p>
+                <p className="text-text-secondary text-sm mt-1">
+                  This may take a few moments as we verify your transaction on
+                  the BSC network
+                </p>
+              </div>
             </div>
           )}
 
           {validatePaymentMutation.isError && (
-            <div className="card bg-error/10 border-error">
-              <p className="text-error">
-                Payment validation failed. Please try again or contact support.
-              </p>
+            <div className="card bg-error/10 border-error space-y-4">
+              <div>
+                <p className="text-error font-semibold mb-2">
+                  Payment Validation Failed
+                </p>
+                <p className="text-text-secondary text-sm">
+                  {validatePaymentMutation.error instanceof Error
+                    ? validatePaymentMutation.error.message
+                    : "Unable to validate your payment. This can happen if the transaction hasn't fully propagated to all BSC nodes yet."}
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => validatePaymentMutation.mutate(paymentTxHash)}
+                  className="btn btn-primary text-sm"
+                  disabled={validatePaymentMutation.isPending}
+                >
+                  {validatePaymentMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Retrying...
+                    </>
+                  ) : (
+                    "Retry Validation"
+                  )}
+                </button>
+                <a
+                  href={`https://bscscan.com/tx/${paymentTxHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-secondary text-sm"
+                >
+                  View on BscScan
+                </a>
+              </div>
             </div>
           )}
         </div>
