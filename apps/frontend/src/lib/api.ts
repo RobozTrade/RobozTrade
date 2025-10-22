@@ -5,6 +5,7 @@ import type {
   CreateUserInput,
   TradingBot,
   CreateBotInput,
+  CreateBotInputLegacy,
   UpdateBotInput,
   Trade,
   ApiKey,
@@ -12,7 +13,6 @@ import type {
   BenchmarkTest,
   CreateBenchmarkInput,
   Kline,
-  ValidatePaymentInput,
   ValidatePaymentResponse,
   BotPayment,
 } from '@roboz-trade/shared-types';
@@ -88,7 +88,7 @@ class ApiClient {
     return this.request(`/bots/${id}`, {}, true);
   }
 
-  async createBot(input: CreateBotInput): Promise<ApiResponse<TradingBot>> {
+  async createBot(input: CreateBotInput | CreateBotInputLegacy): Promise<ApiResponse<TradingBot>> {
     return this.request(
       '/bots',
       {

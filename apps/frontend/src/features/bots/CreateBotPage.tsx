@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { StrategyType, CreateBotInput } from '@roboz-trade/shared-types';
+import type { StrategyType, CreateBotInputLegacy } from '@roboz-trade/shared-types';
 
 export default function CreateBotPage() {
   const navigate = useNavigate();
@@ -17,7 +17,7 @@ export default function CreateBotPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (input: CreateBotInput) => api.createBot(input),
+    mutationFn: (input: CreateBotInputLegacy) => api.createBot(input),
     onSuccess: () => {
       navigate('/bots');
     },
@@ -26,7 +26,7 @@ export default function CreateBotPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const input: CreateBotInput = {
+    const input: CreateBotInputLegacy = {
       name,
       apiKeyId,
       strategyType,

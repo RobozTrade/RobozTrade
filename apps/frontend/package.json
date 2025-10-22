@@ -9,6 +9,8 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@reown/appkit": "^1.8.11",
+    "@reown/appkit-adapter-wagmi": "^1.8.11",
     "@roboz-trade/shared-types": "workspace:*",
     "@tanstack/react-query": "^5.67.1",
     "@wagmi/connectors": "^6.1.0",

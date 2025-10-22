@@ -25,7 +25,6 @@ export function PaymentFlow({ onPaymentComplete }: PaymentFlowProps) {
   } = useWriteContract();
 
   const { 
-    isLoading: isConfirming, 
     isSuccess: isConfirmed 
   } = useWaitForTransactionReceipt({
     hash,

@@ -1,11 +1,12 @@
-import { useAccount, useConnect, useDisconnect, useBalance } from 'wagmi';
+import { useAccount, useDisconnect, useBalance } from 'wagmi';
+import { useAppKit } from '@reown/appkit/react';
 import { Wallet, LogOut, AlertCircle } from 'lucide-react';
 import { bsc } from 'wagmi/chains';
 import { USDT_CONTRACT_ADDRESS } from '@/lib/wagmi';
 
 export function WalletConnect() {
   const { address, isConnected, chain } = useAccount();
-  const { connect, connectors, isPending } = useConnect();
+  const { open } = useAppKit();
   const { disconnect } = useDisconnect();
 
   // Get USDT balance
@@ -110,19 +111,13 @@ export function WalletConnect() {
           Connect your wallet to pay the 10 USDT bot creation fee on BSC Mainnet
         </p>
 
-        <div className="space-y-3">
-          {connectors.map((connector) => (
-            <button
-              key={connector.id}
-              onClick={() => connect({ connector, chainId: bsc.id })}
-              disabled={isPending}
-              className="btn btn-primary w-full flex items-center justify-center gap-2"
-            >
-              <Wallet className="w-4 h-4" />
-              {connector.name}
-            </button>
-          ))}
-        </div>
+        <button
+          onClick={() => open()}
+          className="btn btn-primary w-full flex items-center justify-center gap-2"
+        >
+          <Wallet className="w-4 h-4" />
+          Connect Wallet
+        </button>
 
         <div className="mt-6 p-4 bg-surface-light rounded-lg">
           <p className="text-sm text-text-secondary">

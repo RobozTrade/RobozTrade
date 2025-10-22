@@ -87,8 +87,6 @@ export default function CreateBotPageNew() {
     createBotMutation.mutate(input);
   };
 
-  const canProceedToPayment = isConnected;
-  const canProceedToConfig = paymentValidated;
   const canProceedToReview = name && asterApiKey && asterApiSecret && openRouterApiKey && tradingPair;
 
   const steps = [

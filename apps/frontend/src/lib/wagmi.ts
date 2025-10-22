@@ -1,26 +1,29 @@
 import { createConfig, http } from 'wagmi';
 import { bsc } from 'wagmi/chains';
-import { walletConnect, injected, coinbaseWallet, metaMask } from 'wagmi/connectors';
+import { walletConnect, injected, coinbaseWallet } from 'wagmi/connectors';
 
-// WalletConnect Project ID
-const projectId = 'e9eee19e35b12b88aa0eff7f0ddaef7e';
+// Reown (WalletConnect) Project ID
+export const projectId = 'e9eee19e35b12b88aa0eff7f0ddaef7e';
+
+// Metadata for Reown AppKit
+export const metadata = {
+  name: 'RobozTrade',
+  description: 'AI-Powered Trading Bot Platform',
+  url: 'https://roboztrade.com',
+  icons: ['https://roboztrade.com/icon.png'],
+};
 
 export const config = createConfig({
   chains: [bsc],
   connectors: [
     walletConnect({
       projectId,
-      metadata: {
-        name: 'RobozTrade',
-        description: 'AI-Powered Trading Bot Platform',
-        url: 'https://roboztrade.com',
-        icons: ['https://roboztrade.com/icon.png'],
-      },
+      metadata,
+      showQrModal: false, // We'll use Reown AppKit modal instead
     }),
-    metaMask(),
-    injected(),
+    injected({ shimDisconnect: true }),
     coinbaseWallet({
-      appName: 'RobozTrade',
+      appName: metadata.name,
     }),
   ],
   transports: {
