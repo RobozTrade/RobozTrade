@@ -24,7 +24,7 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["MarketDataWebSocket"]
+new_sqlite_classes = ["MarketDataWebSocket"]
 
 # ============================================================================
 # ENVIRONMENT VARIABLES
