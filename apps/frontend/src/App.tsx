@@ -8,10 +8,12 @@ import DashboardPage from "./features/dashboard/DashboardPage";
 import BotsPage from "./features/bots/BotsPage";
 import BotDetailPage from "./features/bots/BotDetailPage";
 import CreateBotPage from "./features/bots/CreateBotPage";
+import CreateBotPageNew from "./features/bots/CreateBotPageNew";
 import MarketPage from "./features/market/MarketPage";
 import AnalyticsPage from "./features/analytics/AnalyticsPage";
 import BenchmarksPage from "./features/benchmarks/BenchmarksPage";
 import SettingsPage from "./features/settings/SettingsPage";
+import { Web3Provider } from "./components/web3/Web3Provider";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore();
@@ -61,7 +63,15 @@ function App() {
         <Route index element={<Navigate to="/app/dashboard" />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="bots" element={<BotsPage />} />
-        <Route path="bots/new" element={<CreateBotPage />} />
+        <Route
+          path="bots/new"
+          element={
+            <Web3Provider>
+              <CreateBotPageNew />
+            </Web3Provider>
+          }
+        />
+        <Route path="bots/new-legacy" element={<CreateBotPage />} />
         <Route path="bots/:id" element={<BotDetailPage />} />
         <Route path="market" element={<MarketPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />

@@ -27,8 +27,11 @@ export const tradingBots = sqliteTable('trading_bots', {
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
   apiKeyId: text('api_key_id')
-    .notNull()
     .references(() => apiKeys.id, { onDelete: 'cascade' }),
+  // Encrypted API keys stored directly on bot
+  asterApiKey: text('aster_api_key'),
+  asterApiSecret: text('aster_api_secret'),
+  openRouterApiKey: text('openrouter_api_key'),
   name: text('name').notNull(),
   status: text('status').notNull().default('draft'),
   strategyType: text('strategy_type').notNull(),
@@ -64,6 +67,22 @@ export const benchmarkTests = sqliteTable('benchmark_tests', {
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
 });
 
+export const botPayments = sqliteTable('bot_payments', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  botId: text('bot_id')
+    .references(() => tradingBots.id, { onDelete: 'set null' }),
+  txHash: text('tx_hash').notNull().unique(),
+  amount: real('amount').notNull(),
+  currency: text('currency').notNull().default('USDT'),
+  status: text('status').notNull().default('pending'),
+  blockNumber: integer('block_number'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
+  confirmedAt: integer('confirmed_at', { mode: 'timestamp' }),
+});
+
 // Type exports for use in application
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -79,4 +98,7 @@ export type NewTrade = typeof trades.$inferInsert;
 
 export type BenchmarkTest = typeof benchmarkTests.$inferSelect;
 export type NewBenchmarkTest = typeof benchmarkTests.$inferInsert;
+
+export type BotPayment = typeof botPayments.$inferSelect;
+export type NewBotPayment = typeof botPayments.$inferInsert;
 

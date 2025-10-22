@@ -60,16 +60,16 @@ export interface StrategyConfig {
   // MA Cross Strategy
   shortPeriod?: number;
   longPeriod?: number;
-  
+
   // RSI Strategy
   rsiPeriod?: number;
   oversoldThreshold?: number;
   overboughtThreshold?: number;
-  
+
   // Bollinger Bands
   period?: number;
   standardDeviations?: number;
-  
+
   // Custom Strategy
   customLogic?: string;
 }
@@ -80,9 +80,29 @@ export interface RiskConfig {
   takeProfitPercentage: number;
   maxDailyLoss: number;
   maxOpenTrades: number;
+  maxLeverage?: number;
+  maxMarginPerTrade?: number;
+  profitFactorThreshold?: number;
 }
 
 export interface CreateBotInput {
+  // Payment validation
+  paymentTxHash: string;
+
+  // API Keys (will be encrypted on backend)
+  asterApiKey: string;
+  asterApiSecret: string;
+  openRouterApiKey: string;
+
+  // Bot configuration
+  name: string;
+  strategyType: StrategyType;
+  tradingPair: string;
+  config: StrategyConfig;
+  riskConfig: RiskConfig;
+}
+
+export interface CreateBotInputLegacy {
   apiKeyId: string;
   name: string;
   strategyType: StrategyType;
@@ -226,6 +246,34 @@ export interface PaginatedResponse<T> {
   page: number;
   pageSize: number;
   hasMore: boolean;
+}
+
+// Payment Types
+export interface BotPayment {
+  id: string;
+  userId: string;
+  botId: string | null;
+  txHash: string;
+  amount: number;
+  currency: string;
+  status: 'pending' | 'confirmed' | 'failed';
+  blockNumber: number | null;
+  createdAt: Date;
+  confirmedAt: Date | null;
+}
+
+export interface ValidatePaymentInput {
+  txHash: string;
+}
+
+export interface ValidatePaymentResponse {
+  valid: boolean;
+  amount?: number;
+  from?: string;
+  to?: string;
+  blockNumber?: number;
+  confirmations?: number;
+  error?: string;
 }
 
 // Error Types

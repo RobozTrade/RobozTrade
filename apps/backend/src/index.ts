@@ -7,6 +7,7 @@ import { tradesRoutes } from './routes/trades';
 import { marketRoutes } from './routes/market';
 import { apiKeysRoutes } from './routes/apikeys';
 import { benchmarksRoutes } from './routes/benchmarks';
+import { paymentsRoutes } from './routes/payments';
 import { MarketDataWebSocket } from './services/websocket';
 
 export { MarketDataWebSocket };
@@ -46,6 +47,7 @@ app.route('/api/trades', tradesRoutes);
 app.route('/api/market', marketRoutes);
 app.route('/api/keys', apiKeysRoutes);
 app.route('/api/benchmarks', benchmarksRoutes);
+app.route('/api/payments', paymentsRoutes);
 
 // WebSocket endpoint
 app.get('/ws', async (c) => {

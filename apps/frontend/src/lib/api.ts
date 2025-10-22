@@ -12,6 +12,9 @@ import type {
   BenchmarkTest,
   CreateBenchmarkInput,
   Kline,
+  ValidatePaymentInput,
+  ValidatePaymentResponse,
+  BotPayment,
 } from '@roboz-trade/shared-types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -200,6 +203,22 @@ class ApiClient {
     const params = new URLSearchParams({ symbol, interval });
     if (limit) params.append('limit', String(limit));
     return this.request(`/market/klines?${params}`);
+  }
+
+  // Payments
+  async validatePayment(txHash: string): Promise<ApiResponse<ValidatePaymentResponse>> {
+    return this.request(
+      '/payments/validate',
+      {
+        method: 'POST',
+        body: JSON.stringify({ txHash }),
+      },
+      true
+    );
+  }
+
+  async getPayments(): Promise<ApiResponse<BotPayment[]>> {
+    return this.request('/payments', {}, true);
   }
 }
 

@@ -20,7 +20,7 @@ export default function BotsPage() {
           </p>
         </div>
         <Link
-          to="/bots/new"
+          to="/app/bots/new"
           className="btn btn-primary flex items-center gap-2"
         >
           <Plus className="w-4 h-4" />
@@ -64,7 +64,7 @@ export default function BotsPage() {
             No trading bots yet. Create your first bot to get started!
           </p>
           <Link
-            to="/bots/new"
+            to="/app/bots/new"
             className="btn btn-primary inline-flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />

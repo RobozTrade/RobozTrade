@@ -9,17 +9,22 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@roboz-trade/shared-types": "workspace:*",
+    "@tanstack/react-query": "^5.67.1",
+    "@wagmi/connectors": "^6.1.0",
+    "@wagmi/core": "^2.22.1",
+    "ai": "^5.0.76",
+    "clsx": "^2.1.1",
+    "lightweight-charts": "^4.2.2",
+    "lucide-react": "^0.469.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.3",
-    "@tanstack/react-query": "^5.67.1",
-    "zustand": "^5.0.3",
-    "lightweight-charts": "^4.2.2",
     "recharts": "^2.15.0",
-    "lucide-react": "^0.469.0",
+    "viem": "^2.38.3",
+    "wagmi": "^2.18.2",
     "zod": "^3.24.1",
-    "clsx": "^2.1.1",
-    "@roboz-trade/shared-types": "workspace:*"
+    "zustand": "^5.0.3"
   },
   "devDependencies": {
     "@types/react": "^19.0.6",

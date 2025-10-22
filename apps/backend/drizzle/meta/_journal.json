@@ -8,6 +8,13 @@
       "when": 1761081402145,
       "tag": "0000_open_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1761124704190,
+      "tag": "0001_hard_brood",
+      "breakpoints": true
     }
   ]
 }
