@@ -146,8 +146,8 @@ VITE_REQUIRED_PAYMENT_AMOUNT=10
 | `VITE_WALLETCONNECT_PROJECT_ID`  | WalletConnect project ID from Reown Cloud | Provided                                     | ⚠️ **UPDATE THIS** |
 | `VITE_APP_NAME`                  | Application name                          | `RobozTrade`                                 | No                 |
 | `VITE_APP_DESCRIPTION`           | Application description                   | `AI-Powered Trading Bot Platform`            | No                 |
-| `VITE_APP_URL`                   | Application URL                           | `https://roboztrade.com`                     | No                 |
-| `VITE_APP_ICON`                  | Application icon URL                      | `https://roboztrade.com/icon.png`            | No                 |
+| `VITE_APP_URL`                   | Application URL                           | `https://roboz.trade`                        | No                 |
+| `VITE_APP_ICON`                  | Application icon URL                      | `https://roboz.trade/icon.png`               | No                 |
 | `VITE_USDT_CONTRACT_ADDRESS`     | USDT contract address on BSC              | `0x55d398326f99059fF775485246999027B3197955` | No                 |
 | `VITE_PAYMENT_RECIPIENT_ADDRESS` | Payment recipient wallet address          | `0xB8b687E16BD6Ce3E37e6f9fd534542F75009c86B` | ⚠️ **UPDATE THIS** |
 | `VITE_REQUIRED_PAYMENT_AMOUNT`   | Required payment amount in USDT           | `10`                                         | No                 |

@@ -542,8 +542,8 @@ VITE_PAYMENT_RECIPIENT_ADDRESS=0xYOUR_WALLET_ADDRESS
 | `VITE_WALLETCONNECT_PROJECT_ID`  | WalletConnect project ID              | Provided                                     | ⚠️ Update |
 | `VITE_APP_NAME`                  | Application name                      | `RobozTrade`                                 | No        |
 | `VITE_APP_DESCRIPTION`           | Application description               | `AI-Powered Trading Bot Platform`            | No        |
-| `VITE_APP_URL`                   | Application URL                       | `https://roboztrade.com`                     | No        |
-| `VITE_APP_ICON`                  | Application icon URL                  | `https://roboztrade.com/icon.png`            | No        |
+| `VITE_APP_URL`                   | Application URL                       | `https://roboz.trade`                        | No        |
+| `VITE_APP_ICON`                  | Application icon URL                  | `https://roboz.trade/icon.png`               | No        |
 | `VITE_USDT_CONTRACT_ADDRESS`     | USDT contract on BSC                  | `0x55d398326f99059fF775485246999027B3197955` | No        |
 | `VITE_PAYMENT_RECIPIENT_ADDRESS` | Payment recipient wallet              | `0xB8b687E16BD6Ce3E37e6f9fd534542F75009c86B` | ⚠️ Update |
 | `VITE_REQUIRED_PAYMENT_AMOUNT`   | Required payment in USDT              | `10`                                         | No        |
@@ -614,7 +614,7 @@ You can add a custom domain to your Worker:
 
 ```bash
 cd apps/backend
-wrangler publish --routes "roboztrade.com/*"
+wrangler publish --routes "roboz.trade/*"
 ```
 
 **Via Dashboard:**
@@ -622,7 +622,7 @@ wrangler publish --routes "roboztrade.com/*"
 1. Go to your Worker in the Cloudflare Dashboard
 2. Navigate to **Triggers** → **Custom Domains**
 3. Click **Add Custom Domain**
-4. Enter your domain (e.g., `roboztrade.com`)
+4. Enter your domain (e.g., `roboz.trade`)
 5. Follow the DNS configuration instructions
 
 ### 2. Environment-Specific Configuration
@@ -669,7 +669,7 @@ app.use(
       "http://localhost:5173",
       "http://localhost:3000",
       "https://roboz-trade.workers.dev",
-      "https://roboztrade.com", // Add your custom domain
+      "https://roboz.trade", // Add your custom domain
     ],
     credentials: true,
   })

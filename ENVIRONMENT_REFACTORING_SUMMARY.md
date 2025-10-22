@@ -174,8 +174,8 @@ export const projectId = "e9eee19e35b12b88aa0eff7f0ddaef7e";
 export const metadata = {
   name: "RobozTrade",
   description: "AI-Powered Trading Bot Platform",
-  url: "https://roboztrade.com",
-  icons: ["https://roboztrade.com/icon.png"],
+  url: "https://roboz.trade",
+  icons: ["https://roboz.trade/icon.png"],
 };
 export const USDT_CONTRACT_ADDRESS =
   "0x55d398326f99059fF775485246999027B3197955";
@@ -194,8 +194,8 @@ export const metadata = {
   name: import.meta.env.VITE_APP_NAME || "RobozTrade",
   description:
     import.meta.env.VITE_APP_DESCRIPTION || "AI-Powered Trading Bot Platform",
-  url: import.meta.env.VITE_APP_URL || "https://roboztrade.com",
-  icons: [import.meta.env.VITE_APP_ICON || "https://roboztrade.com/icon.png"],
+  url: import.meta.env.VITE_APP_URL || "https://roboz.trade",
+  icons: [import.meta.env.VITE_APP_ICON || "https://roboz.trade/icon.png"],
 };
 export const USDT_CONTRACT_ADDRESS =
   import.meta.env.VITE_USDT_CONTRACT_ADDRESS ||

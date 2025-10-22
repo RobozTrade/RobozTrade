@@ -9,8 +9,8 @@ export const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'e9eee
 export const metadata = {
   name: import.meta.env.VITE_APP_NAME || 'RobozTrade',
   description: import.meta.env.VITE_APP_DESCRIPTION || 'AI-Powered Trading Bot Platform',
-  url: import.meta.env.VITE_APP_URL || 'https://roboztrade.com',
-  icons: [import.meta.env.VITE_APP_ICON || 'https://roboztrade.com/icon.png'],
+  url: import.meta.env.VITE_APP_URL || 'https://roboz.trade',
+  icons: [import.meta.env.VITE_APP_ICON || 'https://roboz.trade/icon.png'],
 };
 
 export const config = createConfig({
