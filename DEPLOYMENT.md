@@ -481,7 +481,7 @@ These are non-sensitive configuration values defined in `apps/backend/wrangler.t
 | `CORS_ALLOWED_ORIGINS`      | Comma-separated list of allowed CORS origins | `http://localhost:5173,http://localhost:3000,https://roboz-trade.workers.dev` | No        |
 | `BSC_RPC_URL`               | Binance Smart Chain RPC URL                  | `https://bsc-dataseed1.binance.org`                                           | No        |
 | `USDT_CONTRACT_ADDRESS`     | USDT contract address on BSC                 | `0x55d398326f99059fF775485246999027B3197955`                                  | No        |
-| `PAYMENT_RECIPIENT_ADDRESS` | Your wallet address for bot payments         | `0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1`                                  | ⚠️ Update |
+| `PAYMENT_RECIPIENT_ADDRESS` | Your wallet address for bot payments         | `0xB8b687E16BD6Ce3E37e6f9fd534542F75009c86B`                                  | ⚠️ Update |
 | `REQUIRED_PAYMENT_AMOUNT`   | Required payment amount in USDT              | `10`                                                                          | No        |
 | `MIN_CONFIRMATIONS`         | Minimum blockchain confirmations             | `3`                                                                           | No        |
 | `PBKDF2_ITERATIONS`         | PBKDF2 iterations for encryption             | `100000`                                                                      | No        |
@@ -545,7 +545,7 @@ VITE_PAYMENT_RECIPIENT_ADDRESS=0xYOUR_WALLET_ADDRESS
 | `VITE_APP_URL`                   | Application URL                       | `https://roboztrade.com`                     | No        |
 | `VITE_APP_ICON`                  | Application icon URL                  | `https://roboztrade.com/icon.png`            | No        |
 | `VITE_USDT_CONTRACT_ADDRESS`     | USDT contract on BSC                  | `0x55d398326f99059fF775485246999027B3197955` | No        |
-| `VITE_PAYMENT_RECIPIENT_ADDRESS` | Payment recipient wallet              | `0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1` | ⚠️ Update |
+| `VITE_PAYMENT_RECIPIENT_ADDRESS` | Payment recipient wallet              | `0xB8b687E16BD6Ce3E37e6f9fd534542F75009c86B` | ⚠️ Update |
 | `VITE_REQUIRED_PAYMENT_AMOUNT`   | Required payment in USDT              | `10`                                         | No        |
 
 ### Environment-Specific Deployment

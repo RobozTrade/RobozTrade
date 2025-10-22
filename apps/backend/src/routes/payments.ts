@@ -68,7 +68,7 @@ paymentsRoutes.post('/validate', zValidator('json', validatePaymentSchema), asyn
   // Get configuration from environment variables with defaults
   const BSC_RPC_URL = c.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org';
   const USDT_CONTRACT_ADDRESS = (c.env.USDT_CONTRACT_ADDRESS || '0x55d398326f99059fF775485246999027B3197955').toLowerCase();
-  const RECIPIENT_ADDRESS = (c.env.PAYMENT_RECIPIENT_ADDRESS || '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1').toLowerCase();
+  const RECIPIENT_ADDRESS = (c.env.PAYMENT_RECIPIENT_ADDRESS || '0xB8b687E16BD6Ce3E37e6f9fd534542F75009c86B').toLowerCase();
   const REQUIRED_AMOUNT = parseFloat(c.env.REQUIRED_PAYMENT_AMOUNT || '10');
   const MIN_CONFIRMATIONS = parseInt(c.env.MIN_CONFIRMATIONS || '3', 10);
 

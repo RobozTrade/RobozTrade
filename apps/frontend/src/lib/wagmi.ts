@@ -35,7 +35,7 @@ export const config = createConfig({
 export const USDT_CONTRACT_ADDRESS = import.meta.env.VITE_USDT_CONTRACT_ADDRESS || '0x55d398326f99059fF775485246999027B3197955';
 
 // Recipient address for bot payments - from environment variable
-export const PAYMENT_RECIPIENT_ADDRESS = import.meta.env.VITE_PAYMENT_RECIPIENT_ADDRESS || '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1';
+export const PAYMENT_RECIPIENT_ADDRESS = import.meta.env.VITE_PAYMENT_RECIPIENT_ADDRESS || '0xB8b687E16BD6Ce3E37e6f9fd534542F75009c86B';
 
 // Required payment amount - from environment variable
 export const REQUIRED_PAYMENT_AMOUNT = import.meta.env.VITE_REQUIRED_PAYMENT_AMOUNT || '10';

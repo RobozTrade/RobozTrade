@@ -10,10 +10,10 @@ This guide explains all environment variables used in the RobozTrade application
 
 These variables contain sensitive information and should NEVER be committed to version control.
 
-| Variable | Description | Required | How to Generate |
-|----------|-------------|----------|-----------------|
-| `JWT_SECRET` | Secret key for signing JWT authentication tokens | ✅ Yes | `openssl rand -base64 32` |
-| `ENCRYPTION_KEY` | Key for encrypting API keys stored in database | ✅ Yes | `openssl rand -base64 32` (MUST be different from JWT_SECRET) |
+| Variable         | Description                                      | Required | How to Generate                                               |
+| ---------------- | ------------------------------------------------ | -------- | ------------------------------------------------------------- |
+| `JWT_SECRET`     | Secret key for signing JWT authentication tokens | ✅ Yes   | `openssl rand -base64 32`                                     |
+| `ENCRYPTION_KEY` | Key for encrypting API keys stored in database   | ✅ Yes   | `openssl rand -base64 32` (MUST be different from JWT_SECRET) |
 
 **Production Setup:**
 
@@ -47,45 +47,46 @@ These variables are defined in `apps/backend/wrangler.toml` under the `[vars]` s
 
 #### API Configuration
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `ASTER_API_BASE_URL` | Base URL for Aster DEX API | `https://fapi.asterdex.com` | No |
+| Variable             | Description                | Default                     | Required |
+| -------------------- | -------------------------- | --------------------------- | -------- |
+| `ASTER_API_BASE_URL` | Base URL for Aster DEX API | `https://fapi.asterdex.com` | No       |
 
 #### CORS Configuration
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `http://localhost:5173,http://localhost:3000,https://roboz-trade.workers.dev` | No |
+| Variable               | Description                                  | Default                                                                       | Required |
+| ---------------------- | -------------------------------------------- | ----------------------------------------------------------------------------- | -------- |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `http://localhost:5173,http://localhost:3000,https://roboz-trade.workers.dev` | No       |
 
 **Example:** Add your custom domain:
+
 ```toml
 CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:3000,https://roboz-trade.workers.dev,https://yourdomain.com"
 ```
 
 #### Blockchain Configuration
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `BSC_RPC_URL` | Binance Smart Chain RPC endpoint | `https://bsc-dataseed1.binance.org` | No |
-| `USDT_CONTRACT_ADDRESS` | USDT token contract address on BSC | `0x55d398326f99059fF775485246999027B3197955` | No |
-| `PAYMENT_RECIPIENT_ADDRESS` | Your wallet address for receiving bot payments | `0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1` | ⚠️ **UPDATE THIS** |
-| `REQUIRED_PAYMENT_AMOUNT` | Required payment amount in USDT | `10` | No |
-| `MIN_CONFIRMATIONS` | Minimum blockchain confirmations required | `3` | No |
+| Variable                    | Description                                    | Default                                      | Required           |
+| --------------------------- | ---------------------------------------------- | -------------------------------------------- | ------------------ |
+| `BSC_RPC_URL`               | Binance Smart Chain RPC endpoint               | `https://bsc-dataseed1.binance.org`          | No                 |
+| `USDT_CONTRACT_ADDRESS`     | USDT token contract address on BSC             | `0x55d398326f99059fF775485246999027B3197955` | No                 |
+| `PAYMENT_RECIPIENT_ADDRESS` | Your wallet address for receiving bot payments | `0xB8b687E16BD6Ce3E37e6f9fd534542F75009c86B` | ⚠️ **UPDATE THIS** |
+| `REQUIRED_PAYMENT_AMOUNT`   | Required payment amount in USDT                | `10`                                         | No                 |
+| `MIN_CONFIRMATIONS`         | Minimum blockchain confirmations required      | `3`                                          | No                 |
 
 **⚠️ IMPORTANT:** Update `PAYMENT_RECIPIENT_ADDRESS` with YOUR wallet address!
 
 #### Crypto Configuration
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `PBKDF2_ITERATIONS` | Number of PBKDF2 iterations for encryption (higher = more secure but slower) | `100000` | No |
+| Variable            | Description                                                                  | Default  | Required |
+| ------------------- | ---------------------------------------------------------------------------- | -------- | -------- |
+| `PBKDF2_ITERATIONS` | Number of PBKDF2 iterations for encryption (higher = more secure but slower) | `100000` | No       |
 
 #### Rate Limiting (Optional)
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `RATE_LIMIT_WINDOW_MS` | Rate limit window in milliseconds | `60000` (1 minute) | No |
-| `RATE_LIMIT_MAX_REQUESTS` | Maximum requests per window | `100` | No |
+| Variable                  | Description                       | Default            | Required |
+| ------------------------- | --------------------------------- | ------------------ | -------- |
+| `RATE_LIMIT_WINDOW_MS`    | Rate limit window in milliseconds | `60000` (1 minute) | No       |
+| `RATE_LIMIT_MAX_REQUESTS` | Maximum requests per window       | `100`              | No       |
 
 ## Frontend Environment Variables
 
@@ -138,18 +139,18 @@ VITE_REQUIRED_PAYMENT_AMOUNT=10
 
 ### All Frontend Variables
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `VITE_API_URL` | API base URL (empty for same-origin) | `/api` | No |
-| `VITE_WS_URL` | WebSocket URL (empty for same-origin) | `/ws` | No |
-| `VITE_WALLETCONNECT_PROJECT_ID` | WalletConnect project ID from Reown Cloud | Provided | ⚠️ **UPDATE THIS** |
-| `VITE_APP_NAME` | Application name | `RobozTrade` | No |
-| `VITE_APP_DESCRIPTION` | Application description | `AI-Powered Trading Bot Platform` | No |
-| `VITE_APP_URL` | Application URL | `https://roboztrade.com` | No |
-| `VITE_APP_ICON` | Application icon URL | `https://roboztrade.com/icon.png` | No |
-| `VITE_USDT_CONTRACT_ADDRESS` | USDT contract address on BSC | `0x55d398326f99059fF775485246999027B3197955` | No |
-| `VITE_PAYMENT_RECIPIENT_ADDRESS` | Payment recipient wallet address | `0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1` | ⚠️ **UPDATE THIS** |
-| `VITE_REQUIRED_PAYMENT_AMOUNT` | Required payment amount in USDT | `10` | No |
+| Variable                         | Description                               | Default                                      | Required           |
+| -------------------------------- | ----------------------------------------- | -------------------------------------------- | ------------------ |
+| `VITE_API_URL`                   | API base URL (empty for same-origin)      | `/api`                                       | No                 |
+| `VITE_WS_URL`                    | WebSocket URL (empty for same-origin)     | `/ws`                                        | No                 |
+| `VITE_WALLETCONNECT_PROJECT_ID`  | WalletConnect project ID from Reown Cloud | Provided                                     | ⚠️ **UPDATE THIS** |
+| `VITE_APP_NAME`                  | Application name                          | `RobozTrade`                                 | No                 |
+| `VITE_APP_DESCRIPTION`           | Application description                   | `AI-Powered Trading Bot Platform`            | No                 |
+| `VITE_APP_URL`                   | Application URL                           | `https://roboztrade.com`                     | No                 |
+| `VITE_APP_ICON`                  | Application icon URL                      | `https://roboztrade.com/icon.png`            | No                 |
+| `VITE_USDT_CONTRACT_ADDRESS`     | USDT contract address on BSC              | `0x55d398326f99059fF775485246999027B3197955` | No                 |
+| `VITE_PAYMENT_RECIPIENT_ADDRESS` | Payment recipient wallet address          | `0xB8b687E16BD6Ce3E37e6f9fd534542F75009c86B` | ⚠️ **UPDATE THIS** |
+| `VITE_REQUIRED_PAYMENT_AMOUNT`   | Required payment amount in USDT           | `10`                                         | No                 |
 
 ## Quick Setup Checklist
 
@@ -173,26 +174,31 @@ VITE_REQUIRED_PAYMENT_AMOUNT=10
 ## Important Notes
 
 1. **Never commit secrets to version control**
+
    - `.dev.vars` is gitignored
    - `.env.development` is gitignored
    - Use `wrangler secret put` for production secrets
 
 2. **Frontend variables are build-time**
+
    - Changes require rebuilding the frontend: `bun run build:frontend`
    - Backend variables are runtime (no rebuild needed)
 
 3. **Update wallet addresses**
+
    - Backend: `PAYMENT_RECIPIENT_ADDRESS` in `wrangler.toml`
    - Frontend: `VITE_PAYMENT_RECIPIENT_ADDRESS` in `.env.production`
    - Both should point to YOUR wallet address
 
 4. **Get your own WalletConnect Project ID**
+
    - Visit: https://cloud.reown.com/
    - Create a new project
    - Copy the Project ID
    - Update `VITE_WALLETCONNECT_PROJECT_ID` in frontend env files
 
 5. **CORS Configuration**
+
    - Add your custom domain to `CORS_ALLOWED_ORIGINS`
    - Format: comma-separated list with no spaces after commas
    - Example: `"http://localhost:5173,https://yourdomain.com"`
@@ -245,6 +251,7 @@ wrangler secret put ENCRYPTION_KEY
 ### "Missing JWT_SECRET" error
 
 **Solution:** Set the JWT_SECRET secret:
+
 ```bash
 wrangler secret put JWT_SECRET
 ```
@@ -252,6 +259,7 @@ wrangler secret put JWT_SECRET
 ### "Missing ENCRYPTION_KEY" error
 
 **Solution:** Set the ENCRYPTION_KEY secret:
+
 ```bash
 wrangler secret put ENCRYPTION_KEY
 ```
@@ -259,13 +267,15 @@ wrangler secret put ENCRYPTION_KEY
 ### CORS errors in production
 
 **Solution:** Add your production domain to `CORS_ALLOWED_ORIGINS` in `wrangler.toml`:
+
 ```toml
 CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:3000,https://roboz-trade.workers.dev,https://yourdomain.com"
 ```
 
 ### WalletConnect not working
 
-**Solution:** 
+**Solution:**
+
 1. Get your own Project ID from https://cloud.reown.com/
 2. Update `VITE_WALLETCONNECT_PROJECT_ID` in `.env.production`
 3. Rebuild frontend: `bun run build:frontend`
@@ -274,6 +284,7 @@ CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:3000,https://robo
 ### Payment validation fails
 
 **Solution:** Ensure `PAYMENT_RECIPIENT_ADDRESS` matches in both:
+
 - Backend: `apps/backend/wrangler.toml`
 - Frontend: `apps/frontend/.env.production`
 
@@ -282,4 +293,3 @@ CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:3000,https://robo
 - [Cloudflare Workers Environment Variables](https://developers.cloudflare.com/workers/configuration/environment-variables/)
 - [Vite Environment Variables](https://vitejs.dev/guide/env-and-mode.html)
 - [Wrangler Secrets](https://developers.cloudflare.com/workers/wrangler/commands/#secret)
-
