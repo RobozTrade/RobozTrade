@@ -29,7 +29,133 @@ RobozTrade is a monorepo with two main parts:
 
 ## Backend Deployment (Cloudflare Workers)
 
-### Step 1: Update Configuration
+You can deploy the backend using either the Cloudflare Dashboard (easier for beginners) or Wrangler CLI (more control).
+
+### Method 1: Deploy via Cloudflare Dashboard (Recommended for First-Time Deployment)
+
+#### Step 1: Create D1 Database
+
+1. Go to https://dash.cloudflare.com
+2. Navigate to **Workers & Pages** → **D1 SQL Database**
+3. Click **Create database**
+4. Name it: `roboz-trade`
+5. Click **Create**
+6. Copy the **Database ID** that appears
+7. Update `apps/backend/wrangler.toml`:
+   ```toml
+   [[d1_databases]]
+   binding = "DB"
+   database_name = "roboz-trade"
+   database_id = "YOUR_DATABASE_ID_FROM_ABOVE"  # Paste the ID here
+   ```
+
+#### Step 2: Run Database Migrations
+
+You need to use CLI for migrations:
+
+```bash
+cd apps/backend
+bun install
+bun run db:migrate
+```
+
+#### Step 3: Push Code to GitHub
+
+```bash
+git add .
+git commit -m "Prepare for deployment"
+git push origin main
+```
+
+#### Step 4: Create Worker via Dashboard
+
+1. Go to https://dash.cloudflare.com
+2. Navigate to **Workers & Pages** → **Overview**
+3. Click **Create** → **Create Worker**
+4. Name it: `roboz-trade` (or your preferred name)
+5. Click **Deploy**
+6. After deployment, click **Edit Code**
+7. On the right sidebar, click **Settings**
+
+#### Step 5: Configure Worker Settings
+
+**Bindings:**
+1. In Settings → **Variables and Secrets** → **D1 Database Bindings**
+   - Click **Add binding**
+   - Variable name: `DB`
+   - D1 database: Select `roboz-trade`
+   - Click **Save**
+
+2. In **Durable Object Bindings**
+   - Click **Add binding**
+   - Variable name: `MARKET_WS`
+   - Durable Object class name: `MarketDataWebSocket`
+   - Script name: Select current worker
+   - Click **Save**
+
+**Environment Variables:**
+1. In Settings → **Variables and Secrets** → **Environment Variables**
+   - Add variable:
+     - Name: `ASTER_API_BASE_URL`
+     - Value: `https://fapi.asterdex.com`
+     - Click **Add variable**
+   - Add variable:
+     - Name: `JWT_SECRET`
+     - Value: Generate a secure random string (e.g., run `openssl rand -base64 32` in terminal)
+     - Click **Encrypt** (to make it a secret)
+     - Click **Add variable**
+
+**Compatibility:**
+1. In Settings → **Compatibility**
+   - Compatibility date: `2024-09-23`
+   - Compatibility flags: Add `nodejs_compat`
+
+#### Step 6: Connect GitHub for Continuous Deployment
+
+1. In Worker settings, go to **Triggers** tab
+2. Click **Add** under **Git Integration**
+3. Connect your GitHub account
+4. Select repository: `RobozTrade/RobozTrade`
+5. Production branch: `main`
+6. Build configuration:
+   - Root directory: `apps/backend`
+   - Build command: Leave empty (Workers don't need build for TypeScript)
+   - Entry point: `src/index.ts`
+7. Click **Save**
+
+Now any push to `main` branch will automatically deploy your backend!
+
+#### Step 7: Deploy Initial Code
+
+Since the worker is empty, you need to deploy the code:
+
+**Option A - Via Wrangler CLI (Easiest):**
+```bash
+cd apps/backend
+wrangler deploy
+```
+
+**Option B - Via Dashboard:**
+1. Copy the entire content of `apps/backend/src/index.ts` and all dependencies
+2. Paste into the Worker editor
+3. Click **Save and Deploy**
+
+**Verify Deployment:**
+Visit: `https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/api/health`
+
+You should see:
+```json
+{
+  "status": "ok",
+  "timestamp": "..."
+}
+```
+
+---
+
+### Method 2: Deploy via Wrangler CLI (Quick Deployment)
+
+#### Step 1: Update Configuration
 
 Edit `apps/backend/wrangler.toml` and update:
 
@@ -38,7 +164,9 @@ account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"  # Replace with your account ID
 name = "roboz-trade"                        # Your worker name
 ```
 
-### Step 2: Create D1 Database
+Find your Account ID at: https://dash.cloudflare.com → Workers & Pages → Overview
+
+#### Step 2: Create D1 Database
 
 ```bash
 # Create production database
@@ -57,7 +185,7 @@ database_name = "roboz-trade"
 database_id = "YOUR_DATABASE_ID_FROM_ABOVE"  # Replace this
 ```
 
-### Step 3: Run Database Migrations
+#### Step 3: Run Database Migrations
 
 ```bash
 # From project root
@@ -68,7 +196,7 @@ cd apps/backend
 bun run db:migrate
 ```
 
-### Step 4: Set Environment Variables (Secrets)
+#### Step 4: Set Environment Variables (Secrets)
 
 ```bash
 cd apps/backend
@@ -80,7 +208,7 @@ wrangler secret put JWT_SECRET
 # Note: ASTER_API_BASE_URL is already in wrangler.toml [vars] section
 ```
 
-### Step 5: Deploy Backend
+#### Step 5: Deploy Backend
 
 ```bash
 # Option 1: From project root
@@ -96,6 +224,19 @@ wrangler deploy
 ```
 
 You'll get a deployment URL like: `https://roboz-trade.YOUR_SUBDOMAIN.workers.dev`
+
+---
+
+### Troubleshooting Backend Deployment
+
+**Issue: "Missing entry-point to Worker script"**
+- Solution: Make sure you're in `apps/backend` directory when running `wrangler deploy`
+
+**Issue: "Database binding not found"**
+- Solution: Ensure D1 database binding is configured in wrangler.toml or Dashboard settings
+
+**Issue: "Durable Object class not found"**
+- Solution: Ensure Durable Object binding is configured in wrangler.toml or Dashboard settings
 
 ## Frontend Deployment (Cloudflare Pages)
 
