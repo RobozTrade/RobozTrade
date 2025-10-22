@@ -18,6 +18,7 @@
     "deploy:backend": "bun run deploy",
     "db:generate": "bun --cwd apps/backend db:generate",
     "db:migrate": "bunx wrangler d1 migrations apply roboz-trade --config apps/backend/wrangler.toml",
+    "db:migrate:prod": "bunx wrangler d1 migrations apply roboz-trade --remote --config apps/backend/wrangler.toml",
     "type-check": "bun run --recursive type-check"
   },
   "devDependencies": {

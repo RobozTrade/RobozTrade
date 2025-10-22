@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "wrangler dev",
     "build": "tsc",
-    "deploy": "wrangler deploy",
+    "deploy": "bun run db:migrate:prod && wrangler deploy",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply roboz-trade",
+    "db:migrate:prod": "wrangler d1 migrations apply roboz-trade --remote",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

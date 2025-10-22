@@ -55,20 +55,34 @@ app.use('*', async (c, next) => {
 
   const origin = c.req.header('Origin');
 
-  // Allow requests with no origin (like mobile apps or curl) or if origin is in allowed list
-  if (!origin || allowedOrigins.includes(origin)) {
-    c.header('Access-Control-Allow-Origin', origin || '*');
-    c.header('Access-Control-Allow-Credentials', 'true');
-    c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  }
-
-  // Handle preflight requests
+  // Handle preflight requests first
   if (c.req.method === 'OPTIONS') {
+    // Always allow preflight if origin is in allowed list
+    if (origin && allowedOrigins.includes(origin)) {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': origin,
+          'Access-Control-Allow-Credentials': 'true',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Max-Age': '86400',
+        },
+      });
+    }
     return new Response(null, { status: 204 });
   }
 
+  // For actual requests, proceed and add CORS headers to response
   await next();
+
+  // Add CORS headers to response if origin is allowed
+  if (origin && allowedOrigins.includes(origin)) {
+    c.header('Access-Control-Allow-Origin', origin);
+    c.header('Access-Control-Allow-Credentials', 'true');
+    c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
 });
 
 // API Routes - These will be matched first due to run_worker_first config
