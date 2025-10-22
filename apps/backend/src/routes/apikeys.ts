@@ -14,7 +14,14 @@ const createApiKeySchema = z.object({
   label: z.string(),
 });
 
-export const apiKeysRoutes = new Hono<{ Bindings: { DB: D1Database; JWT_SECRET: string } }>();
+type ApiKeyBindings = {
+  DB: D1Database;
+  JWT_SECRET: string;
+  ENCRYPTION_KEY: string;
+  PBKDF2_ITERATIONS?: string;
+};
+
+export const apiKeysRoutes = new Hono<{ Bindings: ApiKeyBindings }>();
 
 apiKeysRoutes.use('/*', authMiddleware);
 
@@ -51,9 +58,13 @@ apiKeysRoutes.post('/', zValidator('json', createApiKeySchema), async (c) => {
   const db = getDb(c.env.DB);
 
   try {
+    // Get encryption configuration
+    const encryptionKey = c.env.ENCRYPTION_KEY;
+    const iterations = parseInt(c.env.PBKDF2_ITERATIONS || '100000', 10);
+
     // Encrypt the API credentials
-    const encryptedKey = await encrypt(apiKey, c.env.JWT_SECRET);
-    const encryptedSecret = await encrypt(apiSecret, c.env.JWT_SECRET);
+    const encryptedKey = await encrypt(apiKey, encryptionKey, iterations);
+    const encryptedSecret = await encrypt(apiSecret, encryptionKey, iterations);
 
     const keyId = nanoid();
     await db.insert(apiKeys).values({

@@ -4,6 +4,13 @@ main = "src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
+# Static Assets Configuration - Serves React frontend
+[assets]
+directory = "../frontend/dist"  # Path to built frontend assets
+binding = "ASSETS"               # Binding name to access assets in Worker code
+not_found_handling = "single-page-application"  # SPA mode for React Router
+run_worker_first = ["/api/*", "/ws"]  # Run Worker code first for API and WebSocket routes
+
 [[d1_databases]]
 binding = "DB"
 database_name = "roboz-trade"
@@ -19,8 +26,41 @@ bindings = [
 tag = "v1"
 new_classes = ["MarketDataWebSocket"]
 
+# ============================================================================
+# ENVIRONMENT VARIABLES
+# ============================================================================
+# Non-sensitive variables can be defined here in [vars]
+# Sensitive variables (secrets) should be set using: wrangler secret put VARIABLE_NAME
+#
+# SECRETS (use `wrangler secret put`):
+#   - JWT_SECRET
+#   - ENCRYPTION_KEY
+#
+# To set secrets in production:
+#   wrangler secret put JWT_SECRET
+#   wrangler secret put ENCRYPTION_KEY
+# ============================================================================
+
 [vars]
-JWT_SECRET = "your-jwt-secret-change-in-production"
+# API Configuration
 ASTER_API_BASE_URL = "https://fapi.asterdex.com"
+
+# CORS Configuration
+# Add your custom domain when configured
+CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:3000,https://roboz-trade.workers.dev"
+
+# Blockchain Configuration
+BSC_RPC_URL = "https://bsc-dataseed1.binance.org"
+USDT_CONTRACT_ADDRESS = "0x55d398326f99059fF775485246999027B3197955"
+PAYMENT_RECIPIENT_ADDRESS = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1"  # Replace with your wallet
+REQUIRED_PAYMENT_AMOUNT = "10"
+MIN_CONFIRMATIONS = "3"
+
+# Crypto Configuration
+PBKDF2_ITERATIONS = "100000"
+
+# Rate Limiting (optional)
+# RATE_LIMIT_WINDOW_MS = "60000"
+# RATE_LIMIT_MAX_REQUESTS = "100"
 
 

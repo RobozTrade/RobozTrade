@@ -2,10 +2,26 @@
 
 ## Overview
 
-RobozTrade is a monorepo with two main parts:
+RobozTrade uses a **unified deployment architecture** where both the frontend (React + Vite) and backend (Hono API) are deployed together as a single Cloudflare Worker. This provides:
 
-- **Backend**: Cloudflare Workers (Hono framework)
-- **Frontend**: Static site (React + Vite)
+- ✅ **Single deployment** - One command deploys everything
+- ✅ **No CORS issues** - Frontend and backend on same origin
+- ✅ **Free static hosting** - You only pay for Worker CPU time (API requests)
+- ✅ **Global CDN** - Static assets cached at Cloudflare edge locations worldwide
+- ✅ **Simplified architecture** - No need to manage separate deployments
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│         Single Cloudflare Worker (roboz-trade)          │
+├─────────────────────────────────────────────────────────┤
+│  Request Router:                                         │
+│  - /api/* → Hono Backend (JWT, D1, Durable Objects)    │
+│  - /ws → WebSocket Durable Object                       │
+│  - /* → Static Assets (React SPA with client routing)   │
+└─────────────────────────────────────────────────────────┘
+```
 
 ## Prerequisites
 
@@ -27,11 +43,30 @@ RobozTrade is a monorepo with two main parts:
    wrangler login
    ```
 
-## Backend Deployment (Cloudflare Workers)
+## Unified Deployment (Recommended)
 
-You can deploy the backend using either the Cloudflare Dashboard (easier for beginners) or Wrangler CLI (more control).
+This is the recommended approach that deploys both frontend and backend together as a single Worker.
 
-### Method 1: Deploy via Cloudflare Dashboard (Recommended for First-Time Deployment)
+### Quick Start
+
+```bash
+# 1. Install dependencies
+bun install
+
+# 2. Build frontend and backend
+bun run build
+
+# 3. Deploy everything
+bun run deploy
+```
+
+That's it! Your entire application (frontend + backend) is now deployed to Cloudflare Workers.
+
+---
+
+## Detailed Deployment Guide
+
+### Method 1: Unified Deployment via Wrangler CLI (Recommended)
 
 #### Step 1: Create D1 Database
 
@@ -51,109 +86,128 @@ You can deploy the backend using either the Cloudflare Dashboard (easier for beg
 
 #### Step 2: Run Database Migrations
 
-You need to use CLI for migrations:
-
 ```bash
+# From project root
+bun run db:migrate
+
+# Or from apps/backend directory
 cd apps/backend
-bun install
 bun run db:migrate
 ```
 
-#### Step 3: Push Code to GitHub
+#### Step 3: Set Environment Variables (Secrets)
+
+**IMPORTANT**: You must set these secrets before deploying:
 
 ```bash
-git add .
-git commit -m "Prepare for deployment"
-git push origin main
+cd apps/backend
+
+# Generate strong random strings for secrets
+openssl rand -base64 32  # Copy this for JWT_SECRET
+openssl rand -base64 32  # Copy this for ENCRYPTION_KEY (must be different!)
+
+# Set JWT secret (REQUIRED)
+wrangler secret put JWT_SECRET
+# When prompted, paste the first random string
+
+# Set encryption key (REQUIRED)
+wrangler secret put ENCRYPTION_KEY
+# When prompted, paste the second random string
 ```
 
-#### Step 4: Create Worker via Dashboard
+**Note**: Non-sensitive configuration is already in `wrangler.toml` [vars] section. See the [Environment Variables Configuration](#environment-variables-configuration) section below for details.
+
+#### Step 4: Build Frontend
+
+```bash
+# From project root
+bun run build:frontend
+
+# This creates the dist folder that will be deployed with the Worker
+```
+
+#### Step 5: Deploy Unified Worker
+
+```bash
+# From project root - builds and deploys everything
+bun run deploy
+
+# Or step by step:
+bun run build          # Build frontend and backend
+bun run deploy:worker  # Deploy the Worker with static assets
+```
+
+You'll get a deployment URL like: `https://roboz-trade.YOUR_SUBDOMAIN.workers.dev`
+
+**Important**: The frontend is now served from the same URL as the backend:
+
+- Frontend: `https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/`
+- API: `https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/api/*`
+- WebSocket: `https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/ws`
+
+---
+
+### Method 2: Deploy via Cloudflare Dashboard (Alternative)
+
+This method uses the Cloudflare Dashboard for configuration. Note that you'll still need to use Wrangler CLI for the actual deployment since the unified deployment requires building the frontend first.
+
+#### Step 1: Create Worker via Dashboard
 
 1. Go to https://dash.cloudflare.com
 2. Navigate to **Workers & Pages** → **Overview**
 3. Click **Create** → **Create Worker**
 4. Name it: `roboz-trade` (or your preferred name)
 5. Click **Deploy**
-6. After deployment, click **Edit Code**
-7. On the right sidebar, click **Settings**
 
-#### Step 5: Configure Worker Settings
+#### Step 2: Configure Worker Settings
 
-**Bindings:**
 1. In Settings → **Variables and Secrets** → **D1 Database Bindings**
+
    - Click **Add binding**
    - Variable name: `DB`
-   - D1 database: Select `roboz-trade`
+   - D1 database: Select `roboz-trade` (create it first if needed)
    - Click **Save**
 
 2. In **Durable Object Bindings**
+
    - Click **Add binding**
    - Variable name: `MARKET_WS`
    - Durable Object class name: `MarketDataWebSocket`
    - Script name: Select current worker
    - Click **Save**
 
-**Environment Variables:**
-1. In Settings → **Variables and Secrets** → **Environment Variables**
+3. In Settings → **Variables and Secrets** → **Environment Variables**
+
    - Add variable:
      - Name: `ASTER_API_BASE_URL`
      - Value: `https://fapi.asterdex.com`
      - Click **Add variable**
-   - Add variable:
+   - Add secret:
      - Name: `JWT_SECRET`
-     - Value: Generate a secure random string (e.g., run `openssl rand -base64 32` in terminal)
-     - Click **Encrypt** (to make it a secret)
+     - Value: Generate a secure random string (e.g., run `openssl rand -base64 32`)
+     - Click **Encrypt**
      - Click **Add variable**
 
-**Compatibility:**
-1. In Settings → **Compatibility**
+4. In Settings → **Compatibility**
    - Compatibility date: `2024-09-23`
    - Compatibility flags: Add `nodejs_compat`
 
-#### Step 6: Connect GitHub for Continuous Deployment
+#### Step 3: Deploy via CLI
 
-1. In Worker settings, go to **Triggers** tab
-2. Click **Add** under **Git Integration**
-3. Connect your GitHub account
-4. Select repository: `RobozTrade/RobozTrade`
-5. Production branch: `main`
-6. Build configuration:
-   - Root directory: `apps/backend`
-   - Build command: Leave empty (Workers don't need build for TypeScript)
-   - Entry point: `src/index.ts`
-7. Click **Save**
+Even with Dashboard configuration, you need to deploy via CLI for the unified deployment:
 
-Now any push to `main` branch will automatically deploy your backend!
-
-#### Step 7: Deploy Initial Code
-
-Since the worker is empty, you need to deploy the code:
-
-**Option A - Via Wrangler CLI (Easiest):**
 ```bash
+# Build frontend
+bun run build:frontend
+
+# Deploy Worker with static assets
 cd apps/backend
 wrangler deploy
 ```
 
-**Option B - Via Dashboard:**
-1. Copy the entire content of `apps/backend/src/index.ts` and all dependencies
-2. Paste into the Worker editor
-3. Click **Save and Deploy**
-
-**Verify Deployment:**
-Visit: `https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/api/health`
-
-You should see:
-```json
-{
-  "status": "ok",
-  "timestamp": "..."
-}
-```
-
 ---
 
-### Method 2: Deploy via Wrangler CLI (Quick Deployment)
+### Method 3: Legacy Separate Deployments (Not Recommended)
 
 #### Step 1: Update Configuration
 
@@ -227,18 +281,96 @@ You'll get a deployment URL like: `https://roboz-trade.YOUR_SUBDOMAIN.workers.de
 
 ---
 
-### Troubleshooting Backend Deployment
+---
 
-**Issue: "Missing entry-point to Worker script"**
-- Solution: Make sure you're in `apps/backend` directory when running `wrangler deploy`
+## Verification
 
-**Issue: "Database binding not found"**
-- Solution: Ensure D1 database binding is configured in wrangler.toml or Dashboard settings
+### Test the Unified Deployment
 
-**Issue: "Durable Object class not found"**
-- Solution: Ensure Durable Object binding is configured in wrangler.toml or Dashboard settings
+After deploying, verify everything works:
 
-## Frontend Deployment (Cloudflare Pages)
+**1. Test Frontend**
+
+Open your Worker URL in a browser:
+
+```
+https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/
+```
+
+You should see the RobozTrade homepage.
+
+**2. Test API**
+
+```bash
+curl https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/api/auth/health
+```
+
+**3. Test React Router**
+
+Navigate to different routes in your browser:
+
+- `https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/login`
+- `https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/app/dashboard`
+
+All routes should work without 404 errors (React Router handles client-side routing).
+
+**4. Test WebSocket**
+
+The WebSocket endpoint should be available at:
+
+```
+wss://roboz-trade.YOUR_SUBDOMAIN.workers.dev/ws
+```
+
+---
+
+## Troubleshooting
+
+### Issue: "Missing entry-point to Worker script"
+
+**Solution**: Make sure you're in `apps/backend` directory when running `wrangler deploy`, or use the root-level command: `bun run deploy`
+
+### Issue: "Database binding not found"
+
+**Solution**: Ensure D1 database binding is configured in wrangler.toml or Dashboard settings
+
+### Issue: "Durable Object class not found"\*\*
+
+**Solution**: Ensure Durable Object binding is configured in wrangler.toml or Dashboard settings
+
+### Issue: "Static assets not found" or "404 for frontend routes"
+
+**Solution**:
+
+1. Ensure frontend is built: `bun run build:frontend`
+2. Check that `apps/frontend/dist` directory exists and contains files
+3. Verify `wrangler.toml` has correct `assets.directory` path: `../frontend/dist`
+4. Redeploy: `bun run deploy`
+
+### Issue: "API calls fail with CORS errors"
+
+**Solution**:
+
+1. Check that `apps/backend/src/index.ts` includes your production domain in CORS origins
+2. For unified deployment, CORS shouldn't be an issue since frontend and backend are same-origin
+
+### Issue: Frontend shows old version after deployment
+
+**Solution**:
+
+1. Clear browser cache or do a hard refresh (Ctrl+Shift+R or Cmd+Shift+R)
+2. Check that you built the frontend before deploying: `bun run build:frontend`
+
+---
+
+## Legacy: Separate Frontend Deployment (Not Recommended)
+
+<details>
+<summary>Click to expand legacy Pages deployment instructions</summary>
+
+**Note**: This approach is no longer recommended. Use the unified deployment method above instead.
+
+### Frontend Deployment (Cloudflare Pages)
 
 ### Option 1: Deploy via Cloudflare Dashboard (Recommended)
 
@@ -295,112 +427,263 @@ You'll get a deployment URL like: `https://roboz-trade.YOUR_SUBDOMAIN.workers.de
    # Enter your backend URL when prompted
    ```
 
-## Post-Deployment Configuration
+</details>
 
-### 1. Update Frontend API URL
+---
 
-Edit `apps/frontend/.env.production`:
+## Environment Variables Configuration
 
-```env
-VITE_API_URL=https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/api
+### Overview
+
+RobozTrade uses environment variables for all configuration. This section explains how to configure them for both backend and frontend.
+
+### Backend Environment Variables
+
+#### Secrets (use `wrangler secret put`)
+
+These are sensitive values that should NEVER be committed to version control:
+
+| Variable         | Description                             | Required | How to Generate                                               |
+| ---------------- | --------------------------------------- | -------- | ------------------------------------------------------------- |
+| `JWT_SECRET`     | Secret key for signing JWT tokens       | ✅ Yes   | `openssl rand -base64 32`                                     |
+| `ENCRYPTION_KEY` | Key for encrypting API keys in database | ✅ Yes   | `openssl rand -base64 32` (must be different from JWT_SECRET) |
+
+**Setting secrets in production:**
+
+```bash
+cd apps/backend
+
+# Generate secrets
+openssl rand -base64 32  # Copy for JWT_SECRET
+openssl rand -base64 32  # Copy for ENCRYPTION_KEY
+
+# Set secrets
+wrangler secret put JWT_SECRET
+wrangler secret put ENCRYPTION_KEY
 ```
 
-Or set it in Cloudflare Pages environment variables.
+**Setting secrets for local development:**
 
-### 2. Update CORS Settings (if needed)
+Create `apps/backend/.dev.vars` (this file is gitignored):
 
-If your frontend and backend are on different domains, update `apps/backend/src/index.ts`:
+```bash
+JWT_SECRET=your-local-jwt-secret
+ENCRYPTION_KEY=your-local-encryption-key
+```
+
+#### Public Variables (in `wrangler.toml` [vars])
+
+These are non-sensitive configuration values defined in `apps/backend/wrangler.toml`:
+
+| Variable                    | Description                                  | Default                                                                       | Required  |
+| --------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------- | --------- |
+| `ASTER_API_BASE_URL`        | Aster DEX API base URL                       | `https://fapi.asterdex.com`                                                   | No        |
+| `CORS_ALLOWED_ORIGINS`      | Comma-separated list of allowed CORS origins | `http://localhost:5173,http://localhost:3000,https://roboz-trade.workers.dev` | No        |
+| `BSC_RPC_URL`               | Binance Smart Chain RPC URL                  | `https://bsc-dataseed1.binance.org`                                           | No        |
+| `USDT_CONTRACT_ADDRESS`     | USDT contract address on BSC                 | `0x55d398326f99059fF775485246999027B3197955`                                  | No        |
+| `PAYMENT_RECIPIENT_ADDRESS` | Your wallet address for bot payments         | `0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1`                                  | ⚠️ Update |
+| `REQUIRED_PAYMENT_AMOUNT`   | Required payment amount in USDT              | `10`                                                                          | No        |
+| `MIN_CONFIRMATIONS`         | Minimum blockchain confirmations             | `3`                                                                           | No        |
+| `PBKDF2_ITERATIONS`         | PBKDF2 iterations for encryption             | `100000`                                                                      | No        |
+
+**Updating public variables:**
+
+Edit `apps/backend/wrangler.toml`:
+
+```toml
+[vars]
+ASTER_API_BASE_URL = "https://fapi.asterdex.com"
+CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:3000,https://roboz-trade.workers.dev,https://yourdomain.com"
+PAYMENT_RECIPIENT_ADDRESS = "0xYOUR_WALLET_ADDRESS"  # ⚠️ IMPORTANT: Update this!
+# ... other variables
+```
+
+### Frontend Environment Variables
+
+Frontend environment variables are **build-time** variables (not runtime). They are embedded into the JavaScript bundle during build.
+
+#### Development (`.env.development`)
+
+Automatically loaded when running `bun run dev`:
+
+```env
+VITE_API_URL=http://localhost:8787/api
+VITE_WS_URL=ws://localhost:8787/ws
+VITE_WALLETCONNECT_PROJECT_ID=your-project-id
+VITE_PAYMENT_RECIPIENT_ADDRESS=0xYOUR_WALLET_ADDRESS
+```
+
+#### Production (`.env.production`)
+
+Used when building for production (`bun run build:frontend`):
+
+```env
+# Empty for same-origin requests (unified deployment)
+VITE_API_URL=
+VITE_WS_URL=
+
+# WalletConnect Project ID
+VITE_WALLETCONNECT_PROJECT_ID=your-project-id
+
+# App metadata
+VITE_APP_URL=https://roboz-trade.workers.dev
+VITE_APP_ICON=https://roboz-trade.workers.dev/icon.png
+
+# Blockchain config
+VITE_PAYMENT_RECIPIENT_ADDRESS=0xYOUR_WALLET_ADDRESS
+```
+
+#### All Frontend Variables
+
+| Variable                         | Description                           | Default                                      | Required  |
+| -------------------------------- | ------------------------------------- | -------------------------------------------- | --------- |
+| `VITE_API_URL`                   | API base URL (empty for same-origin)  | `/api`                                       | No        |
+| `VITE_WS_URL`                    | WebSocket URL (empty for same-origin) | `/ws`                                        | No        |
+| `VITE_WALLETCONNECT_PROJECT_ID`  | WalletConnect project ID              | Provided                                     | ⚠️ Update |
+| `VITE_APP_NAME`                  | Application name                      | `RobozTrade`                                 | No        |
+| `VITE_APP_DESCRIPTION`           | Application description               | `AI-Powered Trading Bot Platform`            | No        |
+| `VITE_APP_URL`                   | Application URL                       | `https://roboztrade.com`                     | No        |
+| `VITE_APP_ICON`                  | Application icon URL                  | `https://roboztrade.com/icon.png`            | No        |
+| `VITE_USDT_CONTRACT_ADDRESS`     | USDT contract on BSC                  | `0x55d398326f99059fF775485246999027B3197955` | No        |
+| `VITE_PAYMENT_RECIPIENT_ADDRESS` | Payment recipient wallet              | `0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1` | ⚠️ Update |
+| `VITE_REQUIRED_PAYMENT_AMOUNT`   | Required payment in USDT              | `10`                                         | No        |
+
+### Environment-Specific Deployment
+
+#### Staging Environment
+
+Create `wrangler.staging.toml`:
+
+```toml
+name = "roboz-trade-staging"
+# ... copy other config from wrangler.toml
+
+[vars]
+ASTER_API_BASE_URL = "https://staging-api.asterdex.com"
+CORS_ALLOWED_ORIGINS = "https://roboz-trade-staging.workers.dev"
+PAYMENT_RECIPIENT_ADDRESS = "0xYOUR_STAGING_WALLET"
+```
+
+Deploy:
+
+```bash
+wrangler deploy --config wrangler.staging.toml
+```
+
+#### Production Environment
+
+Use the default `wrangler.toml` and set production secrets:
+
+```bash
+wrangler secret put JWT_SECRET
+wrangler secret put ENCRYPTION_KEY
+```
+
+### Important Notes
+
+1. **Never commit secrets** to version control
+
+   - `.env.development` and `.dev.vars` are gitignored
+   - Use `wrangler secret put` for production secrets
+
+2. **Frontend variables are build-time**
+
+   - Changes require rebuilding: `bun run build:frontend`
+   - Backend variables are runtime (no rebuild needed)
+
+3. **Update wallet addresses**
+
+   - `PAYMENT_RECIPIENT_ADDRESS` (backend)
+   - `VITE_PAYMENT_RECIPIENT_ADDRESS` (frontend)
+   - Both should point to YOUR wallet address
+
+4. **Get your own WalletConnect Project ID**
+   - Visit: https://cloud.reown.com/
+   - Create a new project
+   - Update `VITE_WALLETCONNECT_PROJECT_ID`
+
+---
+
+## Post-Deployment Configuration
+
+### 1. Custom Domain (Optional)
+
+You can add a custom domain to your Worker:
+
+**Via Wrangler:**
+
+```bash
+cd apps/backend
+wrangler publish --routes "roboztrade.com/*"
+```
+
+**Via Dashboard:**
+
+1. Go to your Worker in the Cloudflare Dashboard
+2. Navigate to **Triggers** → **Custom Domains**
+3. Click **Add Custom Domain**
+4. Enter your domain (e.g., `roboztrade.com`)
+5. Follow the DNS configuration instructions
+
+### 2. Environment-Specific Configuration
+
+For different environments (staging, production), you can:
+
+**Option 1: Use wrangler.toml environments**
+
+```toml
+[env.staging]
+name = "roboz-trade-staging"
+vars = { ASTER_API_BASE_URL = "https://staging-api.asterdex.com" }
+
+[env.production]
+name = "roboz-trade"
+vars = { ASTER_API_BASE_URL = "https://fapi.asterdex.com" }
+```
+
+Deploy to specific environment:
+
+```bash
+wrangler deploy --env staging
+wrangler deploy --env production
+```
+
+**Option 2: Use separate wrangler.toml files**
+
+Create `wrangler.staging.toml` and `wrangler.production.toml`, then:
+
+```bash
+wrangler deploy --config wrangler.staging.toml
+wrangler deploy --config wrangler.production.toml
+```
+
+### 3. Update CORS for Custom Domains
+
+If you add a custom domain, update `apps/backend/src/index.ts`:
 
 ```typescript
-import { cors } from "hono/cors";
-
 app.use(
-  "/*",
+  "*",
   cors({
-    origin: ["https://YOUR_FRONTEND_DOMAIN.pages.dev", "http://localhost:5173"],
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:3000",
+      "https://roboz-trade.workers.dev",
+      "https://roboztrade.com", // Add your custom domain
+    ],
     credentials: true,
   })
 );
 ```
 
-### 3. Custom Domain (Optional)
-
-**Backend:**
-
-```bash
-cd apps/backend
-wrangler publish --routes "api.roboztrade.com/*"
-```
-
-**Frontend:**
-
-- Go to Cloudflare Pages dashboard
-- Navigate to your project → **Custom domains**
-- Add your domain (e.g., `roboztrade.com`)
-
-## Verification
-
-### Test Backend
-
-```bash
-curl https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/api/health
-```
-
-Expected response:
-
-```json
-{
-  "status": "ok",
-  "timestamp": "2025-10-22T..."
-}
-```
-
-### Test Frontend
-
-Open your frontend URL in a browser and verify:
-
-- ✅ Page loads correctly
-- ✅ Can register/login
-- ✅ API calls work (check browser console)
-
-## Troubleshooting
-
-### Error: "Missing entry-point to Worker script"
-
-- **Solution**: Make sure you're running `wrangler deploy` from `apps/backend` directory, or use the npm script: `bun run deploy:backend`
-
-### Error: "Database not found"
-
-- **Solution**: Run migrations: `bun run db:migrate`
-
-### Error: "Unauthorized" on API calls
-
-- **Solution**:
-  1. Check JWT_SECRET is set: `wrangler secret list`
-  2. Verify CORS settings allow your frontend domain
-
-### Frontend shows "Network Error"
-
-- **Solution**:
-  1. Check `VITE_API_URL` environment variable is set correctly
-  2. Verify backend is deployed and accessible
-  3. Check browser console for CORS errors
-
-### Database migrations fail
-
-- **Solution**:
-  1. Ensure D1 database is created
-  2. Verify `database_id` in `wrangler.toml` matches your database
-  3. Run: `wrangler d1 list` to see your databases
-
 ## CI/CD Setup (Optional)
 
-### GitHub Actions
+### GitHub Actions for Unified Deployment
 
 Create `.github/workflows/deploy.yml`:
 
 ```yaml
-name: Deploy to Cloudflare
+name: Deploy to Cloudflare Workers
 
 on:
   push:
@@ -408,27 +691,8 @@ on:
       - main
 
 jobs:
-  deploy-backend:
+  deploy:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Deploy Backend
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          workingDirectory: apps/backend
-          command: deploy
-
-  deploy-frontend:
-    runs-on: ubuntu-latest
-    needs: deploy-backend
     steps:
       - uses: actions/checkout@v4
 
@@ -440,51 +704,125 @@ jobs:
 
       - name: Build Frontend
         run: bun run build:frontend
-        env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
+      - name: Deploy Unified Worker
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: roboz-trade-frontend
-          directory: apps/frontend/dist
+          workingDirectory: apps/backend
+          command: deploy
 ```
 
 Add these secrets to your GitHub repository:
 
 - `CLOUDFLARE_API_TOKEN`: Create at https://dash.cloudflare.com/profile/api-tokens
-- `CLOUDFLARE_ACCOUNT_ID`: Your account ID
-- `VITE_API_URL`: Your backend worker URL
+  - Required permissions: Workers Scripts (Edit), D1 (Edit), Durable Objects (Edit)
 
 ## Monitoring
 
 ### View Logs
 
 ```bash
-# Backend logs
+# Real-time logs
 cd apps/backend
 wrangler tail
 
-# Or with filters
+# Filter by status
 wrangler tail --status error
+
+# Filter by method
+wrangler tail --method POST
 ```
 
 ### Analytics
 
-- Go to Cloudflare Dashboard → Workers & Pages
-- Select your worker/pages project
-- View analytics, requests, errors, etc.
+1. Go to Cloudflare Dashboard → Workers & Pages
+2. Select your worker: `roboz-trade`
+3. View:
+   - Request analytics
+   - Error rates
+   - CPU time usage
+   - Bandwidth usage
+
+### Performance Monitoring
+
+Monitor your Worker's performance:
+
+- **CPU Time**: Track how long requests take to process
+- **Subrequest Count**: Monitor API calls to external services
+- **Cache Hit Rate**: See how well static assets are cached
 
 ## Costs
 
+With the unified deployment:
+
 - **D1 Database**: Free tier includes 5GB storage, 5 million row reads/day
 - **Workers**: Free tier includes 100,000 requests/day
-- **Pages**: Free tier includes unlimited requests, 500 builds/month
+- **Static Assets**: Served for free (you only pay for Worker CPU time on API requests)
+- **Durable Objects**: Free tier includes 1 million requests/month
+
+**Cost Optimization Tips:**
+
+1. Static assets (HTML, CSS, JS, images) are cached and served for free
+2. Only API requests (`/api/*`) and WebSocket connections consume Worker CPU time
+3. Use Smart Placement for database queries to reduce latency and costs
+
+## Development Workflow
+
+### Local Development
+
+```bash
+# Terminal 1 - Frontend dev server (with HMR)
+bun run dev:frontend
+
+# Terminal 2 - Backend Worker
+bun run dev:backend
+```
+
+The Vite proxy configuration ensures API requests are forwarded to the backend during development.
+
+### Testing Before Deployment
+
+```bash
+# Build everything locally
+bun run build
+
+# Test the build
+cd apps/backend
+wrangler dev
+
+# Open http://localhost:8787 to test the unified deployment locally
+```
 
 ## Support
 
-- Cloudflare Docs: https://developers.cloudflare.com/
-- Wrangler Docs: https://developers.cloudflare.com/workers/wrangler/
-- Issues: https://github.com/RobozTrade/RobozTrade/issues
+- **Cloudflare Workers Docs**: https://developers.cloudflare.com/workers/
+- **Wrangler Docs**: https://developers.cloudflare.com/workers/wrangler/
+- **Static Assets Docs**: https://developers.cloudflare.com/workers/static-assets/
+- **Issues**: https://github.com/RobozTrade/RobozTrade/issues
+
+## Summary
+
+The unified deployment architecture provides:
+
+✅ **Simplified deployment** - One command deploys everything
+✅ **Better performance** - Static assets cached globally
+✅ **Lower costs** - Free static hosting, pay only for API CPU time
+✅ **No CORS issues** - Same-origin requests
+✅ **Easier maintenance** - Single codebase, single deployment
+
+**Quick Commands:**
+
+```bash
+# Development
+bun run dev
+
+# Build
+bun run build
+
+# Deploy
+bun run deploy
+
+# View logs
+cd apps/backend && wrangler tail
+```

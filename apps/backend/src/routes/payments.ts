@@ -12,14 +12,18 @@ const validatePaymentSchema = z.object({
   txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid transaction hash'),
 });
 
-// BSC Mainnet configuration
-const BSC_RPC_URL = 'https://bsc-dataseed1.binance.org';
-const USDT_CONTRACT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955'; // BSC USDT
-const RECIPIENT_ADDRESS = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1'; // Replace with your actual address
-const REQUIRED_AMOUNT = 10; // 10 USDT
-const MIN_CONFIRMATIONS = 3;
+// BSC Mainnet configuration - now from environment variables
+type PaymentBindings = {
+  DB: D1Database;
+  JWT_SECRET: string;
+  BSC_RPC_URL?: string;
+  USDT_CONTRACT_ADDRESS?: string;
+  PAYMENT_RECIPIENT_ADDRESS?: string;
+  REQUIRED_PAYMENT_AMOUNT?: string;
+  MIN_CONFIRMATIONS?: string;
+};
 
-export const paymentsRoutes = new Hono<{ Bindings: { DB: D1Database; JWT_SECRET: string } }>();
+export const paymentsRoutes = new Hono<{ Bindings: PaymentBindings }>();
 
 paymentsRoutes.use('/*', authMiddleware);
 
@@ -30,6 +34,13 @@ paymentsRoutes.post('/validate', zValidator('json', validatePaymentSchema), asyn
   const userId = getUserId(c);
   const { txHash } = c.req.valid('json');
   const db = getDb(c.env.DB);
+
+  // Get configuration from environment variables with defaults
+  const BSC_RPC_URL = c.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org';
+  const USDT_CONTRACT_ADDRESS = (c.env.USDT_CONTRACT_ADDRESS || '0x55d398326f99059fF775485246999027B3197955').toLowerCase();
+  const RECIPIENT_ADDRESS = (c.env.PAYMENT_RECIPIENT_ADDRESS || '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1').toLowerCase();
+  const REQUIRED_AMOUNT = parseFloat(c.env.REQUIRED_PAYMENT_AMOUNT || '10');
+  const MIN_CONFIRMATIONS = parseInt(c.env.MIN_CONFIRMATIONS || '3', 10);
 
   try {
     // Check if transaction hash already exists
@@ -211,7 +222,7 @@ paymentsRoutes.post('/validate', zValidator('json', validatePaymentSchema), asyn
 
     // Payment is valid and confirmed
     const paymentId = existingPayment?.id || nanoid();
-    
+
     if (existingPayment) {
       // Update existing payment
       await db

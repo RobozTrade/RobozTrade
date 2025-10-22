@@ -72,7 +72,14 @@ const updateBotSchema = z.object({
   riskConfig: z.any().optional(),
 });
 
-export const botsRoutes = new Hono<{ Bindings: { DB: D1Database; JWT_SECRET: string } }>();
+type BotBindings = {
+  DB: D1Database;
+  JWT_SECRET: string;
+  ENCRYPTION_KEY: string;
+  PBKDF2_ITERATIONS?: string;
+};
+
+export const botsRoutes = new Hono<{ Bindings: BotBindings }>();
 
 botsRoutes.use('/*', authMiddleware);
 
@@ -162,10 +169,14 @@ botsRoutes.post('/', async (c) => {
         }, 400);
       }
 
+      // Get encryption configuration
+      const encryptionKey = c.env.ENCRYPTION_KEY;
+      const iterations = parseInt(c.env.PBKDF2_ITERATIONS || '100000', 10);
+
       // Encrypt API keys
-      const encryptedAsterKey = await encrypt(data.asterApiKey, c.env.JWT_SECRET);
-      const encryptedAsterSecret = await encrypt(data.asterApiSecret, c.env.JWT_SECRET);
-      const encryptedOpenRouterKey = await encrypt(data.openRouterApiKey, c.env.JWT_SECRET);
+      const encryptedAsterKey = await encrypt(data.asterApiKey, encryptionKey, iterations);
+      const encryptedAsterSecret = await encrypt(data.asterApiSecret, encryptionKey, iterations);
+      const encryptedOpenRouterKey = await encrypt(data.openRouterApiKey, encryptionKey, iterations);
 
       const botId = nanoid();
 

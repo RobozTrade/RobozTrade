@@ -9,6 +9,11 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    sourcemap: true,  // Helpful for debugging in production
+  },
   server: {
     port: 5173,
     proxy: {

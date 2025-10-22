@@ -2,15 +2,15 @@ import { createConfig, http } from 'wagmi';
 import { bsc } from 'wagmi/chains';
 import { walletConnect, injected, coinbaseWallet } from 'wagmi/connectors';
 
-// Reown (WalletConnect) Project ID
-export const projectId = 'e9eee19e35b12b88aa0eff7f0ddaef7e';
+// Reown (WalletConnect) Project ID - from environment variable
+export const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'e9eee19e35b12b88aa0eff7f0ddaef7e';
 
-// Metadata for Reown AppKit
+// Metadata for Reown AppKit - configurable via environment variables
 export const metadata = {
-  name: 'RobozTrade',
-  description: 'AI-Powered Trading Bot Platform',
-  url: 'https://roboztrade.com',
-  icons: ['https://roboztrade.com/icon.png'],
+  name: import.meta.env.VITE_APP_NAME || 'RobozTrade',
+  description: import.meta.env.VITE_APP_DESCRIPTION || 'AI-Powered Trading Bot Platform',
+  url: import.meta.env.VITE_APP_URL || 'https://roboztrade.com',
+  icons: [import.meta.env.VITE_APP_ICON || 'https://roboztrade.com/icon.png'],
 };
 
 export const config = createConfig({
@@ -31,14 +31,14 @@ export const config = createConfig({
   },
 });
 
-// BSC USDT Contract Address
-export const USDT_CONTRACT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955';
+// BSC USDT Contract Address - from environment variable
+export const USDT_CONTRACT_ADDRESS = import.meta.env.VITE_USDT_CONTRACT_ADDRESS || '0x55d398326f99059fF775485246999027B3197955';
 
-// Recipient address for bot payments
-export const PAYMENT_RECIPIENT_ADDRESS = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1';
+// Recipient address for bot payments - from environment variable
+export const PAYMENT_RECIPIENT_ADDRESS = import.meta.env.VITE_PAYMENT_RECIPIENT_ADDRESS || '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1';
 
-// Required payment amount
-export const REQUIRED_PAYMENT_AMOUNT = '10';
+// Required payment amount - from environment variable
+export const REQUIRED_PAYMENT_AMOUNT = import.meta.env.VITE_REQUIRED_PAYMENT_AMOUNT || '10';
 
 // USDT ABI (minimal - just what we need for transfer)
 export const USDT_ABI = [

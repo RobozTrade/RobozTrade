@@ -10,13 +10,14 @@
     "dev": "bun run --parallel dev:frontend dev:backend",
     "dev:frontend": "bun --cwd apps/frontend dev",
     "dev:backend": "bun --cwd apps/backend dev",
-    "build": "bun run --recursive build",
+    "build": "bun run build:frontend && bun run build:backend",
     "build:frontend": "bun --cwd apps/frontend build",
     "build:backend": "bun --cwd apps/backend build",
+    "deploy": "bun run build && bun run deploy:worker",
+    "deploy:worker": "bun --cwd apps/backend deploy",
+    "deploy:backend": "bun run deploy",
     "db:generate": "bun --cwd apps/backend db:generate",
     "db:migrate": "bunx wrangler d1 migrations apply roboz-trade --config apps/backend/wrangler.toml",
-    "deploy:backend": "bun --cwd apps/backend deploy",
-    "deploy:frontend": "bun run build:frontend",
     "type-check": "bun run --recursive type-check"
   },
   "devDependencies": {
