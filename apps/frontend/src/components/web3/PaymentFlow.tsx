@@ -1,13 +1,17 @@
-import { useState } from 'react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { parseUnits } from 'viem';
-import { CheckCircle, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
-import { 
-  USDT_CONTRACT_ADDRESS, 
-  PAYMENT_RECIPIENT_ADDRESS, 
+import { useState } from "react";
+import {
+  useAccount,
+  useWriteContract,
+  useWaitForTransactionReceipt,
+} from "wagmi";
+import { parseUnits } from "viem";
+import { CheckCircle, Loader2, AlertCircle, ExternalLink } from "lucide-react";
+import {
+  USDT_CONTRACT_ADDRESS,
+  PAYMENT_RECIPIENT_ADDRESS,
   REQUIRED_PAYMENT_AMOUNT,
-  USDT_ABI 
-} from '@/lib/wagmi';
+  USDT_ABI,
+} from "@/lib/wagmi";
 
 interface PaymentFlowProps {
   onPaymentComplete: (txHash: string) => void;
@@ -15,28 +19,26 @@ interface PaymentFlowProps {
 
 export function PaymentFlow({ onPaymentComplete }: PaymentFlowProps) {
   const { address } = useAccount();
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState<string>("");
 
-  const { 
-    data: hash, 
-    writeContract, 
+  const {
+    data: hash,
+    writeContract,
     isPending: isWritePending,
-    error: writeError 
+    error: writeError,
   } = useWriteContract();
 
-  const { 
-    isSuccess: isConfirmed 
-  } = useWaitForTransactionReceipt({
+  const { isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash,
   });
 
   const handlePayment = async () => {
     if (!address) {
-      setError('Please connect your wallet first');
+      setError("Please connect your wallet first");
       return;
     }
 
-    setError('');
+    setError("");
 
     try {
       // Convert 10 USDT to wei (USDT has 18 decimals on BSC)
@@ -45,12 +47,12 @@ export function PaymentFlow({ onPaymentComplete }: PaymentFlowProps) {
       writeContract({
         address: USDT_CONTRACT_ADDRESS as `0x${string}`,
         abi: USDT_ABI,
-        functionName: 'transfer',
+        functionName: "transfer",
         args: [PAYMENT_RECIPIENT_ADDRESS as `0x${string}`, amount],
       });
     } catch (err: any) {
-      console.error('Payment error:', err);
-      setError(err.message || 'Failed to send payment');
+      console.error("Payment error:", err);
+      setError(err.message || "Failed to send payment");
     }
   };
 
@@ -65,7 +67,7 @@ export function PaymentFlow({ onPaymentComplete }: PaymentFlowProps) {
         <h3 className="text-lg font-semibold text-text-primary mb-4">
           Payment Required
         </h3>
-        
+
         <div className="bg-surface-light rounded-lg p-4 mb-6">
           <div className="flex justify-between items-center mb-2">
             <span className="text-text-secondary">Amount:</span>
@@ -76,7 +78,8 @@ export function PaymentFlow({ onPaymentComplete }: PaymentFlowProps) {
           <div className="flex justify-between items-center text-sm">
             <span className="text-text-secondary">Recipient:</span>
             <span className="text-text-primary font-mono text-xs">
-              {PAYMENT_RECIPIENT_ADDRESS.slice(0, 10)}...{PAYMENT_RECIPIENT_ADDRESS.slice(-8)}
+              {PAYMENT_RECIPIENT_ADDRESS.slice(0, 10)}...
+              {PAYMENT_RECIPIENT_ADDRESS.slice(-8)}
             </span>
           </div>
         </div>
@@ -123,7 +126,9 @@ export function PaymentFlow({ onPaymentComplete }: PaymentFlowProps) {
             <div className="bg-primary/10 border border-primary rounded-lg p-4 flex items-start gap-3">
               <Loader2 className="w-5 h-5 text-primary animate-spin flex-shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="font-medium text-primary">Transaction Submitted</p>
+                <p className="font-medium text-primary">
+                  Transaction Submitted
+                </p>
                 <p className="text-sm text-text-secondary mt-1">
                   Waiting for blockchain confirmation...
                 </p>
@@ -177,4 +182,3 @@ export function PaymentFlow({ onPaymentComplete }: PaymentFlowProps) {
     </div>
   );
 }
-

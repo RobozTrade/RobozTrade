@@ -1,17 +1,21 @@
 # RobozTrade Deployment Guide
 
 ## Overview
+
 RobozTrade is a monorepo with two main parts:
+
 - **Backend**: Cloudflare Workers (Hono framework)
 - **Frontend**: Static site (React + Vite)
 
 ## Prerequisites
 
 1. **Cloudflare Account**
+
    - Sign up at https://dash.cloudflare.com/sign-up
    - Note your Account ID (found in Workers & Pages dashboard)
 
 2. **Wrangler CLI**
+
    ```bash
    bun add -g wrangler
    # or
@@ -28,6 +32,7 @@ RobozTrade is a monorepo with two main parts:
 ### Step 1: Update Configuration
 
 Edit `apps/backend/wrangler.toml` and update:
+
 ```toml
 account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"  # Replace with your account ID
 name = "roboz-trade"                        # Your worker name
@@ -44,6 +49,7 @@ wrangler d1 create roboz-trade
 ```
 
 Your `wrangler.toml` should look like:
+
 ```toml
 [[d1_databases]]
 binding = "DB"
@@ -96,6 +102,7 @@ You'll get a deployment URL like: `https://roboz-trade.YOUR_SUBDOMAIN.workers.de
 ### Option 1: Deploy via Cloudflare Dashboard (Recommended)
 
 1. **Push to GitHub**
+
    ```bash
    git add .
    git commit -m "Ready for deployment"
@@ -106,15 +113,14 @@ You'll get a deployment URL like: `https://roboz-trade.YOUR_SUBDOMAIN.workers.de
    - Go to https://dash.cloudflare.com
    - Navigate to **Workers & Pages** → **Create application** → **Pages**
    - Connect your GitHub repository
-   
 3. **Configure Build Settings**
    - **Framework preset**: None (or Vite)
    - **Build command**: `cd apps/frontend && bun install && bun run build`
    - **Build output directory**: `apps/frontend/dist`
    - **Root directory**: `/` (leave as root)
-   
 4. **Environment Variables**
    Add this environment variable:
+
    - `VITE_API_URL`: Your backend worker URL (e.g., `https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/api`)
 
 5. **Deploy**
@@ -124,17 +130,20 @@ You'll get a deployment URL like: `https://roboz-trade.YOUR_SUBDOMAIN.workers.de
 ### Option 2: Deploy via Wrangler CLI
 
 1. **Build Frontend**
+
    ```bash
    cd apps/frontend
    bun run build
    ```
 
 2. **Create Pages Project**
+
    ```bash
    wrangler pages project create roboz-trade-frontend
    ```
 
 3. **Deploy**
+
    ```bash
    wrangler pages deploy dist --project-name=roboz-trade-frontend
    ```
@@ -150,6 +159,7 @@ You'll get a deployment URL like: `https://roboz-trade.YOUR_SUBDOMAIN.workers.de
 ### 1. Update Frontend API URL
 
 Edit `apps/frontend/.env.production`:
+
 ```env
 VITE_API_URL=https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/api
 ```
@@ -161,26 +171,28 @@ Or set it in Cloudflare Pages environment variables.
 If your frontend and backend are on different domains, update `apps/backend/src/index.ts`:
 
 ```typescript
-import { cors } from 'hono/cors';
+import { cors } from "hono/cors";
 
-app.use('/*', cors({
-  origin: [
-    'https://YOUR_FRONTEND_DOMAIN.pages.dev',
-    'http://localhost:5173'
-  ],
-  credentials: true,
-}));
+app.use(
+  "/*",
+  cors({
+    origin: ["https://YOUR_FRONTEND_DOMAIN.pages.dev", "http://localhost:5173"],
+    credentials: true,
+  })
+);
 ```
 
 ### 3. Custom Domain (Optional)
 
 **Backend:**
+
 ```bash
 cd apps/backend
 wrangler publish --routes "api.roboztrade.com/*"
 ```
 
 **Frontend:**
+
 - Go to Cloudflare Pages dashboard
 - Navigate to your project → **Custom domains**
 - Add your domain (e.g., `roboztrade.com`)
@@ -188,11 +200,13 @@ wrangler publish --routes "api.roboztrade.com/*"
 ## Verification
 
 ### Test Backend
+
 ```bash
 curl https://roboz-trade.YOUR_SUBDOMAIN.workers.dev/api/health
 ```
 
 Expected response:
+
 ```json
 {
   "status": "ok",
@@ -201,7 +215,9 @@ Expected response:
 ```
 
 ### Test Frontend
+
 Open your frontend URL in a browser and verify:
+
 - ✅ Page loads correctly
 - ✅ Can register/login
 - ✅ API calls work (check browser console)
@@ -209,24 +225,29 @@ Open your frontend URL in a browser and verify:
 ## Troubleshooting
 
 ### Error: "Missing entry-point to Worker script"
+
 - **Solution**: Make sure you're running `wrangler deploy` from `apps/backend` directory, or use the npm script: `bun run deploy:backend`
 
 ### Error: "Database not found"
+
 - **Solution**: Run migrations: `bun run db:migrate`
 
 ### Error: "Unauthorized" on API calls
-- **Solution**: 
+
+- **Solution**:
   1. Check JWT_SECRET is set: `wrangler secret list`
   2. Verify CORS settings allow your frontend domain
 
 ### Frontend shows "Network Error"
-- **Solution**: 
+
+- **Solution**:
   1. Check `VITE_API_URL` environment variable is set correctly
   2. Verify backend is deployed and accessible
   3. Check browser console for CORS errors
 
 ### Database migrations fail
-- **Solution**: 
+
+- **Solution**:
   1. Ensure D1 database is created
   2. Verify `database_id` in `wrangler.toml` matches your database
   3. Run: `wrangler d1 list` to see your databases
@@ -250,13 +271,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
-      
+
       - name: Install dependencies
         run: bun install
-      
+
       - name: Deploy Backend
         uses: cloudflare/wrangler-action@v3
         with:
@@ -269,18 +290,18 @@ jobs:
     needs: deploy-backend
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
-      
+
       - name: Install dependencies
         run: bun install
-      
+
       - name: Build Frontend
         run: bun run build:frontend
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
-      
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
@@ -291,6 +312,7 @@ jobs:
 ```
 
 Add these secrets to your GitHub repository:
+
 - `CLOUDFLARE_API_TOKEN`: Create at https://dash.cloudflare.com/profile/api-tokens
 - `CLOUDFLARE_ACCOUNT_ID`: Your account ID
 - `VITE_API_URL`: Your backend worker URL
@@ -298,6 +320,7 @@ Add these secrets to your GitHub repository:
 ## Monitoring
 
 ### View Logs
+
 ```bash
 # Backend logs
 cd apps/backend
@@ -308,6 +331,7 @@ wrangler tail --status error
 ```
 
 ### Analytics
+
 - Go to Cloudflare Dashboard → Workers & Pages
 - Select your worker/pages project
 - View analytics, requests, errors, etc.

@@ -1,25 +1,28 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { api } from '@/lib/api';
-import type { StrategyType, CreateBotInputLegacy } from '@roboz-trade/shared-types';
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import type {
+  StrategyType,
+  CreateBotInputLegacy,
+} from "@roboz-trade/shared-types";
 
 export default function CreateBotPage() {
   const navigate = useNavigate();
-  const [name, setName] = useState('');
-  const [apiKeyId, setApiKeyId] = useState('');
-  const [strategyType, setStrategyType] = useState<StrategyType>('ma_cross');
-  const [tradingPair, setTradingPair] = useState('BTCUSDT');
+  const [name, setName] = useState("");
+  const [apiKeyId, setApiKeyId] = useState("");
+  const [strategyType, setStrategyType] = useState<StrategyType>("ma_cross");
+  const [tradingPair, setTradingPair] = useState("BTCUSDT");
 
   const { data: apiKeys } = useQuery({
-    queryKey: ['apiKeys'],
+    queryKey: ["apiKeys"],
     queryFn: () => api.getApiKeys(),
   });
 
   const createMutation = useMutation({
     mutationFn: (input: CreateBotInputLegacy) => api.createBot(input),
     onSuccess: () => {
-      navigate('/bots');
+      navigate("/bots");
     },
   });
 
@@ -50,7 +53,9 @@ export default function CreateBotPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-text-primary">Create Trading Bot</h1>
+        <h1 className="text-3xl font-bold text-text-primary">
+          Create Trading Bot
+        </h1>
         <p className="text-text-secondary mt-1">
           Set up a new automated trading strategy
         </p>
@@ -116,7 +121,7 @@ export default function CreateBotPage() {
         <div className="flex gap-4">
           <button
             type="button"
-            onClick={() => navigate('/bots')}
+            onClick={() => navigate("/bots")}
             className="btn btn-secondary flex-1"
           >
             Cancel
@@ -126,11 +131,10 @@ export default function CreateBotPage() {
             disabled={createMutation.isPending}
             className="btn btn-primary flex-1"
           >
-            {createMutation.isPending ? 'Creating...' : 'Create Bot'}
+            {createMutation.isPending ? "Creating..." : "Create Bot"}
           </button>
         </div>
       </form>
     </div>
   );
 }
-

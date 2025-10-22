@@ -1,30 +1,30 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
-import { useAccount } from 'wagmi';
-import { ArrowLeft, ArrowRight, CheckCircle, Loader2 } from 'lucide-react';
-import { api } from '@/lib/api';
-import { WalletConnect } from '@/components/web3/WalletConnect';
-import { PaymentFlow } from '@/components/web3/PaymentFlow';
-import type { StrategyType, CreateBotInput } from '@roboz-trade/shared-types';
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useMutation } from "@tanstack/react-query";
+import { useAccount } from "wagmi";
+import { ArrowLeft, ArrowRight, CheckCircle, Loader2 } from "lucide-react";
+import { api } from "@/lib/api";
+import { WalletConnect } from "@/components/web3/WalletConnect";
+import { PaymentFlow } from "@/components/web3/PaymentFlow";
+import type { StrategyType, CreateBotInput } from "@roboz-trade/shared-types";
 
-type Step = 'wallet' | 'payment' | 'config' | 'review';
+type Step = "wallet" | "payment" | "config" | "review";
 
 export default function CreateBotPageNew() {
   const navigate = useNavigate();
   const { isConnected } = useAccount();
-  
-  const [currentStep, setCurrentStep] = useState<Step>('wallet');
-  const [paymentTxHash, setPaymentTxHash] = useState('');
+
+  const [currentStep, setCurrentStep] = useState<Step>("wallet");
+  const [paymentTxHash, setPaymentTxHash] = useState("");
   const [paymentValidated, setPaymentValidated] = useState(false);
-  
+
   // Form state
-  const [asterApiKey, setAsterApiKey] = useState('');
-  const [asterApiSecret, setAsterApiSecret] = useState('');
-  const [openRouterApiKey, setOpenRouterApiKey] = useState('');
-  const [name, setName] = useState('');
-  const [strategyType, setStrategyType] = useState<StrategyType>('ma_cross');
-  const [tradingPair, setTradingPair] = useState('BTCUSDT');
+  const [asterApiKey, setAsterApiKey] = useState("");
+  const [asterApiSecret, setAsterApiSecret] = useState("");
+  const [openRouterApiKey, setOpenRouterApiKey] = useState("");
+  const [name, setName] = useState("");
+  const [strategyType, setStrategyType] = useState<StrategyType>("ma_cross");
+  const [tradingPair, setTradingPair] = useState("BTCUSDT");
   const [maxLeverage, setMaxLeverage] = useState(10);
   const [maxMarginPerTrade, setMaxMarginPerTrade] = useState(100);
   const [profitFactorThreshold, setProfitFactorThreshold] = useState(1.5);
@@ -39,7 +39,7 @@ export default function CreateBotPageNew() {
     onSuccess: (response) => {
       if (response.success && response.data?.valid) {
         setPaymentValidated(true);
-        setCurrentStep('config');
+        setCurrentStep("config");
       }
     },
   });
@@ -47,7 +47,7 @@ export default function CreateBotPageNew() {
   const createBotMutation = useMutation({
     mutationFn: (input: CreateBotInput) => api.createBot(input),
     onSuccess: () => {
-      navigate('/app/bots');
+      navigate("/app/bots");
     },
   });
 
@@ -87,26 +87,29 @@ export default function CreateBotPageNew() {
     createBotMutation.mutate(input);
   };
 
-  const canProceedToReview = name && asterApiKey && asterApiSecret && openRouterApiKey && tradingPair;
+  const canProceedToReview =
+    name && asterApiKey && asterApiSecret && openRouterApiKey && tradingPair;
 
   const steps = [
-    { id: 'wallet', label: 'Connect Wallet', completed: isConnected },
-    { id: 'payment', label: 'Payment', completed: paymentValidated },
-    { id: 'config', label: 'Configuration', completed: canProceedToReview },
-    { id: 'review', label: 'Review & Create', completed: false },
+    { id: "wallet", label: "Connect Wallet", completed: isConnected },
+    { id: "payment", label: "Payment", completed: paymentValidated },
+    { id: "config", label: "Configuration", completed: canProceedToReview },
+    { id: "review", label: "Review & Create", completed: false },
   ];
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
         <button
-          onClick={() => navigate('/app/bots')}
+          onClick={() => navigate("/app/bots")}
           className="btn btn-secondary"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
         <div>
-          <h1 className="text-3xl font-bold text-text-primary">Create Trading Bot</h1>
+          <h1 className="text-3xl font-bold text-text-primary">
+            Create Trading Bot
+          </h1>
           <p className="text-text-secondary mt-1">
             Set up your AI-powered trading bot with secure payment
           </p>
@@ -122,10 +125,10 @@ export default function CreateBotPageNew() {
                 <div
                   className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${
                     step.completed
-                      ? 'bg-success border-success text-white'
+                      ? "bg-success border-success text-white"
                       : currentStep === step.id
-                      ? 'bg-primary border-primary text-white'
-                      : 'bg-surface border-border text-text-secondary'
+                      ? "bg-primary border-primary text-white"
+                      : "bg-surface border-border text-text-secondary"
                   }`}
                 >
                   {step.completed ? (
@@ -136,7 +139,9 @@ export default function CreateBotPageNew() {
                 </div>
                 <span
                   className={`text-sm mt-2 ${
-                    currentStep === step.id ? 'text-text-primary font-medium' : 'text-text-secondary'
+                    currentStep === step.id
+                      ? "text-text-primary font-medium"
+                      : "text-text-secondary"
                   }`}
                 >
                   {step.label}
@@ -145,7 +150,7 @@ export default function CreateBotPageNew() {
               {index < steps.length - 1 && (
                 <div
                   className={`h-0.5 flex-1 mx-2 ${
-                    step.completed ? 'bg-success' : 'bg-border'
+                    step.completed ? "bg-success" : "bg-border"
                   }`}
                 />
               )}
@@ -155,13 +160,13 @@ export default function CreateBotPageNew() {
       </div>
 
       {/* Step Content */}
-      {currentStep === 'wallet' && (
+      {currentStep === "wallet" && (
         <div className="space-y-6">
           <WalletConnect />
           {isConnected && (
             <div className="flex justify-end">
               <button
-                onClick={() => setCurrentStep('payment')}
+                onClick={() => setCurrentStep("payment")}
                 className="btn btn-primary flex items-center gap-2"
               >
                 Continue to Payment
@@ -172,10 +177,10 @@ export default function CreateBotPageNew() {
         </div>
       )}
 
-      {currentStep === 'payment' && (
+      {currentStep === "payment" && (
         <div className="space-y-6">
           <PaymentFlow onPaymentComplete={handlePaymentComplete} />
-          
+
           {validatePaymentMutation.isPending && (
             <div className="card flex items-center justify-center gap-3 py-8">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
@@ -193,10 +198,18 @@ export default function CreateBotPageNew() {
         </div>
       )}
 
-      {currentStep === 'config' && (
-        <form onSubmit={(e) => { e.preventDefault(); setCurrentStep('review'); }} className="space-y-6">
+      {currentStep === "config" && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setCurrentStep("review");
+          }}
+          className="space-y-6"
+        >
           <div className="card space-y-6">
-            <h3 className="text-xl font-semibold text-text-primary">Bot Configuration</h3>
+            <h3 className="text-xl font-semibold text-text-primary">
+              Bot Configuration
+            </h3>
 
             <div>
               <label className="label">Bot Name *</label>
@@ -247,7 +260,7 @@ export default function CreateBotPageNew() {
                 required
               />
               <p className="text-xs text-text-secondary mt-1">
-                Get your API key from{' '}
+                Get your API key from{" "}
                 <a
                   href="https://openrouter.ai/keys"
                   target="_blank"
@@ -276,7 +289,9 @@ export default function CreateBotPageNew() {
                 <label className="label">Strategy Type</label>
                 <select
                   value={strategyType}
-                  onChange={(e) => setStrategyType(e.target.value as StrategyType)}
+                  onChange={(e) =>
+                    setStrategyType(e.target.value as StrategyType)
+                  }
                   className="input"
                 >
                   <option value="ma_cross">Moving Average Cross</option>
@@ -289,7 +304,9 @@ export default function CreateBotPageNew() {
           </div>
 
           <div className="card space-y-6">
-            <h3 className="text-xl font-semibold text-text-primary">Risk Management</h3>
+            <h3 className="text-xl font-semibold text-text-primary">
+              Risk Management
+            </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -321,7 +338,9 @@ export default function CreateBotPageNew() {
                   type="number"
                   step="0.1"
                   value={profitFactorThreshold}
-                  onChange={(e) => setProfitFactorThreshold(Number(e.target.value))}
+                  onChange={(e) =>
+                    setProfitFactorThreshold(Number(e.target.value))
+                  }
                   className="input"
                   min="0.1"
                 />
@@ -362,7 +381,9 @@ export default function CreateBotPageNew() {
                   type="number"
                   step="0.1"
                   value={stopLossPercentage}
-                  onChange={(e) => setStopLossPercentage(Number(e.target.value))}
+                  onChange={(e) =>
+                    setStopLossPercentage(Number(e.target.value))
+                  }
                   className="input"
                   min="0.1"
                 />
@@ -374,7 +395,9 @@ export default function CreateBotPageNew() {
                   type="number"
                   step="0.1"
                   value={takeProfitPercentage}
-                  onChange={(e) => setTakeProfitPercentage(Number(e.target.value))}
+                  onChange={(e) =>
+                    setTakeProfitPercentage(Number(e.target.value))
+                  }
                   className="input"
                   min="0.1"
                 />
@@ -396,7 +419,7 @@ export default function CreateBotPageNew() {
           <div className="flex gap-4">
             <button
               type="button"
-              onClick={() => setCurrentStep('payment')}
+              onClick={() => setCurrentStep("payment")}
               className="btn btn-secondary flex-1"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -414,11 +437,13 @@ export default function CreateBotPageNew() {
         </form>
       )}
 
-      {currentStep === 'review' && (
+      {currentStep === "review" && (
         <div className="space-y-6">
           <div className="card space-y-4">
-            <h3 className="text-xl font-semibold text-text-primary">Review Your Bot</h3>
-            
+            <h3 className="text-xl font-semibold text-text-primary">
+              Review Your Bot
+            </h3>
+
             <div className="space-y-3">
               <div className="flex justify-between py-2 border-b border-border">
                 <span className="text-text-secondary">Bot Name:</span>
@@ -426,28 +451,42 @@ export default function CreateBotPageNew() {
               </div>
               <div className="flex justify-between py-2 border-b border-border">
                 <span className="text-text-secondary">Trading Pair:</span>
-                <span className="text-text-primary font-medium">{tradingPair}</span>
+                <span className="text-text-primary font-medium">
+                  {tradingPair}
+                </span>
               </div>
               <div className="flex justify-between py-2 border-b border-border">
                 <span className="text-text-secondary">Strategy:</span>
                 <span className="text-text-primary font-medium">
-                  {strategyType.replace('_', ' ').toUpperCase()}
+                  {strategyType.replace("_", " ").toUpperCase()}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-border">
                 <span className="text-text-secondary">Max Leverage:</span>
-                <span className="text-text-primary font-medium">{maxLeverage}x</span>
+                <span className="text-text-primary font-medium">
+                  {maxLeverage}x
+                </span>
               </div>
               <div className="flex justify-between py-2 border-b border-border">
-                <span className="text-text-secondary">Max Margin Per Trade:</span>
-                <span className="text-text-primary font-medium">{maxMarginPerTrade} USDT</span>
+                <span className="text-text-secondary">
+                  Max Margin Per Trade:
+                </span>
+                <span className="text-text-primary font-medium">
+                  {maxMarginPerTrade} USDT
+                </span>
               </div>
               <div className="flex justify-between py-2 border-b border-border">
-                <span className="text-text-secondary">Profit Factor Threshold:</span>
-                <span className="text-text-primary font-medium">{profitFactorThreshold}</span>
+                <span className="text-text-secondary">
+                  Profit Factor Threshold:
+                </span>
+                <span className="text-text-primary font-medium">
+                  {profitFactorThreshold}
+                </span>
               </div>
               <div className="flex justify-between py-2 border-b border-border">
-                <span className="text-text-secondary">Payment Transaction:</span>
+                <span className="text-text-secondary">
+                  Payment Transaction:
+                </span>
                 <span className="text-text-primary font-mono text-sm">
                   {paymentTxHash.slice(0, 10)}...{paymentTxHash.slice(-8)}
                 </span>
@@ -458,7 +497,7 @@ export default function CreateBotPageNew() {
           <div className="flex gap-4">
             <button
               type="button"
-              onClick={() => setCurrentStep('config')}
+              onClick={() => setCurrentStep("config")}
               className="btn btn-secondary flex-1"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -495,4 +534,3 @@ export default function CreateBotPageNew() {
     </div>
   );
 }
-

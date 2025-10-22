@@ -1,8 +1,8 @@
-import { useAccount, useDisconnect, useBalance } from 'wagmi';
-import { useAppKit } from '@reown/appkit/react';
-import { Wallet, LogOut, AlertCircle } from 'lucide-react';
-import { bsc } from 'wagmi/chains';
-import { USDT_CONTRACT_ADDRESS } from '@/lib/wagmi';
+import { useAccount, useDisconnect, useBalance } from "wagmi";
+import { useAppKit } from "@reown/appkit/react";
+import { Wallet, LogOut, AlertCircle } from "lucide-react";
+import { bsc } from "wagmi/chains";
+import { USDT_CONTRACT_ADDRESS } from "@/lib/wagmi";
 
 export function WalletConnect() {
   const { address, isConnected, chain } = useAccount();
@@ -62,13 +62,17 @@ export function WalletConnect() {
             <div className="flex justify-between text-sm">
               <span className="text-text-secondary">USDT Balance:</span>
               <span className="font-medium text-text-primary">
-                {usdtBalance ? `${parseFloat(usdtBalance.formatted).toFixed(2)} USDT` : '0.00 USDT'}
+                {usdtBalance
+                  ? `${parseFloat(usdtBalance.formatted).toFixed(2)} USDT`
+                  : "0.00 USDT"}
               </span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-text-secondary">BNB Balance (Gas):</span>
               <span className="font-medium text-text-primary">
-                {bnbBalance ? `${parseFloat(bnbBalance.formatted).toFixed(4)} BNB` : '0.0000 BNB'}
+                {bnbBalance
+                  ? `${parseFloat(bnbBalance.formatted).toFixed(4)} BNB`
+                  : "0.0000 BNB"}
               </span>
             </div>
           </div>
@@ -79,7 +83,8 @@ export function WalletConnect() {
               <div className="text-sm">
                 <p className="font-medium text-warning">Low BNB Balance</p>
                 <p className="text-text-secondary mt-1">
-                  You need BNB for transaction fees. Please add some BNB to your wallet.
+                  You need BNB for transaction fees. Please add some BNB to your
+                  wallet.
                 </p>
               </div>
             </div>
@@ -91,7 +96,8 @@ export function WalletConnect() {
               <div className="text-sm">
                 <p className="font-medium text-warning">Insufficient USDT</p>
                 <p className="text-text-secondary mt-1">
-                  You need at least 10 USDT to create a bot. Current balance: {parseFloat(usdtBalance.formatted).toFixed(2)} USDT
+                  You need at least 10 USDT to create a bot. Current balance:{" "}
+                  {parseFloat(usdtBalance.formatted).toFixed(2)} USDT
                 </p>
               </div>
             </div>
@@ -121,7 +127,8 @@ export function WalletConnect() {
 
         <div className="mt-6 p-4 bg-surface-light rounded-lg">
           <p className="text-sm text-text-secondary">
-            <strong className="text-text-primary">Note:</strong> Make sure you have:
+            <strong className="text-text-primary">Note:</strong> Make sure you
+            have:
           </p>
           <ul className="text-sm text-text-secondary mt-2 space-y-1 list-disc list-inside">
             <li>At least 10 USDT on BSC Mainnet</li>
@@ -133,4 +140,3 @@ export function WalletConnect() {
     </div>
   );
 }
-
