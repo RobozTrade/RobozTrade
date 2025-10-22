@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { authRoutes } from './routes/auth';
+import { walletAuthRoutes } from './routes/wallet-auth';
 import { botsRoutes } from './routes/bots';
 import { tradesRoutes } from './routes/trades';
 import { marketRoutes } from './routes/market';
@@ -87,6 +88,7 @@ app.use('*', async (c, next) => {
 
 // API Routes - These will be matched first due to run_worker_first config
 app.route('/api/auth', authRoutes);
+app.route('/api/auth/wallet', walletAuthRoutes);
 app.route('/api/bots', botsRoutes);
 app.route('/api/trades', tradesRoutes);
 app.route('/api/market', marketRoutes);

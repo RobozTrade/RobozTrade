@@ -15,6 +15,10 @@ import type {
   Kline,
   ValidatePaymentResponse,
   BotPayment,
+  NonceRequest,
+  NonceResponse,
+  WalletAuthRequest,
+  WalletAuthResponse,
 } from '@roboz-trade/shared-types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -74,6 +78,21 @@ class ApiClient {
 
   async register(input: CreateUserInput): Promise<ApiResponse<AuthResponse>> {
     return this.request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  // Wallet Auth
+  async getNonce(input: NonceRequest): Promise<ApiResponse<NonceResponse>> {
+    return this.request('/auth/wallet/nonce', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async verifyWalletSignature(input: WalletAuthRequest): Promise<ApiResponse<WalletAuthResponse>> {
+    return this.request('/auth/wallet/verify', {
       method: 'POST',
       body: JSON.stringify(input),
     });

@@ -1,7 +1,7 @@
 // User Types
 export interface User {
   id: string;
-  email: string;
+  walletAddress: string;
   displayName: string;
   createdAt: Date;
 }
@@ -20,6 +20,30 @@ export interface LoginInput {
 export interface AuthResponse {
   user: User;
   token: string;
+}
+
+// Wallet Authentication Types
+export interface NonceRequest {
+  walletAddress: string;
+}
+
+export interface NonceResponse {
+  nonce: string;
+  message: string;
+}
+
+export interface WalletAuthRequest {
+  walletAddress: string;
+  signature: string;
+  nonce: string;
+  timestamp: number;
+  displayName?: string; // Required for new users
+}
+
+export interface WalletAuthResponse {
+  user: User;
+  token: string;
+  isNewUser: boolean;
 }
 
 // API Key Types

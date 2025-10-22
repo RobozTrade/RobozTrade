@@ -3,9 +3,17 @@ import { sql } from 'drizzle-orm';
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
-  email: text('email').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
+  walletAddress: text('wallet_address').notNull().unique(),
   displayName: text('display_name').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
+});
+
+export const nonces = sqliteTable('nonces', {
+  id: text('id').primaryKey(),
+  walletAddress: text('wallet_address').notNull(),
+  nonce: text('nonce').notNull().unique(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  used: integer('used', { mode: 'boolean' }).default(false),
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
 });
 
@@ -86,6 +94,9 @@ export const botPayments = sqliteTable('bot_payments', {
 // Type exports for use in application
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+
+export type Nonce = typeof nonces.$inferSelect;
+export type NewNonce = typeof nonces.$inferInsert;
 
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type NewApiKey = typeof apiKeys.$inferInsert;

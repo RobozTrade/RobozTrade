@@ -13,14 +13,15 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "hono": "^4.10.1",
-    "drizzle-orm": "^0.38.3",
     "@hono/zod-validator": "^0.4.1",
-    "zod": "^3.24.1",
+    "@roboz-trade/shared-types": "workspace:*",
     "bcryptjs": "^2.4.3",
+    "drizzle-orm": "^0.38.3",
+    "hono": "^4.10.1",
     "jsonwebtoken": "^9.0.2",
     "nanoid": "^5.0.9",
-    "@roboz-trade/shared-types": "workspace:*"
+    "viem": "^2.38.3",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20251014.0",
