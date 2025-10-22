@@ -31,13 +31,12 @@ export function WalletAuth() {
     try {
       // Step 1: Get nonce from backend
       const nonceResponse = await api.getNonce({ walletAddress: address });
-      
+
       if (!nonceResponse.success || !nonceResponse.data) {
         throw new Error(nonceResponse.error || "Failed to get nonce");
       }
 
-      const { nonce, message } = nonceResponse.data;
-      const timestamp = Date.now();
+      const { nonce, message, timestamp } = nonceResponse.data;
 
       // Step 2: Sign the message with wallet
       const signature = await signMessageAsync({ message });
@@ -54,7 +53,7 @@ export function WalletAuth() {
         // Authentication successful
         const { user, token, isNewUser } = verifyResponse.data;
         setWalletAuth(user, token, address);
-        
+
         if (isNewUser) {
           navigate("/app/dashboard?welcome=true");
         } else {
@@ -91,13 +90,12 @@ export function WalletAuth() {
     try {
       // Get fresh nonce
       const nonceResponse = await api.getNonce({ walletAddress: address });
-      
+
       if (!nonceResponse.success || !nonceResponse.data) {
         throw new Error(nonceResponse.error || "Failed to get nonce");
       }
 
-      const { nonce, message } = nonceResponse.data;
-      const timestamp = Date.now();
+      const { nonce, message, timestamp } = nonceResponse.data;
 
       // Sign the message
       const signature = await signMessageAsync({ message });
@@ -268,12 +266,11 @@ export function WalletAuth() {
           </GlassButton>
 
           <p className="text-xs text-center text-light-text-tertiary dark:text-dark-text-tertiary">
-            You'll be asked to sign a message to verify wallet ownership.
-            This is free and doesn't require any gas fees.
+            You'll be asked to sign a message to verify wallet ownership. This
+            is free and doesn't require any gas fees.
           </p>
         </div>
       )}
     </GlassCard>
   );
 }
-

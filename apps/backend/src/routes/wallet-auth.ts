@@ -40,14 +40,15 @@ async function verifySignature(
   expectedAddress: string
 ): Promise<boolean> {
   try {
-    // Use viem's verifyMessage to recover the address from the signature
-    const recoveredAddress = await verifyMessage({
+    // Use viem's verifyMessage to verify the signature
+    // verifyMessage returns true if the signature is valid, false otherwise
+    const isValid = await verifyMessage({
       address: expectedAddress as `0x${string}`,
       message,
       signature: signature as `0x${string}`,
     });
 
-    return recoveredAddress;
+    return isValid;
   } catch (error) {
     console.error('Signature verification error:', error);
     return false;
@@ -77,6 +78,9 @@ walletAuthRoutes.post('/nonce', zValidator('json', nonceRequestSchema), async (c
         )
       );
 
+    // Generate timestamp
+    const timestamp = Date.now();
+
     // Store the nonce
     await db.insert(nonces).values({
       id: nanoid(),
@@ -87,11 +91,12 @@ walletAuthRoutes.post('/nonce', zValidator('json', nonceRequestSchema), async (c
     });
 
     // Create the message to sign
-    const message = `Sign this message to authenticate with RobozTrade\n\nNonce: ${nonce}\nTimestamp: ${Date.now()}`;
+    const message = `Sign this message to authenticate with RobozTrade\n\nNonce: ${nonce}\nTimestamp: ${timestamp}`;
 
     const response: NonceResponse = {
       nonce,
       message,
+      timestamp, // Include timestamp so frontend can send it back
     };
 
     return c.json({ success: true, data: response });
@@ -158,7 +163,17 @@ walletAuthRoutes.post('/verify', zValidator('json', walletAuthSchema), async (c)
 
     // 3. Verify signature
     const message = `Sign this message to authenticate with RobozTrade\n\nNonce: ${providedNonce}\nTimestamp: ${timestamp}`;
+
+    console.log('=== Signature Verification Debug ===');
+    console.log('Message to verify:', message);
+    console.log('Signature:', signature);
+    console.log('Expected address:', normalizedAddress);
+    console.log('Provided nonce:', providedNonce);
+    console.log('Timestamp:', timestamp);
+
     const isValidSignature = await verifySignature(message, signature, normalizedAddress);
+
+    console.log('Signature valid:', isValidSignature);
 
     if (!isValidSignature) {
       return c.json(

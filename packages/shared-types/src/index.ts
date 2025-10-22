@@ -30,6 +30,7 @@ export interface NonceRequest {
 export interface NonceResponse {
   nonce: string;
   message: string;
+  timestamp: number;
 }
 
 export interface WalletAuthRequest {
