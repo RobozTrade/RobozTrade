@@ -8,6 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 binding = "DB"
 database_name = "roboz-trade"
 database_id = "21149666-00d4-4966-9065-b2769cc71a5a"
+migrations_dir = "drizzle"
 
 [durable_objects]
 bindings = [
@@ -21,4 +22,5 @@ new_classes = ["MarketDataWebSocket"]
 [vars]
 JWT_SECRET = "your-jwt-secret-change-in-production"
 ASTER_API_BASE_URL = "https://fapi.asterdex.com"
+
 

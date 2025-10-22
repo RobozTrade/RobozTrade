@@ -1,12 +1,9 @@
-import type { Config } from 'drizzle-kit';
+import { defineConfig } from 'drizzle-kit';
 
-export default {
-  schema: './src/db/schema.ts',
+export default defineConfig({
   out: './drizzle',
-  driver: 'd1',
-  dbCredentials: {
-    wranglerConfigPath: './wrangler.toml',
-    dbName: 'roboz-trade',
-  },
-} satisfies Config;
+  schema: './src/db/schema.ts',
+  dialect: 'sqlite',
+  driver: 'durable-sqlite',
+});
 
