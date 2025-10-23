@@ -10,7 +10,7 @@ import { benchmarksRoutes } from './routes/benchmarks';
 import { paymentsRoutes } from './routes/payments';
 import { botExecutionRoutes } from './routes/bot-execution';
 import { MarketDataWebSocket } from './services/websocket';
-import { handleScheduled } from './scheduled';
+import { handleScheduled, type Env as ScheduledEnv } from './scheduled';
 
 export { MarketDataWebSocket };
 
@@ -126,7 +126,8 @@ app.onError((err, c) => {
 });
 
 // Export the scheduled event handler for Cloudflare Workers
-export const scheduled = handleScheduled;
+export const scheduled = (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) =>
+  handleScheduled(event, env as ScheduledEnv, ctx);
 
 export default app;
 

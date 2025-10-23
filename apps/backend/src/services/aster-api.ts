@@ -88,7 +88,7 @@ async function makeRequest(
   params: Record<string, any> = {}
 ): Promise<any> {
   const timestamp = Date.now();
-  const queryParams = { ...params, timestamp };
+  const queryParams: Record<string, any> = { ...params, timestamp };
 
   // Sort parameters alphabetically
   const sortedParams = Object.keys(queryParams)
