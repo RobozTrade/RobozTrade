@@ -709,16 +709,22 @@ function determineOrderQuantity(
   const finalNotional = normalizedQuantity * price;
 
   if (finalNotional < minNotional - 1e-4) {
-    throw new Error('Quantity below minimum notional requirement');
+    throw new Error(`Quantity below minimum notional requirement (${finalNotional.toFixed(2)} < ${minNotional.toFixed(2)})`);
   }
 
-  if (finalNotional > maxNotional + 1e-4) {
-    throw new Error('Quantity exceeds maximum notional limit');
-  }
-
+  // Check margin requirement BEFORE checking max notional limit
   const marginRequired = finalNotional / leverage;
-  if (marginRequired > context.accountBalance * 0.95) {
-    throw new Error('Insufficient margin to support desired position size');
+  const maxMargin = context.accountBalance * 0.95;
+  if (marginRequired > maxMargin) {
+    throw new Error(`Insufficient margin: need $${marginRequired.toFixed(2)} but only $${maxMargin.toFixed(2)} available (balance: $${context.accountBalance.toFixed(2)}, leverage: ${leverage}x)`);
+  }
+
+  // Recalculate max notional based on actual leverage being used
+  const maxAffordableNotional = context.accountBalance * leverage * 0.95;
+  const actualMaxNotional = Math.min(maxNotional, maxAffordableNotional);
+
+  if (finalNotional > actualMaxNotional + 1e-4) {
+    throw new Error(`Quantity exceeds maximum notional limit (${finalNotional.toFixed(2)} > ${actualMaxNotional.toFixed(2)} with ${leverage}x leverage)`);
   }
 
   return {
