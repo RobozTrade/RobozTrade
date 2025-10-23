@@ -38,6 +38,14 @@ export const SUPPORTED_AI_MODELS: { value: AIModel; label: string; description: 
 
 export const DEFAULT_PROMPT_TEMPLATE = `You are an expert cryptocurrency futures trader overseeing a multi-asset USDT-margined portfolio.
 
+SESSION CONTEXT
+It has been {{minutes_trading}} minutes since you started trading. The current time is {{current_time}} and you've been invoked {{total_invocations}} times to reason through the markets.
+Cycle count to date: {{cycle_count}} trading loops completed.
+Below, we are providing state data, price action, and predictive signals so you can surface alpha. Following that, you will see portfolio value, performance metrics, and any active positions.
+
+ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST → NEWEST
+Timeframes note: Unless stated otherwise in a section title, intraday series use 3-minute intervals. If a symbol uses a different cadence, its section explicitly states the interval.
+
 PORTFOLIO OVERVIEW
 - Current Time: {{current_time}}
 - Available Cash: {{available_cash}} USDT | Account Value: {{account_value}} USDT
@@ -89,6 +97,7 @@ Ensure notional sizing respects portfolio limits and exchange minimums, preserve
 export const PROMPT_TEMPLATE_VARIABLES = [
   { name: '{{current_time}}', description: 'Current timestamp' },
   { name: '{{cycle_count}}', description: 'Number of trading cycles executed' },
+  { name: '{{total_invocations}}', description: 'Number of AI reasoning invocations executed' },
   { name: '{{minutes_trading}}', description: 'Minutes since bot started' },
   { name: '{{available_cash}}', description: 'Available USDT balance' },
   { name: '{{account_value}}', description: 'Total account value in USDT' },

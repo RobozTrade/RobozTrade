@@ -4,7 +4,7 @@
  */
 
 import { nanoid } from 'nanoid';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { DEFAULT_PROMPT_TEMPLATE } from '@roboz-trade/shared-types';
 import { tradingBots, tradeHistory, botExecutions, positionSnapshots, botMetrics, apiKeys } from '../db/schema';
 import { decrypt } from '../lib/crypto';
@@ -124,6 +124,27 @@ export async function executeBot(
       metrics = await db.select().from(botMetrics).where(eq(botMetrics.botId, botId)).get();
     }
 
+    const invocationAggregate = await db
+      .select({
+        invocationSum: sql<number>`coalesce(sum(${botExecutions.aiInvocations}), 0)`,
+        executionCount: sql<number>`count(*)`,
+      })
+      .from(botExecutions)
+      .where(eq(botExecutions.botId, botId))
+      .get();
+
+    const totalInvocationSum = invocationAggregate?.invocationSum ?? 0;
+    const totalExecutionCount = invocationAggregate?.executionCount ?? 0;
+    const totalInvocations = totalInvocationSum || totalExecutionCount;
+
+    const executionTimestamp = new Date();
+    const executionTimeIso = executionTimestamp.toISOString();
+    const botCreationDate = bot.createdAt ? new Date(bot.createdAt) : executionTimestamp;
+    const minutesTrading = Math.max(
+      0,
+      Math.floor((executionTimestamp.getTime() - botCreationDate.getTime()) / 60000)
+    );
+
     // Prepare trading contexts for each symbol
     const tradingSymbols = (bot.tradingSymbols as string[]) || [];
     const contexts: TradingContext[] = [];
@@ -173,9 +194,6 @@ export async function executeBot(
         // Find position for this symbol
         const position = allPositions.find(p => p.symbol === symbol);
 
-        // Calculate minutes trading (simplified - use bot creation time)
-        const minutesTrading = Math.floor((Date.now() - new Date(bot.createdAt!).getTime()) / 60000);
-
         const minNotionalPerTrade = bot.minNotionalPerTrade ?? 150;
         // Calculate max affordable notional based on available balance and leverage
         const maxLeverageValue = bot.maxLeverage || 20;
@@ -193,12 +211,15 @@ export async function executeBot(
           marketData,
           indicators,
           position,
+          currentTimeIso: executionTimeIso,
           accountBalance: accountInfo.availableBalance,
           accountValue: accountInfo.totalBalance,
           totalReturn: metrics?.totalReturn || 0,
           sharpeRatio: metrics?.sharpeRatio || 0,
           cycleCount: metrics?.totalTrades || 0,
           minutesTrading,
+          totalInvocations,
+          totalExecutions: totalExecutionCount,
           maxLeverage: bot.maxLeverage || 20,
           minNotionalPerTrade,
           maxNotionalPerTrade,

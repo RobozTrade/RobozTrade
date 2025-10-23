@@ -14,12 +14,15 @@ export interface TradingContext {
   marketData: MarketData;
   indicators: TechnicalIndicators;
   position?: Position;
+  currentTimeIso?: string;
   accountBalance: number;
   accountValue: number;
   totalReturn: number;
   sharpeRatio: number;
   cycleCount: number;
   minutesTrading: number;
+  totalInvocations?: number;
+  totalExecutions?: number;
   maxLeverage: number;
   minNotionalPerTrade: number;
   maxNotionalPerTrade: number;
@@ -84,9 +87,14 @@ function populatePromptTemplate(
   const firstContext = contexts[0];
 
   const globalReplacements: Record<string, string | number | undefined> = {
-    current_time: new Date().toISOString(),
-    cycle_count: firstContext.cycleCount,
-    minutes_trading: firstContext.minutesTrading,
+    current_time: firstContext.currentTimeIso ?? new Date().toISOString(),
+    cycle_count: formatNumber(firstContext.cycleCount ?? 0, 0),
+    minutes_trading: formatNumber(firstContext.minutesTrading ?? 0, 0),
+    total_invocations: formatNumber(
+      firstContext.totalInvocations ?? (firstContext.totalExecutions ?? 0),
+      0
+    ),
+    total_executions: formatNumber(firstContext.totalExecutions ?? 0, 0),
     available_cash: formatNumber(firstContext.accountBalance, 2),
     account_balance: formatNumber(firstContext.accountBalance, 2),
     balance: formatNumber(firstContext.accountBalance, 2),
