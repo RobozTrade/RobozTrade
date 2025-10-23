@@ -99,6 +99,88 @@ export const botPayments = sqliteTable('bot_payments', {
   confirmedAt: integer('confirmed_at', { mode: 'timestamp' }),
 });
 
+// Trading execution history
+export const tradeHistory = sqliteTable('trade_history', {
+  id: text('id').primaryKey(),
+  botId: text('bot_id')
+    .notNull()
+    .references(() => tradingBots.id, { onDelete: 'cascade' }),
+  symbol: text('symbol').notNull(),
+  side: text('side').notNull(), // 'BUY', 'SELL'
+  orderType: text('order_type').notNull(), // 'MARKET', 'LIMIT', 'STOP_LOSS', 'TAKE_PROFIT'
+  quantity: real('quantity').notNull(),
+  entryPrice: real('entry_price').notNull(),
+  exitPrice: real('exit_price'),
+  leverage: integer('leverage').notNull(),
+  margin: real('margin').notNull(),
+  realizedPnl: real('realized_pnl'),
+  fees: real('fees'),
+  orderId: text('order_id'),
+  stopLossOrderId: text('stop_loss_order_id'),
+  takeProfitOrderId: text('take_profit_order_id'),
+  aiReasoning: text('ai_reasoning'),
+  status: text('status').notNull(), // 'OPEN', 'CLOSED', 'CANCELLED'
+  openedAt: integer('opened_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
+  closedAt: integer('closed_at', { mode: 'timestamp' }),
+});
+
+// Bot execution logs
+export const botExecutions = sqliteTable('bot_executions', {
+  id: text('id').primaryKey(),
+  botId: text('bot_id')
+    .notNull()
+    .references(() => tradingBots.id, { onDelete: 'cascade' }),
+  executionTime: integer('execution_time', { mode: 'timestamp' }).default(sql`(unixepoch())`),
+  symbolsProcessed: text('symbols_processed', { mode: 'json' }), // array of symbols
+  marketData: text('market_data', { mode: 'json' }), // snapshot of market data
+  aiDecisions: text('ai_decisions', { mode: 'json' }), // AI decisions for each symbol
+  tradesExecuted: integer('trades_executed').notNull().default(0),
+  errors: text('errors', { mode: 'json' }), // any errors encountered
+  executionDuration: integer('execution_duration'), // milliseconds
+  status: text('status').notNull(), // 'SUCCESS', 'PARTIAL', 'FAILED'
+});
+
+// Position snapshots for tracking
+export const positionSnapshots = sqliteTable('position_snapshots', {
+  id: text('id').primaryKey(),
+  botId: text('bot_id')
+    .notNull()
+    .references(() => tradingBots.id, { onDelete: 'cascade' }),
+  tradeId: text('trade_id').references(() => tradeHistory.id),
+  symbol: text('symbol').notNull(),
+  quantity: real('quantity').notNull(),
+  entryPrice: real('entry_price').notNull(),
+  currentPrice: real('current_price').notNull(),
+  liquidationPrice: real('liquidation_price'),
+  unrealizedPnl: real('unrealized_pnl').notNull(),
+  leverage: integer('leverage').notNull(),
+  margin: real('margin').notNull(),
+  stopLoss: real('stop_loss'),
+  takeProfit: real('take_profit'),
+  snapshotTime: integer('snapshot_time', { mode: 'timestamp' }).default(sql`(unixepoch())`),
+});
+
+// Bot performance metrics
+export const botMetrics = sqliteTable('bot_metrics', {
+  id: text('id').primaryKey(),
+  botId: text('bot_id')
+    .notNull()
+    .references(() => tradingBots.id, { onDelete: 'cascade' })
+    .unique(),
+  totalTrades: integer('total_trades').notNull().default(0),
+  winningTrades: integer('winning_trades').notNull().default(0),
+  losingTrades: integer('losing_trades').notNull().default(0),
+  totalReturn: real('total_return').notNull().default(0),
+  totalPnl: real('total_pnl').notNull().default(0),
+  sharpeRatio: real('sharpe_ratio'),
+  maxDrawdown: real('max_drawdown'),
+  winRate: real('win_rate'),
+  averageWin: real('average_win'),
+  averageLoss: real('average_loss'),
+  profitFactor: real('profit_factor'),
+  lastUpdated: integer('last_updated', { mode: 'timestamp' }).default(sql`(unixepoch())`),
+});
+
 // Type exports for use in application
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

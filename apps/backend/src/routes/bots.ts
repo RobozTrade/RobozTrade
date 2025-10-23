@@ -205,6 +205,9 @@ botsRoutes.post('/', async (c) => {
         maxMarginPerTrade: data.maxMarginPerTrade,
         maxOpenTrades: data.maxOpenTrades,
         status: 'draft',
+        // Legacy fields - set to null/default for new AI-driven bots
+        strategyType: 'custom', // Use 'custom' as default for AI bots
+        tradingPair: data.tradingSymbols[0] || 'BTCUSDT', // Use first symbol as primary pair
       });
 
       // Link payment to bot

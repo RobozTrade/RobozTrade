@@ -30,6 +30,11 @@ bindings = [
 tag = "v1"
 new_sqlite_classes = ["MarketDataWebSocket"]
 
+# Scheduled Events (Cron Triggers)
+# Runs trading bots every 2 minutes
+[triggers]
+crons = ["*/2 * * * *"]
+
 [observability]
 [observability.logs]
 enabled = true

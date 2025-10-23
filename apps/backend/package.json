@@ -13,8 +13,10 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^1.0.10",
     "@hono/zod-validator": "^0.4.1",
     "@roboz-trade/shared-types": "workspace:*",
+    "ai": "^4.1.10",
     "bcryptjs": "^2.4.3",
     "drizzle-orm": "^0.38.3",
     "hono": "^4.10.1",

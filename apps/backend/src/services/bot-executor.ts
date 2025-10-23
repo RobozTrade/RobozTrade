@@ -1,0 +1,539 @@
+/**
+ * Trading Bot Executor Service
+ * Main orchestrator for automated trading bot execution
+ */
+
+import { nanoid } from 'nanoid';
+import { eq, and } from 'drizzle-orm';
+import { tradingBots, tradeHistory, botExecutions, positionSnapshots, botMetrics, apiKeys } from '../db/schema';
+import { decrypt } from '../lib/crypto';
+import * as AsterAPI from './aster-api';
+import * as AITrader from './ai-trader';
+import { calculateIndicators } from './indicators';
+import type { TradingContext, TradingDecision } from './ai-trader';
+import type { DbClient } from '../lib/db';
+
+export interface BotExecutionResult {
+  botId: string;
+  success: boolean;
+  tradesExecuted: number;
+  errors: string[];
+  decisions: TradingDecision[];
+}
+
+/**
+ * Execute trading logic for a single bot
+ */
+export async function executeBot(
+  botId: string,
+  db: DbClient,
+  encryptionKey: string,
+  pbkdf2Iterations = 100000
+): Promise<BotExecutionResult> {
+  const startTime = Date.now();
+  const errors: string[] = [];
+  let tradesExecuted = 0;
+  let decisions: TradingDecision[] = [];
+
+  try {
+    // Fetch bot configuration
+    const bot = await db.select().from(tradingBots).where(eq(tradingBots.id, botId)).get();
+
+    if (!bot) {
+      throw new Error(`Bot ${botId} not found`);
+    }
+
+    if (bot.status !== 'active') {
+      throw new Error(`Bot ${botId} is not active (status: ${bot.status})`);
+    }
+
+    // Resolve encrypted credentials. Support both new (inline) and legacy (shared API key) flows.
+    let asterApiKey: string | null = null;
+    let asterApiSecret: string | null = null;
+    let openRouterApiKey: string | null = null;
+
+    if (bot.asterApiKey && bot.asterApiSecret) {
+      asterApiKey = await decrypt(bot.asterApiKey, encryptionKey, pbkdf2Iterations);
+      asterApiSecret = await decrypt(bot.asterApiSecret, encryptionKey, pbkdf2Iterations);
+    }
+
+    if (bot.openRouterApiKey) {
+      openRouterApiKey = await decrypt(bot.openRouterApiKey, encryptionKey, pbkdf2Iterations);
+    }
+
+    if ((!asterApiKey || !asterApiSecret) && bot.apiKeyId) {
+      const apiKeyRecord = await db
+        .select()
+        .from(apiKeys)
+        .where(eq(apiKeys.id, bot.apiKeyId))
+        .get();
+
+      if (!apiKeyRecord) {
+        throw new Error('API credential record not found for bot');
+      }
+
+      asterApiKey = await decrypt(apiKeyRecord.apiKey, encryptionKey, pbkdf2Iterations);
+      asterApiSecret = await decrypt(apiKeyRecord.apiSecret, encryptionKey, pbkdf2Iterations);
+    }
+
+    if (!asterApiKey || !asterApiSecret) {
+      throw new Error('Aster credentials not configured for bot');
+    }
+
+    if (!openRouterApiKey) {
+      throw new Error('OpenRouter API key not configured for bot');
+    }
+
+    const credentials: AsterAPI.AsterCredentials = {
+      apiKey: asterApiKey,
+      apiSecret: asterApiSecret,
+    };
+
+    // Get account info
+    const accountInfo = await AsterAPI.getAccountInfo(credentials);
+
+    // Get current positions
+    const allPositions = await AsterAPI.getPositions(credentials);
+
+    // Get bot metrics for performance tracking
+    let metrics = await db.select().from(botMetrics).where(eq(botMetrics.botId, botId)).get();
+    if (!metrics) {
+      // Initialize metrics if not exists
+      await db.insert(botMetrics).values({
+        id: nanoid(),
+        botId,
+        totalTrades: 0,
+        winningTrades: 0,
+        losingTrades: 0,
+        totalReturn: 0,
+        totalPnl: 0,
+        lastUpdated: new Date(),
+      });
+      metrics = await db.select().from(botMetrics).where(eq(botMetrics.botId, botId)).get();
+    }
+
+    // Prepare trading contexts for each symbol
+    const tradingSymbols = (bot.tradingSymbols as string[]) || [];
+    const contexts: TradingContext[] = [];
+    const marketDataSnapshot: Record<string, any> = {};
+
+    for (const symbol of tradingSymbols) {
+      try {
+        // Fetch market data
+        const marketData = await AsterAPI.getMarketData(symbol, credentials);
+
+        // Fetch candlestick data for technical analysis (last 50 candles, 15m interval)
+        const candles = await AsterAPI.getCandles(symbol, '15m', 50, credentials);
+
+        // Calculate technical indicators
+        const indicators = calculateIndicators(candles);
+
+        // Find position for this symbol
+        const position = allPositions.find(p => p.symbol === symbol);
+
+        // Calculate minutes trading (simplified - use bot creation time)
+        const minutesTrading = Math.floor((Date.now() - new Date(bot.createdAt!).getTime()) / 60000);
+
+        const context: TradingContext = {
+          symbol,
+          currentPrice: marketData.price,
+          marketData,
+          indicators,
+          position,
+          accountBalance: accountInfo.availableBalance,
+          accountValue: accountInfo.totalBalance,
+          totalReturn: metrics?.totalReturn || 0,
+          sharpeRatio: metrics?.sharpeRatio || 0,
+          cycleCount: metrics?.totalTrades || 0,
+          minutesTrading,
+          maxLeverage: bot.maxLeverage || 10,
+          maxMarginPerTrade: bot.maxMarginPerTrade || 100,
+          maxOpenTrades: bot.maxOpenTrades || 5,
+          currentOpenTrades: allPositions.length,
+        };
+
+        contexts.push(context);
+        marketDataSnapshot[symbol] = { marketData, indicators, position };
+
+      } catch (error: any) {
+        errors.push(`Error fetching data for ${symbol}: ${error.message}`);
+        console.error(`Error processing ${symbol}:`, error);
+      }
+    }
+
+    if (contexts.length === 0) {
+      throw new Error('No valid market data available for any symbol');
+    }
+
+    // Get AI trading decisions
+    const customPrompt = bot.customPrompt || getDefaultPrompt();
+    decisions = await AITrader.getAIDecisions(
+      contexts,
+      bot.aiModel || 'anthropic/claude-3.5-sonnet',
+      customPrompt,
+      openRouterApiKey
+    );
+
+    // Execute trades based on AI decisions
+    for (const decision of decisions) {
+      try {
+        const context = contexts.find(ctx => ctx.symbol === decision.symbol);
+        if (!context) continue;
+
+        // Skip if confidence is too low
+        if (decision.confidence < 0.4) {
+          console.log(`Skipping ${decision.symbol} - low confidence: ${decision.confidence}`);
+          continue;
+        }
+
+        if (decision.action === 'BUY' && context.currentOpenTrades < context.maxOpenTrades) {
+          // Open long position
+          await executeBuyOrder(decision, context, credentials, db, botId);
+          tradesExecuted++;
+        } else if (decision.action === 'SELL' && context.currentOpenTrades < context.maxOpenTrades) {
+          // Open short position
+          await executeSellOrder(decision, context, credentials, db, botId);
+          tradesExecuted++;
+        } else if (decision.action === 'CLOSE' && context.position) {
+          // Close existing position
+          await executeCloseOrder(decision, context, credentials, db, botId);
+          tradesExecuted++;
+        }
+        // HOLD - do nothing
+
+      } catch (error: any) {
+        errors.push(`Error executing trade for ${decision.symbol}: ${error.message}`);
+        console.error(`Error executing trade for ${decision.symbol}:`, error);
+      }
+    }
+
+    // Save execution log
+    await db.insert(botExecutions).values({
+      id: nanoid(),
+      botId,
+      executionTime: new Date(),
+      symbolsProcessed: tradingSymbols,
+      marketData: marketDataSnapshot,
+      aiDecisions: decisions,
+      tradesExecuted,
+      errors: errors.length > 0 ? errors : null,
+      executionDuration: Date.now() - startTime,
+      status: errors.length === 0 ? 'SUCCESS' : tradesExecuted > 0 ? 'PARTIAL' : 'FAILED',
+    });
+
+    // Update position snapshots
+    for (const position of allPositions) {
+      await db.insert(positionSnapshots).values({
+        id: nanoid(),
+        botId,
+        tradeId: null, // Link to trade if available
+        symbol: position.symbol,
+        quantity: position.quantity,
+        entryPrice: position.entryPrice,
+        currentPrice: position.currentPrice,
+        liquidationPrice: position.liquidationPrice,
+        unrealizedPnl: position.unrealizedPnl,
+        leverage: position.leverage,
+        margin: position.margin,
+        stopLoss: null,
+        takeProfit: null,
+        snapshotTime: new Date(),
+      });
+    }
+
+    return {
+      botId,
+      success: errors.length === 0,
+      tradesExecuted,
+      errors,
+      decisions,
+    };
+
+  } catch (error: any) {
+    errors.push(`Fatal error: ${error.message}`);
+    console.error(`Fatal error executing bot ${botId}:`, error);
+
+    // Log failed execution
+    try {
+      await db.insert(botExecutions).values({
+        id: nanoid(),
+        botId,
+        executionTime: new Date(),
+        symbolsProcessed: [],
+        marketData: {},
+        aiDecisions: decisions,
+        tradesExecuted: 0,
+        errors,
+        executionDuration: Date.now() - startTime,
+        status: 'FAILED',
+      });
+    } catch (logError) {
+      console.error('Error logging failed execution:', logError);
+    }
+
+    return {
+      botId,
+      success: false,
+      tradesExecuted: 0,
+      errors,
+      decisions: [],
+    };
+  }
+}
+
+// Helper functions for executing different order types
+async function executeBuyOrder(
+  decision: TradingDecision,
+  context: TradingContext,
+  credentials: AsterAPI.AsterCredentials,
+  db: DbClient,
+  botId: string
+) {
+  const leverage = decision.suggestedLeverage || context.maxLeverage;
+  const quantity = decision.suggestedQuantity || AITrader.calculatePositionSize(
+    context.currentPrice,
+    leverage,
+    context.maxMarginPerTrade,
+    context.accountBalance
+  );
+
+  // Place market buy order
+  const order = await AsterAPI.placeOrder(
+    {
+      symbol: context.symbol,
+      side: 'BUY',
+      type: 'MARKET',
+      quantity,
+      leverage,
+    },
+    credentials
+  );
+
+  // Calculate risk levels
+  const { stopLoss, takeProfit } = decision.suggestedStopLoss && decision.suggestedTakeProfit
+    ? { stopLoss: decision.suggestedStopLoss, takeProfit: decision.suggestedTakeProfit }
+    : AITrader.calculateRiskLevels(order.avgPrice, 'BUY', leverage);
+
+  // Place stop loss order
+  let stopLossOrderId: string | undefined;
+  try {
+    const slOrder = await AsterAPI.placeOrder(
+      {
+        symbol: context.symbol,
+        side: 'SELL',
+        type: 'STOP_MARKET',
+        quantity,
+        stopPrice: stopLoss,
+      },
+      credentials
+    );
+    stopLossOrderId = slOrder.orderId;
+  } catch (error) {
+    console.error('Error placing stop loss:', error);
+  }
+
+  // Place take profit order
+  let takeProfitOrderId: string | undefined;
+  try {
+    const tpOrder = await AsterAPI.placeOrder(
+      {
+        symbol: context.symbol,
+        side: 'SELL',
+        type: 'TAKE_PROFIT_MARKET',
+        quantity,
+        stopPrice: takeProfit,
+      },
+      credentials
+    );
+    takeProfitOrderId = tpOrder.orderId;
+  } catch (error) {
+    console.error('Error placing take profit:', error);
+  }
+
+  // Record trade in database
+  await db.insert(tradeHistory).values({
+    id: nanoid(),
+    botId,
+    symbol: context.symbol,
+    side: 'BUY',
+    orderType: 'MARKET',
+    quantity,
+    entryPrice: order.avgPrice,
+    leverage,
+    margin: (order.avgPrice * quantity) / leverage,
+    orderId: order.orderId,
+    stopLossOrderId,
+    takeProfitOrderId,
+    aiReasoning: decision.reasoning,
+    status: 'OPEN',
+    openedAt: new Date(),
+  });
+}
+
+async function executeSellOrder(
+  decision: TradingDecision,
+  context: TradingContext,
+  credentials: AsterAPI.AsterCredentials,
+  db: DbClient,
+  botId: string
+) {
+  const leverage = decision.suggestedLeverage || context.maxLeverage;
+  const quantity = decision.suggestedQuantity || AITrader.calculatePositionSize(
+    context.currentPrice,
+    leverage,
+    context.maxMarginPerTrade,
+    context.accountBalance
+  );
+
+  // Place market sell order (short)
+  const order = await AsterAPI.placeOrder(
+    {
+      symbol: context.symbol,
+      side: 'SELL',
+      type: 'MARKET',
+      quantity,
+      leverage,
+    },
+    credentials
+  );
+
+  // Calculate risk levels
+  const { stopLoss, takeProfit } = decision.suggestedStopLoss && decision.suggestedTakeProfit
+    ? { stopLoss: decision.suggestedStopLoss, takeProfit: decision.suggestedTakeProfit }
+    : AITrader.calculateRiskLevels(order.avgPrice, 'SELL', leverage);
+
+  // Place stop loss order (buy to close short)
+  let stopLossOrderId: string | undefined;
+  try {
+    const slOrder = await AsterAPI.placeOrder(
+      {
+        symbol: context.symbol,
+        side: 'BUY',
+        type: 'STOP_MARKET',
+        quantity,
+        stopPrice: stopLoss,
+      },
+      credentials
+    );
+    stopLossOrderId = slOrder.orderId;
+  } catch (error) {
+    console.error('Error placing stop loss:', error);
+  }
+
+  // Place take profit order
+  let takeProfitOrderId: string | undefined;
+  try {
+    const tpOrder = await AsterAPI.placeOrder(
+      {
+        symbol: context.symbol,
+        side: 'BUY',
+        type: 'TAKE_PROFIT_MARKET',
+        quantity,
+        stopPrice: takeProfit,
+      },
+      credentials
+    );
+    takeProfitOrderId = tpOrder.orderId;
+  } catch (error) {
+    console.error('Error placing take profit:', error);
+  }
+
+  // Record trade in database
+  await db.insert(tradeHistory).values({
+    id: nanoid(),
+    botId,
+    symbol: context.symbol,
+    side: 'SELL',
+    orderType: 'MARKET',
+    quantity,
+    entryPrice: order.avgPrice,
+    leverage,
+    margin: (order.avgPrice * quantity) / leverage,
+    orderId: order.orderId,
+    stopLossOrderId,
+    takeProfitOrderId,
+    aiReasoning: decision.reasoning,
+    status: 'OPEN',
+    openedAt: new Date(),
+  });
+}
+
+async function executeCloseOrder(
+  decision: TradingDecision,
+  context: TradingContext,
+  credentials: AsterAPI.AsterCredentials,
+  db: DbClient,
+  botId: string
+) {
+  if (!context.position) {
+    throw new Error(`No position to close for ${context.symbol}`);
+  }
+
+  // Close the position
+  const closeOrder = await AsterAPI.closePosition(context.symbol, credentials);
+
+  // Find the open trade in database
+  const openTrade = await db
+    .select()
+    .from(tradeHistory)
+    .where(
+      and(
+        eq(tradeHistory.botId, botId),
+        eq(tradeHistory.symbol, context.symbol),
+        eq(tradeHistory.status, 'OPEN')
+      )
+    )
+    .get();
+
+  if (openTrade) {
+    // Calculate realized PnL
+    const realizedPnl = context.position.unrealizedPnl;
+
+    // Update trade record
+    await db
+      .update(tradeHistory)
+      .set({
+        exitPrice: closeOrder.avgPrice,
+        realizedPnl,
+        status: 'CLOSED',
+        closedAt: new Date(),
+      })
+      .where(eq(tradeHistory.id, openTrade.id));
+
+    // Update bot metrics
+    await updateBotMetrics(db, botId, realizedPnl);
+  }
+}
+
+async function updateBotMetrics(
+  db: DbClient,
+  botId: string,
+  realizedPnl: number
+) {
+  const metrics = await db.select().from(botMetrics).where(eq(botMetrics.botId, botId)).get();
+
+  if (metrics) {
+    const totalTrades = metrics.totalTrades + 1;
+    const winningTrades = realizedPnl > 0 ? metrics.winningTrades + 1 : metrics.winningTrades;
+    const losingTrades = realizedPnl < 0 ? metrics.losingTrades + 1 : metrics.losingTrades;
+    const totalPnl = metrics.totalPnl + realizedPnl;
+    const winRate = totalTrades > 0 ? winningTrades / totalTrades : 0;
+
+    await db
+      .update(botMetrics)
+      .set({
+        totalTrades,
+        winningTrades,
+        losingTrades,
+        totalPnl,
+        winRate,
+        lastUpdated: new Date(),
+      })
+      .where(eq(botMetrics.botId, botId));
+  }
+}
+
+function getDefaultPrompt(): string {
+  return `You are an expert cryptocurrency futures trader. Analyze the provided market data and make trading decisions.`;
+}
+

@@ -8,7 +8,9 @@ import { marketRoutes } from './routes/market';
 import { apiKeysRoutes } from './routes/apikeys';
 import { benchmarksRoutes } from './routes/benchmarks';
 import { paymentsRoutes } from './routes/payments';
+import { botExecutionRoutes } from './routes/bot-execution';
 import { MarketDataWebSocket } from './services/websocket';
+import { handleScheduled } from './scheduled';
 
 export { MarketDataWebSocket };
 
@@ -95,6 +97,7 @@ app.route('/api/market', marketRoutes);
 app.route('/api/keys', apiKeysRoutes);
 app.route('/api/benchmarks', benchmarksRoutes);
 app.route('/api/payments', paymentsRoutes);
+app.route('/api/bot-execution', botExecutionRoutes);
 
 // WebSocket endpoint
 app.get('/ws', async (c) => {
@@ -121,6 +124,9 @@ app.onError((err, c) => {
     500
   );
 });
+
+// Export the scheduled event handler for Cloudflare Workers
+export const scheduled = handleScheduled;
 
 export default app;
 
