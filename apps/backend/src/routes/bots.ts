@@ -33,20 +33,20 @@ const createBotSchema = z.object({
   name: z.string().min(1, 'Bot name is required').max(100, 'Bot name too long'),
   tradingSymbols: z.array(z.enum(SUPPORTED_SYMBOLS as any))
     .min(1, 'At least one trading symbol is required')
-    .max(10, 'Maximum 10 trading symbols allowed'),
+    .max(5, 'Maximum 5 trading symbols allowed'),
   aiModel: z.enum(SUPPORTED_AI_MODELS as any, {
     errorMap: () => ({ message: 'Invalid AI model selected' })
   }),
   customPrompt: z.string().max(10000, 'Custom prompt too long').optional(),
   maxLeverage: z.number()
     .min(1, 'Leverage must be at least 1x')
-    .max(125, 'Maximum leverage is 125x'),
+    .max(10, 'Maximum leverage is 10x'),
   maxMarginPerTrade: z.number()
     .min(1, 'Margin per trade must be at least 1 USDT')
     .max(100000, 'Maximum margin per trade is 100,000 USDT'),
   maxOpenTrades: z.number()
     .min(1, 'Must allow at least 1 open trade')
-    .max(50, 'Maximum 50 open trades allowed'),
+    .max(5, 'Maximum 5 open trades allowed'),
 });
 
 // Legacy bot creation schema (for backward compatibility)

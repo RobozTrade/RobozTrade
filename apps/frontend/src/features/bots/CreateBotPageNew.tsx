@@ -108,11 +108,13 @@ export default function CreateBotPageNew() {
     asterApiSecret &&
     openRouterApiKey &&
     tradingSymbols.length > 0 &&
+    tradingSymbols.length <= 5 &&
     aiModel &&
     maxLeverage >= 1 &&
-    maxLeverage <= 125 &&
+    maxLeverage <= 10 &&
     maxMarginPerTrade >= 1 &&
-    maxOpenTrades >= 1;
+    maxOpenTrades >= 1 &&
+    maxOpenTrades <= 5;
 
   const steps = [
     { id: "wallet", label: "Connect Wallet", completed: isConnected },
@@ -343,38 +345,49 @@ export default function CreateBotPageNew() {
 
             <div>
               <label className="label">Trading Symbols * (Margin: USDT)</label>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
-                {SUPPORTED_TRADING_SYMBOLS.map((symbol) => (
-                  <label
-                    key={symbol}
-                    className={`flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                      tradingSymbols.includes(symbol)
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-primary/50"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={tradingSymbols.includes(symbol)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setTradingSymbols([...tradingSymbols, symbol]);
-                        } else {
-                          setTradingSymbols(
-                            tradingSymbols.filter((s) => s !== symbol)
-                          );
-                        }
-                      }}
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm font-medium">
-                      {symbol.replace("USDT", "")}
-                    </span>
-                  </label>
-                ))}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mt-2">
+                {SUPPORTED_TRADING_SYMBOLS.map((symbol) => {
+                  const isSelected = tradingSymbols.includes(symbol);
+                  const isDisabled = !isSelected && tradingSymbols.length >= 5;
+
+                  return (
+                    <label
+                      key={symbol}
+                      className={`flex items-center gap-2 p-3 rounded-lg border-2 transition-all ${
+                        isSelected
+                          ? "border-primary bg-primary/10 cursor-pointer"
+                          : isDisabled
+                          ? "border-border bg-surface-light cursor-not-allowed opacity-50"
+                          : "border-border hover:border-primary/50 cursor-pointer"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={isDisabled}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            if (tradingSymbols.length < 5) {
+                              setTradingSymbols([...tradingSymbols, symbol]);
+                            }
+                          } else {
+                            setTradingSymbols(
+                              tradingSymbols.filter((s) => s !== symbol)
+                            );
+                          }
+                        }}
+                        className="w-4 h-4 accent-primary"
+                      />
+                      <span className="text-sm font-medium">
+                        {symbol.replace("USDT", "")}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
               <p className="text-xs text-text-secondary mt-2">
-                Select 1-10 trading symbols. All trades use USDT as margin.
+                Select up to 5 trading symbols ({tradingSymbols.length}/5
+                selected). All trades use USDT as margin.
               </p>
             </div>
 
@@ -414,14 +427,19 @@ export default function CreateBotPageNew() {
                 <input
                   type="number"
                   value={maxLeverage}
-                  onChange={(e) => setMaxLeverage(Number(e.target.value))}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    if (val >= 1 && val <= 10) {
+                      setMaxLeverage(val);
+                    }
+                  }}
                   className="input"
                   min="1"
-                  max="125"
+                  max="10"
                   required
                 />
                 <p className="text-xs text-text-secondary mt-1">
-                  1x - 125x leverage
+                  1x - 10x leverage
                 </p>
               </div>
 
@@ -434,6 +452,7 @@ export default function CreateBotPageNew() {
                   className="input"
                   min="1"
                   max="100000"
+                  step="1"
                   required
                 />
                 <p className="text-xs text-text-secondary mt-1">
@@ -446,14 +465,19 @@ export default function CreateBotPageNew() {
                 <input
                   type="number"
                   value={maxOpenTrades}
-                  onChange={(e) => setMaxOpenTrades(Number(e.target.value))}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    if (val >= 1 && val <= 5) {
+                      setMaxOpenTrades(val);
+                    }
+                  }}
                   className="input"
                   min="1"
-                  max="50"
+                  max="5"
                   required
                 />
                 <p className="text-xs text-text-secondary mt-1">
-                  Maximum concurrent positions
+                  Maximum 5 concurrent positions
                 </p>
               </div>
             </div>
