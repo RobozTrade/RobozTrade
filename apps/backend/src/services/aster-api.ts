@@ -12,7 +12,7 @@ import { createHmac } from 'crypto';
 import type { Candle } from './indicators';
 import { withRateLimit } from './rate-limiter';
 
-const ASTER_API_BASE_URL = 'https://api.aster.finance';
+const ASTER_API_BASE_URL = 'https://fapi.asterdex.com';
 
 export interface AsterCredentials {
   apiKey: string;
@@ -85,35 +85,73 @@ async function makeRequest(
   endpoint: string,
   method: 'GET' | 'POST' | 'DELETE',
   credentials: AsterCredentials,
-  params: Record<string, any> = {}
+  params: Record<string, any> = {},
+  options: { requiresSignature?: boolean } = {}
 ): Promise<any> {
-  const timestamp = Date.now();
-  const queryParams: Record<string, any> = { ...params, timestamp };
+  const { requiresSignature = true } = options;
+  const payload: Record<string, any> = { ...params };
+  const headers: Record<string, string> = {};
 
-  // Sort parameters alphabetically
-  const sortedParams = Object.keys(queryParams)
-    .sort()
-    .reduce((acc, key) => {
-      acc[key] = queryParams[key];
-      return acc;
-    }, {} as Record<string, any>);
+  if (requiresSignature) {
+    payload.recvWindow ??= 5000;
+    payload.timestamp = Date.now();
+    headers['X-MBX-APIKEY'] = credentials.apiKey;
+  } else if (method !== 'GET') {
+    headers['X-MBX-APIKEY'] = credentials.apiKey;
+  }
 
-  const queryString = new URLSearchParams(sortedParams as any).toString();
-  const signature = generateSignature(credentials.apiSecret, queryString);
+  const sortedEntries = Object.entries(payload)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => [key, typeof value === 'string' ? value : String(value)] as [string, string])
+    .sort(([a], [b]) => a.localeCompare(b));
 
-  const url = `${ASTER_API_BASE_URL}${endpoint}?${queryString}&signature=${signature}`;
+  const queryString = new URLSearchParams(sortedEntries).toString();
+  let url = `${ASTER_API_BASE_URL}${endpoint}`;
+  let body: string | undefined;
+
+  if (requiresSignature) {
+    const signaturePayload = queryString;
+    const signature = generateSignature(credentials.apiSecret, signaturePayload);
+
+    if (method === 'POST') {
+      body = signaturePayload
+        ? `${signaturePayload}&signature=${signature}`
+        : `signature=${signature}`;
+    } else {
+      const query = signaturePayload
+        ? `${signaturePayload}&signature=${signature}`
+        : `signature=${signature}`;
+      url = `${url}?${query}`;
+    }
+  } else {
+    if (queryString) {
+      if (method === 'GET' || method === 'DELETE') {
+        url = `${url}?${queryString}`;
+      } else {
+        body = queryString;
+      }
+    }
+  }
+
+  if (method === 'POST') {
+    headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  }
 
   const response = await fetch(url, {
     method,
-    headers: {
-      'X-API-KEY': credentials.apiKey,
-      'Content-Type': 'application/json',
-    },
+    headers,
+    body,
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Aster API error: ${response.status} - ${error}`);
+    let errorMessage = `${response.status}`;
+    try {
+      const errorBody = await response.text();
+      errorMessage = `${response.status} - ${errorBody}`;
+    } catch (err) {
+      console.error('Error parsing Aster API error response:', err);
+    }
+    throw new Error(`Aster API error: ${errorMessage}`);
   }
 
   return response.json();
@@ -127,7 +165,13 @@ export async function getMarketData(
   credentials: AsterCredentials
 ): Promise<MarketData> {
   return withRateLimit(async () => {
-    const data = await makeRequest('/v3/ticker/24hr', 'GET', credentials, { symbol });
+    const data = await makeRequest(
+      '/fapi/v1/ticker/24hr',
+      'GET',
+      credentials,
+      { symbol },
+      { requiresSignature: false }
+    );
 
     return {
       symbol: data.symbol,
@@ -150,11 +194,17 @@ export async function getCandles(
   credentials: AsterCredentials
 ): Promise<Candle[]> {
   return withRateLimit(async () => {
-    const data = await makeRequest('/v3/klines', 'GET', credentials, {
-      symbol,
-      interval,
-      limit,
-    });
+    const data = await makeRequest(
+      '/fapi/v1/klines',
+      'GET',
+      credentials,
+      {
+        symbol,
+        interval,
+        limit,
+      },
+      { requiresSignature: false }
+    );
 
     return data.map((candle: any[]) => ({
       timestamp: candle[0],
@@ -172,7 +222,7 @@ export async function getCandles(
  */
 export async function getAccountInfo(credentials: AsterCredentials): Promise<AccountInfo> {
   return withRateLimit(async () => {
-    const data = await makeRequest('/v3/account', 'GET', credentials);
+    const data = await makeRequest('/fapi/v2/account', 'GET', credentials);
 
     return {
       availableBalance: parseFloat(data.availableBalance),
@@ -188,7 +238,7 @@ export async function getAccountInfo(credentials: AsterCredentials): Promise<Acc
  */
 export async function getPositions(credentials: AsterCredentials): Promise<Position[]> {
   return withRateLimit(async () => {
-    const data = await makeRequest('/v3/positionRisk', 'GET', credentials);
+    const data = await makeRequest('/fapi/v2/positionRisk', 'GET', credentials);
 
     return data
       .filter((pos: any) => parseFloat(pos.positionAmt) !== 0)
@@ -231,13 +281,13 @@ export async function placeOrder(
 
     if (order.leverage) {
       // Set leverage first
-      await makeRequest('/v3/leverage', 'POST', credentials, {
+      await makeRequest('/fapi/v1/leverage', 'POST', credentials, {
         symbol: order.symbol,
         leverage: order.leverage,
       });
     }
 
-    const data = await makeRequest('/v3/order', 'POST', credentials, params);
+    const data = await makeRequest('/fapi/v1/order', 'POST', credentials, params);
 
     return {
       orderId: data.orderId.toString(),
@@ -262,7 +312,7 @@ export async function cancelOrder(
   credentials: AsterCredentials
 ): Promise<void> {
   return withRateLimit(async () => {
-    await makeRequest('/v3/order', 'DELETE', credentials, {
+    await makeRequest('/fapi/v1/order', 'DELETE', credentials, {
       symbol,
       orderId,
     });
