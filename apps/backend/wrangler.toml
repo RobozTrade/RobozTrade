@@ -72,6 +72,9 @@ MIN_CONFIRMATIONS = "3"
 # Crypto Configuration
 PBKDF2_ITERATIONS = "100000"
 
+# Application environment (controls dev-only features)
+APP_RUNTIME_ENV = "production"
+
 # Rate Limiting (optional)
 # RATE_LIMIT_WINDOW_MS = "60000"
 # RATE_LIMIT_MAX_REQUESTS = "100"

@@ -8,7 +8,6 @@ import { eq, desc, and } from 'drizzle-orm';
 import { getDb } from '../lib/db';
 import { tradingBots, botExecutions, tradeHistory, positionSnapshots, botMetrics } from '../db/schema';
 import { authMiddleware, getUserId } from '../middleware/auth';
-import { executeBot } from '../services/bot-executor';
 import { asterRateLimiter } from '../services/rate-limiter';
 
 type BotExecutionBindings = {
@@ -16,58 +15,12 @@ type BotExecutionBindings = {
   JWT_SECRET: string;
   ENCRYPTION_KEY: string;
   PBKDF2_ITERATIONS?: string;
+  APP_RUNTIME_ENV?: string;
 };
 
 export const botExecutionRoutes = new Hono<{ Bindings: BotExecutionBindings }>();
 
 botExecutionRoutes.use('/*', authMiddleware);
-
-/**
- * Manually trigger bot execution
- * POST /api/bot-execution/:botId/execute
- */
-botExecutionRoutes.post('/:botId/execute', async (c) => {
-  try {
-    const userId = getUserId(c);
-    const botId = c.req.param('botId');
-    const db = getDb(c.env.DB);
-
-    // Verify bot ownership
-    const bot = await db
-      .select()
-      .from(tradingBots)
-      .where(and(eq(tradingBots.id, botId), eq(tradingBots.userId, userId)))
-      .get();
-
-    if (!bot) {
-      return c.json({ success: false, error: 'Bot not found' }, 404);
-    }
-
-    if (bot.status !== 'active') {
-      return c.json({ success: false, error: 'Bot is not active' }, 400);
-    }
-
-    // Execute bot
-    const iterations = parseInt(c.env.PBKDF2_ITERATIONS || '100000', 10);
-    const result = await executeBot(botId, db, c.env.ENCRYPTION_KEY, iterations);
-
-    return c.json({
-      success: result.success,
-      data: {
-        botId: result.botId,
-        tradesExecuted: result.tradesExecuted,
-        decisions: result.decisions,
-        errors: result.errors,
-      },
-    });
-  } catch (error: any) {
-    console.error('Error executing bot:', error);
-    return c.json(
-      { success: false, error: 'Failed to execute bot', message: error.message },
-      500
-    );
-  }
-});
 
 /**
  * Get bot execution history

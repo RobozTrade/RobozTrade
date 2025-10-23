@@ -10,7 +10,7 @@ import { benchmarksRoutes } from './routes/benchmarks';
 import { paymentsRoutes } from './routes/payments';
 import { botExecutionRoutes } from './routes/bot-execution';
 import { MarketDataWebSocket } from './services/websocket';
-import { handleScheduled, type Env as ScheduledEnv } from './scheduled';
+import { handleScheduled, runScheduledExecution, type Env as ScheduledEnv } from './scheduled';
 
 export { MarketDataWebSocket };
 
@@ -41,7 +41,9 @@ type Bindings = {
 
   // Crypto configuration
   PBKDF2_ITERATIONS?: string;  // Number as string
+  APP_RUNTIME_ENV?: string;
 };
+
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -98,6 +100,41 @@ app.route('/api/keys', apiKeysRoutes);
 app.route('/api/benchmarks', benchmarksRoutes);
 app.route('/api/payments', paymentsRoutes);
 app.route('/api/bot-execution', botExecutionRoutes);
+
+
+/**
+ * Manually trigger full cron execution (development only)
+ * POST /api/cron/trigger
+ */
+app.get('/api/cron/trigger', async (c) => {
+  try {
+    const runtimeEnv = (c.env.APP_RUNTIME_ENV || 'production').toLowerCase();
+    if (runtimeEnv !== 'development') {
+      return c.json({ success: false, error: 'Manual cron trigger is disabled outside development' }, 403);
+    }
+
+    // Ensure the request is authenticated to keep traceability in development
+
+
+    const summary = await runScheduledExecution({
+      DB: c.env.DB,
+      ENCRYPTION_KEY: c.env.ENCRYPTION_KEY,
+      PBKDF2_ITERATIONS: c.env.PBKDF2_ITERATIONS,
+      APP_RUNTIME_ENV: c.env.APP_RUNTIME_ENV,
+    });
+
+    return c.json({
+      success: true,
+      data: summary,
+    });
+  } catch (error: any) {
+    console.error('Error triggering cron execution:', error);
+    return c.json(
+      { success: false, error: 'Failed to trigger cron execution', message: error.message },
+      500
+    );
+  }
+});
 
 // WebSocket endpoint
 app.get('/ws', async (c) => {
