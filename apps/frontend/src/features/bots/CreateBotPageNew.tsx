@@ -2,11 +2,27 @@ import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { useAccount } from "wagmi";
-import { ArrowLeft, ArrowRight, CheckCircle, Loader2 } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle,
+  Loader2,
+  Info,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { WalletConnect } from "@/components/web3/WalletConnect";
 import { PaymentFlow } from "@/components/web3/PaymentFlow";
-import type { StrategyType, CreateBotInput } from "@roboz-trade/shared-types";
+import type {
+  CreateBotInput,
+  TradingSymbol,
+  AIModel,
+} from "@roboz-trade/shared-types";
+import {
+  SUPPORTED_TRADING_SYMBOLS,
+  SUPPORTED_AI_MODELS,
+  DEFAULT_PROMPT_TEMPLATE,
+  PROMPT_TEMPLATE_VARIABLES,
+} from "@roboz-trade/shared-types";
 
 type Step = "wallet" | "payment" | "config" | "review";
 
@@ -23,16 +39,17 @@ export default function CreateBotPageNew() {
   const [asterApiSecret, setAsterApiSecret] = useState("");
   const [openRouterApiKey, setOpenRouterApiKey] = useState("");
   const [name, setName] = useState("");
-  const [strategyType, setStrategyType] = useState<StrategyType>("ma_cross");
-  const [tradingPair, setTradingPair] = useState("BTCUSDT");
+  const [tradingSymbols, setTradingSymbols] = useState<TradingSymbol[]>([
+    "BTCUSDT",
+  ]);
+  const [aiModel, setAiModel] = useState<AIModel>(
+    "anthropic/claude-3.5-sonnet"
+  );
+  const [customPrompt, setCustomPrompt] = useState(DEFAULT_PROMPT_TEMPLATE);
   const [maxLeverage, setMaxLeverage] = useState(10);
   const [maxMarginPerTrade, setMaxMarginPerTrade] = useState(100);
-  const [profitFactorThreshold, setProfitFactorThreshold] = useState(1.5);
-  const [maxPositionSize, setMaxPositionSize] = useState(1000);
-  const [stopLossPercentage, setStopLossPercentage] = useState(2);
-  const [takeProfitPercentage, setTakeProfitPercentage] = useState(5);
-  const [maxDailyLoss, setMaxDailyLoss] = useState(500);
   const [maxOpenTrades, setMaxOpenTrades] = useState(3);
+  const [showPromptVariables, setShowPromptVariables] = useState(false);
 
   const validatePaymentMutation = useMutation({
     mutationFn: async (txHash: string) => {
@@ -73,29 +90,29 @@ export default function CreateBotPageNew() {
       asterApiSecret,
       openRouterApiKey,
       name,
-      strategyType,
-      tradingPair,
-      config: {
-        shortPeriod: 10,
-        longPeriod: 20,
-      },
-      riskConfig: {
-        maxPositionSize,
-        stopLossPercentage,
-        takeProfitPercentage,
-        maxDailyLoss,
-        maxOpenTrades,
-        maxLeverage,
-        maxMarginPerTrade,
-        profitFactorThreshold,
-      },
+      tradingSymbols,
+      aiModel,
+      customPrompt:
+        customPrompt !== DEFAULT_PROMPT_TEMPLATE ? customPrompt : undefined,
+      maxLeverage,
+      maxMarginPerTrade,
+      maxOpenTrades,
     };
 
     createBotMutation.mutate(input);
   };
 
   const canProceedToReview =
-    name && asterApiKey && asterApiSecret && openRouterApiKey && tradingPair;
+    name &&
+    asterApiKey &&
+    asterApiSecret &&
+    openRouterApiKey &&
+    tradingSymbols.length > 0 &&
+    aiModel &&
+    maxLeverage >= 1 &&
+    maxLeverage <= 125 &&
+    maxMarginPerTrade >= 1 &&
+    maxOpenTrades >= 1;
 
   const steps = [
     { id: "wallet", label: "Connect Wallet", completed: isConnected },
@@ -253,9 +270,14 @@ export default function CreateBotPageNew() {
           className="space-y-6"
         >
           <div className="card space-y-6">
-            <h3 className="text-xl font-semibold text-text-primary">
-              Bot Configuration
-            </h3>
+            <div>
+              <h3 className="text-xl font-semibold text-text-primary">
+                Bot Configuration
+              </h3>
+              <p className="text-sm text-text-secondary mt-1">
+                Set up your AI-powered trading bot with secure payment
+              </p>
+            </div>
 
             <div>
               <label className="label">Bot Name *</label>
@@ -266,6 +288,7 @@ export default function CreateBotPageNew() {
                 className="input"
                 placeholder="My Trading Bot"
                 required
+                maxLength={100}
               />
             </div>
 
@@ -318,45 +341,76 @@ export default function CreateBotPageNew() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="label">Trading Pair *</label>
-                <input
-                  type="text"
-                  value={tradingPair}
-                  onChange={(e) => setTradingPair(e.target.value)}
-                  className="input"
-                  placeholder="BTCUSDT"
-                  required
-                />
+            <div>
+              <label className="label">Trading Symbols * (Margin: USDT)</label>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
+                {SUPPORTED_TRADING_SYMBOLS.map((symbol) => (
+                  <label
+                    key={symbol}
+                    className={`flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                      tradingSymbols.includes(symbol)
+                        ? "border-primary bg-primary/10"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={tradingSymbols.includes(symbol)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setTradingSymbols([...tradingSymbols, symbol]);
+                        } else {
+                          setTradingSymbols(
+                            tradingSymbols.filter((s) => s !== symbol)
+                          );
+                        }
+                      }}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm font-medium">
+                      {symbol.replace("USDT", "")}
+                    </span>
+                  </label>
+                ))}
               </div>
+              <p className="text-xs text-text-secondary mt-2">
+                Select 1-10 trading symbols. All trades use USDT as margin.
+              </p>
+            </div>
 
-              <div>
-                <label className="label">Strategy Type</label>
-                <select
-                  value={strategyType}
-                  onChange={(e) =>
-                    setStrategyType(e.target.value as StrategyType)
-                  }
-                  className="input"
-                >
-                  <option value="ma_cross">Moving Average Cross</option>
-                  <option value="rsi">RSI</option>
-                  <option value="bollinger">Bollinger Bands</option>
-                  <option value="custom">Custom</option>
-                </select>
-              </div>
+            <div>
+              <label className="label">AI Model *</label>
+              <select
+                value={aiModel}
+                onChange={(e) => setAiModel(e.target.value as AIModel)}
+                className="input"
+                required
+              >
+                {SUPPORTED_AI_MODELS.map((model) => (
+                  <option key={model.value} value={model.value}>
+                    {model.label} - {model.description}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-text-secondary mt-1">
+                Choose the AI model to power your trading decisions
+              </p>
             </div>
           </div>
 
           <div className="card space-y-6">
-            <h3 className="text-xl font-semibold text-text-primary">
-              Risk Management
-            </h3>
+            <div>
+              <h3 className="text-xl font-semibold text-text-primary">
+                Risk Management
+              </h3>
+              <p className="text-sm text-text-secondary mt-1">
+                Configure trading limits and risk parameters
+              </p>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="label">Max Leverage</label>
+                <label className="label">Max Leverage *</label>
                 <input
                   type="number"
                   value={maxLeverage}
@@ -364,101 +418,102 @@ export default function CreateBotPageNew() {
                   className="input"
                   min="1"
                   max="125"
+                  required
                 />
+                <p className="text-xs text-text-secondary mt-1">
+                  1x - 125x leverage
+                </p>
               </div>
 
               <div>
-                <label className="label">Max Margin Per Trade (USDT)</label>
+                <label className="label">Max Margin Per Trade (USDT) *</label>
                 <input
                   type="number"
                   value={maxMarginPerTrade}
                   onChange={(e) => setMaxMarginPerTrade(Number(e.target.value))}
                   className="input"
                   min="1"
-                />
-              </div>
-
-              <div>
-                <label className="label">Profit Factor Threshold</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={profitFactorThreshold}
-                  onChange={(e) =>
-                    setProfitFactorThreshold(Number(e.target.value))
-                  }
-                  className="input"
-                  min="0.1"
+                  max="100000"
+                  required
                 />
                 <p className="text-xs text-text-secondary mt-1">
-                  Bot stops when PF falls below this value
+                  Maximum USDT per position
                 </p>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="label">Max Position Size (USDT)</label>
-                <input
-                  type="number"
-                  value={maxPositionSize}
-                  onChange={(e) => setMaxPositionSize(Number(e.target.value))}
-                  className="input"
-                  min="1"
-                />
-              </div>
 
               <div>
-                <label className="label">Max Open Trades</label>
+                <label className="label">Max Open Trades *</label>
                 <input
                   type="number"
                   value={maxOpenTrades}
                   onChange={(e) => setMaxOpenTrades(Number(e.target.value))}
                   className="input"
                   min="1"
+                  max="50"
+                  required
                 />
+                <p className="text-xs text-text-secondary mt-1">
+                  Maximum concurrent positions
+                </p>
               </div>
             </div>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="card space-y-6">
+            <div className="flex items-start justify-between">
               <div>
-                <label className="label">Stop Loss (%)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={stopLossPercentage}
-                  onChange={(e) =>
-                    setStopLossPercentage(Number(e.target.value))
-                  }
-                  className="input"
-                  min="0.1"
-                />
+                <h3 className="text-xl font-semibold text-text-primary">
+                  AI Prompt Template
+                </h3>
+                <p className="text-sm text-text-secondary mt-1">
+                  Customize the AI trading instructions (optional)
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setShowPromptVariables(!showPromptVariables)}
+                className="btn btn-secondary text-sm flex items-center gap-2"
+              >
+                <Info className="w-4 h-4" />
+                {showPromptVariables ? "Hide" : "Show"} Variables
+              </button>
+            </div>
 
-              <div>
-                <label className="label">Take Profit (%)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={takeProfitPercentage}
-                  onChange={(e) =>
-                    setTakeProfitPercentage(Number(e.target.value))
-                  }
-                  className="input"
-                  min="0.1"
-                />
+            {showPromptVariables && (
+              <div className="bg-surface-light rounded-lg p-4 border border-border">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">
+                  Available Template Variables
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                  {PROMPT_TEMPLATE_VARIABLES.map((variable) => (
+                    <div key={variable.name} className="flex gap-2">
+                      <code className="text-primary font-mono bg-surface px-2 py-1 rounded">
+                        {variable.name}
+                      </code>
+                      <span className="text-text-secondary">
+                        {variable.description}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
+            )}
 
-              <div>
-                <label className="label">Max Daily Loss (USDT)</label>
-                <input
-                  type="number"
-                  value={maxDailyLoss}
-                  onChange={(e) => setMaxDailyLoss(Number(e.target.value))}
-                  className="input"
-                  min="1"
-                />
-              </div>
+            <div>
+              <textarea
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+                className="input font-mono text-sm"
+                rows={12}
+                placeholder="Enter custom prompt template..."
+                maxLength={10000}
+              />
+              <p className="text-xs text-text-secondary mt-1">
+                Use variables like {"{"}
+                {"{"} current_price {"}"}
+                {"}"} to insert dynamic data. Leave default for standard trading
+                logic.
+              </p>
             </div>
           </div>
 
@@ -487,7 +542,7 @@ export default function CreateBotPageNew() {
         <div className="space-y-6">
           <div className="card space-y-4">
             <h3 className="text-xl font-semibold text-text-primary">
-              Review Your Bot
+              Review Your Bot Configuration
             </h3>
 
             <div className="space-y-3">
@@ -496,15 +551,19 @@ export default function CreateBotPageNew() {
                 <span className="text-text-primary font-medium">{name}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-border">
-                <span className="text-text-secondary">Trading Pair:</span>
+                <span className="text-text-secondary">Trading Symbols:</span>
                 <span className="text-text-primary font-medium">
-                  {tradingPair}
+                  {tradingSymbols.map((s) => s.replace("USDT", "")).join(", ")}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-border">
-                <span className="text-text-secondary">Strategy:</span>
+                <span className="text-text-secondary">Margin Asset:</span>
+                <span className="text-text-primary font-medium">USDT</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-border">
+                <span className="text-text-secondary">AI Model:</span>
                 <span className="text-text-primary font-medium">
-                  {strategyType.replace("_", " ").toUpperCase()}
+                  {SUPPORTED_AI_MODELS.find((m) => m.value === aiModel)?.label}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-border">
@@ -522,11 +581,17 @@ export default function CreateBotPageNew() {
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-border">
-                <span className="text-text-secondary">
-                  Profit Factor Threshold:
-                </span>
+                <span className="text-text-secondary">Max Open Trades:</span>
                 <span className="text-text-primary font-medium">
-                  {profitFactorThreshold}
+                  {maxOpenTrades}
+                </span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-border">
+                <span className="text-text-secondary">Custom Prompt:</span>
+                <span className="text-text-primary font-medium">
+                  {customPrompt === DEFAULT_PROMPT_TEMPLATE
+                    ? "Default"
+                    : "Custom"}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-border">

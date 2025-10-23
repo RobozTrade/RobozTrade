@@ -42,8 +42,16 @@ export const tradingBots = sqliteTable('trading_bots', {
   openRouterApiKey: text('openrouter_api_key'),
   name: text('name').notNull(),
   status: text('status').notNull().default('draft'),
-  strategyType: text('strategy_type').notNull(),
-  tradingPair: text('trading_pair').notNull(),
+  // New fields for simplified bot configuration
+  tradingSymbols: text('trading_symbols', { mode: 'json' }), // Array of trading symbols
+  aiModel: text('ai_model'), // AI model to use
+  customPrompt: text('custom_prompt'), // Custom prompt template
+  maxLeverage: integer('max_leverage'),
+  maxMarginPerTrade: real('max_margin_per_trade'),
+  maxOpenTrades: integer('max_open_trades'),
+  // Legacy fields (kept for backward compatibility)
+  strategyType: text('strategy_type'),
+  tradingPair: text('trading_pair'),
   config: text('config', { mode: 'json' }),
   riskConfig: text('risk_config', { mode: 'json' }),
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),

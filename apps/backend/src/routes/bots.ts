@@ -7,37 +7,46 @@ import { getDb } from '../lib/db';
 import { tradingBots, apiKeys, botPayments } from '../db/schema';
 import { authMiddleware, getUserId } from '../middleware/auth';
 import { encrypt } from '../lib/crypto';
-import type { CreateBotInput, CreateBotInputLegacy, UpdateBotInput } from '@roboz-trade/shared-types';
+
+// Supported trading symbols
+const SUPPORTED_SYMBOLS = [
+  'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT',
+  'ADAUSDT', 'MATICUSDT', 'DOTUSDT', 'AVAXUSDT', 'LINKUSDT', 'UNIUSDT',
+  'ATOMUSDT', 'LTCUSDT', 'NEARUSDT', 'APTUSDT', 'ARBUSDT', 'OPUSDT'
+] as const;
+
+// Supported AI models
+const SUPPORTED_AI_MODELS = [
+  'openai/gpt-4-turbo', 'openai/gpt-4o', 'openai/gpt-4o-mini',
+  'anthropic/claude-3.5-sonnet', 'anthropic/claude-3-opus', 'anthropic/claude-3-haiku',
+  'google/gemini-pro-1.5', 'google/gemini-flash-1.5',
+  'meta-llama/llama-3.1-405b', 'meta-llama/llama-3.1-70b',
+  'x-ai/grok-beta', 'deepseek/deepseek-chat', 'qwen/qwen-2.5-72b'
+] as const;
 
 // New bot creation schema with payment and direct API keys
 const createBotSchema = z.object({
   paymentTxHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid transaction hash'),
-  asterApiKey: z.string().min(1),
-  asterApiSecret: z.string().min(1),
-  openRouterApiKey: z.string().min(1),
-  name: z.string().min(1),
-  strategyType: z.enum(['ma_cross', 'rsi', 'bollinger', 'custom']),
-  tradingPair: z.string(),
-  config: z.object({
-    shortPeriod: z.number().optional(),
-    longPeriod: z.number().optional(),
-    rsiPeriod: z.number().optional(),
-    oversoldThreshold: z.number().optional(),
-    overboughtThreshold: z.number().optional(),
-    period: z.number().optional(),
-    standardDeviations: z.number().optional(),
-    customLogic: z.string().optional(),
+  asterApiKey: z.string().min(1, 'Aster API Key is required'),
+  asterApiSecret: z.string().min(1, 'Aster API Secret is required'),
+  openRouterApiKey: z.string().min(1, 'OpenRouter API Key is required'),
+  name: z.string().min(1, 'Bot name is required').max(100, 'Bot name too long'),
+  tradingSymbols: z.array(z.enum(SUPPORTED_SYMBOLS as any))
+    .min(1, 'At least one trading symbol is required')
+    .max(10, 'Maximum 10 trading symbols allowed'),
+  aiModel: z.enum(SUPPORTED_AI_MODELS as any, {
+    errorMap: () => ({ message: 'Invalid AI model selected' })
   }),
-  riskConfig: z.object({
-    maxPositionSize: z.number(),
-    stopLossPercentage: z.number(),
-    takeProfitPercentage: z.number(),
-    maxDailyLoss: z.number(),
-    maxOpenTrades: z.number(),
-    maxLeverage: z.number().optional(),
-    maxMarginPerTrade: z.number().optional(),
-    profitFactorThreshold: z.number().optional(),
-  }),
+  customPrompt: z.string().max(10000, 'Custom prompt too long').optional(),
+  maxLeverage: z.number()
+    .min(1, 'Leverage must be at least 1x')
+    .max(125, 'Maximum leverage is 125x'),
+  maxMarginPerTrade: z.number()
+    .min(1, 'Margin per trade must be at least 1 USDT')
+    .max(100000, 'Maximum margin per trade is 100,000 USDT'),
+  maxOpenTrades: z.number()
+    .min(1, 'Must allow at least 1 open trade')
+    .max(50, 'Maximum 50 open trades allowed'),
 });
 
 // Legacy bot creation schema (for backward compatibility)
@@ -189,10 +198,12 @@ botsRoutes.post('/', async (c) => {
         asterApiSecret: encryptedAsterSecret,
         openRouterApiKey: encryptedOpenRouterKey,
         name: data.name,
-        strategyType: data.strategyType,
-        tradingPair: data.tradingPair,
-        config: data.config,
-        riskConfig: data.riskConfig,
+        tradingSymbols: data.tradingSymbols,
+        aiModel: data.aiModel,
+        customPrompt: data.customPrompt,
+        maxLeverage: data.maxLeverage,
+        maxMarginPerTrade: data.maxMarginPerTrade,
+        maxOpenTrades: data.maxOpenTrades,
         status: 'draft',
       });
 
