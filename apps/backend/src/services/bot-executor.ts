@@ -282,7 +282,7 @@ export async function executeBot(
         const context = contexts.find(ctx => ctx.symbol === decision.symbol);
         if (!context) continue;
 
-        // Skip if confidence is too low
+        // Skip if confidence is below threshold
         if (decision.confidence < 0.65) {
           console.log(`Skipping ${decision.symbol} - low confidence: ${decision.confidence}`);
           continue;
