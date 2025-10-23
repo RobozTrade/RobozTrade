@@ -126,8 +126,12 @@ app.onError((err, c) => {
 });
 
 // Export the scheduled event handler for Cloudflare Workers
-export const scheduled = (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) =>
-  handleScheduled(event, env as ScheduledEnv, ctx);
-
-export default app;
+export default {
+  fetch(request: Request, env: Bindings, ctx: ExecutionContext) {
+    return app.fetch(request, env, ctx);
+  },
+  scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
+    return handleScheduled(event, env as ScheduledEnv, ctx);
+  },
+};
 
