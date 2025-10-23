@@ -36,39 +36,55 @@ export const SUPPORTED_AI_MODELS: { value: AIModel; label: string; description: 
   { value: 'qwen/qwen-2.5-72b', label: 'Qwen 2.5 72B', description: 'Alibaba\'s advanced model' },
 ];
 
-export const DEFAULT_PROMPT_TEMPLATE = `You are an expert cryptocurrency futures trader managing a portfolio with {{available_cash}} USDT available.
+export const DEFAULT_PROMPT_TEMPLATE = `You are an expert cryptocurrency futures trader overseeing a multi-asset USDT-margined portfolio.
 
-Current Time: {{current_time}}
-Trading Session: {{cycle_count}} cycles, {{minutes_trading}} minutes active
-Account Performance: {{total_return}}% return, Sharpe Ratio: {{sharpe_ratio}}
+PORTFOLIO OVERVIEW
+- Current Time: {{current_time}}
+- Available Cash: {{available_cash}} USDT | Account Value: {{account_value}} USDT
+- Total Return: {{total_return}}% | Sharpe Ratio: {{sharpe_ratio}}
+- Current Exposure: {{account_exposure}} USDT
+- Risk Limits: Max Leverage {{max_leverage}}x • Min Notional/Trade {{min_notional_per_trade}} USDT • Max Notional/Trade {{max_notional_per_trade}} USDT • Max Open Trades {{max_open_trades}}
 
-MARKET DATA:
+MARKET INTELLIGENCE
 {{#each symbols}}
-{{symbol}}:
-- Price: {{current_price}} (EMA20: {{current_ema20}})
-- MACD: {{current_macd}} | RSI(7): {{current_rsi}}
-- Open Interest: {{open_interest}} | Funding Rate: {{funding_rate}}
+{{symbol}} Snapshot
+- Spot: {{current_price}} USDT | EMA20 {{current_ema20}} | EMA50 {{current_ema50}}
+- MACD: {{current_macd}} (signal {{current_macd_signal}}, hist {{current_macd_histogram}})
+- RSI: 7-period {{current_rsi7}} | 14-period {{current_rsi14}}
+- Open Interest: {{open_interest}} | Funding Rate: {{funding_rate}} ({{funding_rate_percent}}%)
+
+Intraday Momentum (15m, oldest → latest)
+- Mid prices: {{intraday_mid_prices}}
+- EMA20: {{intraday_ema20_series}}
+- MACD: {{intraday_macd_series}}
+- RSI(7): {{intraday_rsi7_series}}
+- RSI(14): {{intraday_rsi14_series}}
+
+Higher-Timeframe Context (4h)
+- EMA20 vs EMA50: {{ht_ema20}} vs {{ht_ema50}}
+- ATR(3) vs ATR(14): {{ht_atr3}} vs {{ht_atr14}}
+- Volume: current {{ht_volume_current}} vs average {{ht_volume_average}}
+- MACD series: {{ht_macd_series}}
+- RSI(14) series: {{ht_rsi14_series}}
+
 {{#if position}}
-- Current Position: {{position.quantity}} @ {{position.entry_price}} (PnL: {{position.unrealized_pnl}} USDT)
-- Leverage: {{position.leverage}}x | Stop Loss: {{position.stop_loss}} | Take Profit: {{position.profit_target}}
+Position Status
+- Side: {{position.side}} | Quantity: {{position.quantity}} | Entry: {{position.entry_price}}
+- Unrealized PnL: {{position.unrealized_pnl}} USDT
+- Leverage: {{position.leverage}}x | Margin: {{position.margin}} USDT | Liquidation: {{position.liquidation_price}}
 {{/if}}
 {{/each}}
 
-INSTRUCTIONS:
-Analyze the market data and provide trading signals for each symbol.
-For each symbol, respond with:
-- signal: "buy", "sell", or "hold"
-- quantity: position size
-- leverage: 1-{{max_leverage}}
-- stop_loss: stop loss price
-- profit_target: take profit price
-- confidence: 0-1 confidence score
-- justification: brief reasoning
+TASK
+For each symbol, provide:
+- action: BUY, SELL, HOLD, or CLOSE
+- target_notional: desired notional exposure within limits (USDT)
+- leverage: up to {{max_leverage}}x (justify higher leverage)
+- stop_loss & take_profit levels (USDT)
+- confidence (0-1)
+- reasoning summarizing intraday + higher timeframe drivers
 
-Risk Limits:
-- Max Leverage: {{max_leverage}}x
-- Max Margin Per Trade: {{max_margin_per_trade}} USDT
-- Max Open Trades: {{max_open_trades}}`;
+Ensure notional sizing respects portfolio limits and exchange minimums, preserves diversification, and avoids conflicting positions.`;
 
 export const PROMPT_TEMPLATE_VARIABLES = [
   { name: '{{current_time}}', description: 'Current timestamp' },
@@ -78,20 +94,42 @@ export const PROMPT_TEMPLATE_VARIABLES = [
   { name: '{{account_value}}', description: 'Total account value in USDT' },
   { name: '{{total_return}}', description: 'Total return percentage' },
   { name: '{{sharpe_ratio}}', description: 'Sharpe ratio of the strategy' },
+  { name: '{{account_exposure}}', description: 'Total current portfolio exposure in USDT' },
   { name: '{{max_leverage}}', description: 'Maximum allowed leverage' },
-  { name: '{{max_margin_per_trade}}', description: 'Maximum margin per trade in USDT' },
+  { name: '{{min_notional_per_trade}}', description: 'Minimum notional per trade in USDT' },
+  { name: '{{max_notional_per_trade}}', description: 'Maximum notional per trade in USDT' },
   { name: '{{max_open_trades}}', description: 'Maximum number of open positions' },
   { name: '{{symbol}}', description: 'Trading symbol (e.g., BTC, ETH)' },
   { name: '{{current_price}}', description: 'Current market price' },
   { name: '{{current_ema20}}', description: 'Current 20-period EMA' },
+  { name: '{{current_ema50}}', description: 'Current 50-period EMA' },
   { name: '{{current_macd}}', description: 'Current MACD value' },
-  { name: '{{current_rsi}}', description: 'Current RSI(7) value' },
+  { name: '{{current_macd_signal}}', description: 'Current MACD signal value' },
+  { name: '{{current_macd_histogram}}', description: 'Current MACD histogram value' },
+  { name: '{{current_rsi7}}', description: 'Current RSI(7) value' },
+  { name: '{{current_rsi14}}', description: 'Current RSI(14) value' },
   { name: '{{open_interest}}', description: 'Current open interest' },
-  { name: '{{funding_rate}}', description: 'Current funding rate' },
+  { name: '{{funding_rate}}', description: 'Current funding rate (decimal)' },
+  { name: '{{funding_rate_percent}}', description: 'Current funding rate (percentage)' },
+  { name: '{{intraday_mid_prices}}', description: '15-minute mid prices (array)' },
+  { name: '{{intraday_ema20_series}}', description: '15-minute EMA20 series' },
+  { name: '{{intraday_macd_series}}', description: '15-minute MACD series' },
+  { name: '{{intraday_rsi7_series}}', description: '15-minute RSI(7) series' },
+  { name: '{{intraday_rsi14_series}}', description: '15-minute RSI(14) series' },
+  { name: '{{ht_ema20}}', description: '4-hour EMA20' },
+  { name: '{{ht_ema50}}', description: '4-hour EMA50' },
+  { name: '{{ht_atr3}}', description: '4-hour ATR(3)' },
+  { name: '{{ht_atr14}}', description: '4-hour ATR(14)' },
+  { name: '{{ht_volume_current}}', description: '4-hour current candle volume' },
+  { name: '{{ht_volume_average}}', description: 'Average 4-hour volume' },
+  { name: '{{ht_macd_series}}', description: '4-hour MACD series' },
+  { name: '{{ht_rsi14_series}}', description: '4-hour RSI(14) series' },
   { name: '{{position.quantity}}', description: 'Current position quantity' },
   { name: '{{position.entry_price}}', description: 'Position entry price' },
   { name: '{{position.unrealized_pnl}}', description: 'Unrealized profit/loss' },
   { name: '{{position.leverage}}', description: 'Position leverage' },
+  { name: '{{position.margin}}', description: 'Margin allocated to the position' },
+  { name: '{{position.liquidation_price}}', description: 'Liquidation price for the position' },
   { name: '{{position.stop_loss}}', description: 'Position stop loss price' },
   { name: '{{position.profit_target}}', description: 'Position take profit price' },
 ];
@@ -241,6 +279,8 @@ export interface RiskConfig {
   maxOpenTrades: number;
   maxLeverage?: number;
   maxMarginPerTrade?: number;
+  minNotionalPerTrade?: number;
+  maxNotionalPerTrade?: number;
   profitFactorThreshold?: number;
 }
 
@@ -261,7 +301,8 @@ export interface CreateBotInput {
 
   // Risk configuration (simplified)
   maxLeverage: number;
-  maxMarginPerTrade: number;
+  minNotionalPerTrade: number;
+  maxNotionalPerTrade: number;
   maxOpenTrades: number;
 }
 

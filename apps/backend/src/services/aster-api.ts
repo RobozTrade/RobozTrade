@@ -13,6 +13,12 @@ import type { Candle } from './indicators';
 import { withRateLimit } from './rate-limiter';
 
 const ASTER_API_BASE_URL = 'https://fapi.asterdex.com';
+const SYMBOL_METADATA_TTL_MS = 1000 * 60 * 5; // 5 minutes
+
+let symbolMetadataCache: {
+  timestamp: number;
+  data: Map<string, SymbolMetadata>;
+} | null = null;
 
 export interface AsterCredentials {
   apiKey: string;
@@ -45,6 +51,18 @@ export interface AccountInfo {
   totalBalance: number;
   unrealizedPnl: number;
   marginUsed: number;
+}
+
+export interface SymbolMetadata {
+  symbol: string;
+  minNotional: number;
+  maxNotional?: number;
+  minQty: number;
+  maxQty?: number;
+  stepSize: number;
+  tickSize: number;
+  pricePrecision: number;
+  quantityPrecision: number;
 }
 
 export interface OrderRequest {
@@ -155,6 +173,74 @@ async function makeRequest(
   }
 
   return response.json();
+}
+
+function parseNumber(value: any, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseSymbolMetadata(symbolInfo: any): SymbolMetadata | null {
+  if (!symbolInfo || typeof symbolInfo !== 'object') {
+    return null;
+  }
+
+  const filters = Array.isArray(symbolInfo.filters) ? symbolInfo.filters : [];
+  const lotSize = filters.find((filter: any) => filter.filterType === 'LOT_SIZE');
+  const marketLotSize = filters.find((filter: any) => filter.filterType === 'MARKET_LOT_SIZE');
+  const priceFilter = filters.find((filter: any) => filter.filterType === 'PRICE_FILTER');
+  const notionalFilter = filters.find((filter: any) => filter.filterType === 'NOTIONAL' || filter.filterType === 'MIN_NOTIONAL');
+
+  const minQty = parseNumber(marketLotSize?.minQty ?? lotSize?.minQty, 0);
+  const maxQtyRaw = marketLotSize?.maxQty ?? lotSize?.maxQty;
+  const maxQty = maxQtyRaw !== undefined ? parseNumber(maxQtyRaw, Number.POSITIVE_INFINITY) : undefined;
+  const stepSize = parseNumber(lotSize?.stepSize, 0.001);
+  const tickSize = parseNumber(priceFilter?.tickSize, 0.01);
+  const minNotional = parseNumber(notionalFilter?.minNotional ?? notionalFilter?.notional, 5);
+  const maxNotionalRaw = notionalFilter?.maxNotional ?? notionalFilter?.maxNotionalValue;
+  const maxNotional = maxNotionalRaw !== undefined ? parseNumber(maxNotionalRaw, Number.POSITIVE_INFINITY) : undefined;
+
+  return {
+    symbol: symbolInfo.symbol,
+    minNotional,
+    maxNotional: maxNotional && Number.isFinite(maxNotional) ? maxNotional : undefined,
+    minQty,
+    maxQty: maxQty && Number.isFinite(maxQty) ? maxQty : undefined,
+    stepSize,
+    tickSize,
+    pricePrecision: parseInt(symbolInfo.pricePrecision ?? '2', 10) || 2,
+    quantityPrecision: parseInt(symbolInfo.quantityPrecision ?? '3', 10) || 3,
+  };
+}
+
+export async function getSymbolMetadata(credentials: AsterCredentials): Promise<Map<string, SymbolMetadata>> {
+  if (symbolMetadataCache && Date.now() - symbolMetadataCache.timestamp < SYMBOL_METADATA_TTL_MS) {
+    return symbolMetadataCache.data;
+  }
+
+  const response = await makeRequest('/fapi/v1/exchangeInfo', 'GET', credentials, {}, { requiresSignature: false });
+  const symbols = Array.isArray(response?.symbols) ? response.symbols : [];
+  const map = new Map<string, SymbolMetadata>();
+
+  for (const symbolInfo of symbols) {
+    if (symbolInfo?.status !== 'TRADING') {
+      continue;
+    }
+
+    const metadata = parseSymbolMetadata(symbolInfo);
+    if (!metadata) {
+      continue;
+    }
+
+    map.set(metadata.symbol, metadata);
+  }
+
+  symbolMetadataCache = {
+    timestamp: Date.now(),
+    data: map,
+  };
+
+  return map;
 }
 
 /**

@@ -10,7 +10,7 @@ import { tradingBots, tradeHistory, botExecutions, positionSnapshots, botMetrics
 import { decrypt } from '../lib/crypto';
 import * as AsterAPI from './aster-api';
 import * as AITrader from './ai-trader';
-import { calculateIndicators } from './indicators';
+import { calculateIndicators, calculateATR } from './indicators';
 import type { TradingContext, TradingDecision } from './ai-trader';
 import type { DbClient } from '../lib/db';
 import type { AccountInfo } from './aster-api';
@@ -129,22 +129,56 @@ export async function executeBot(
     const contexts: TradingContext[] = [];
     const marketDataSnapshot: Record<string, any> = {};
 
+    let symbolMetadataMap = new Map<string, AsterAPI.SymbolMetadata>();
+    try {
+      symbolMetadataMap = await AsterAPI.getSymbolMetadata(credentials);
+    } catch (metadataError: any) {
+      errors.push(`Failed to load exchange metadata: ${metadataError.message}`);
+      console.error('Error fetching symbol metadata:', metadataError);
+    }
+
     for (const symbol of tradingSymbols) {
       try {
         // Fetch market data
         const marketData = await AsterAPI.getMarketData(symbol, credentials);
 
         // Fetch candlestick data for technical analysis (last 50 candles, 15m interval)
-        const candles = await AsterAPI.getCandles(symbol, '15m', 50, credentials);
+        const instrument = symbolMetadataMap.get(symbol);
+
+        // Fetch candlestick data for technical analysis
+        const intradayCandles = await AsterAPI.getCandles(symbol, '15m', 120, credentials);
+        const higherTimeframeCandles = await AsterAPI.getCandles(symbol, '4h', 120, credentials);
+
+        if (intradayCandles.length === 0) {
+          throw new Error('Insufficient intraday candle data');
+        }
+
+        if (higherTimeframeCandles.length === 0) {
+          throw new Error('Insufficient higher timeframe candle data');
+        }
 
         // Calculate technical indicators
-        const indicators = calculateIndicators(candles);
+        const indicators = calculateIndicators(intradayCandles);
+        const higherTimeframeIndicators = calculateIndicators(higherTimeframeCandles);
+
+        const intradayMidPrices = intradayCandles.map(candle => (candle.high + candle.low) / 2);
+        const higherTimeframeAtr3 = calculateATR(higherTimeframeCandles, 3);
+        const higherTimeframeAtr14 = calculateATR(higherTimeframeCandles, 14);
+        const higherTimeframeVolume = higherTimeframeCandles[higherTimeframeCandles.length - 1]?.volume ?? 0;
+        const higherTimeframeVolumeAverage = higherTimeframeCandles
+          .slice(-10)
+          .reduce((sum, candle) => sum + candle.volume, 0) /
+          Math.max(1, Math.min(10, higherTimeframeCandles.length));
 
         // Find position for this symbol
         const position = allPositions.find(p => p.symbol === symbol);
 
         // Calculate minutes trading (simplified - use bot creation time)
         const minutesTrading = Math.floor((Date.now() - new Date(bot.createdAt!).getTime()) / 60000);
+
+        const minNotionalPerTrade = bot.minNotionalPerTrade ?? 5;
+        const configuredMaxNotional = bot.maxNotionalPerTrade ?? Math.max(minNotionalPerTrade, 500);
+        const maxNotionalPerTrade = Math.max(configuredMaxNotional, minNotionalPerTrade);
 
         const context: TradingContext = {
           symbol,
@@ -159,14 +193,35 @@ export async function executeBot(
           cycleCount: metrics?.totalTrades || 0,
           minutesTrading,
           maxLeverage: bot.maxLeverage || 10,
-          maxMarginPerTrade: bot.maxMarginPerTrade || 100,
+          minNotionalPerTrade,
+          maxNotionalPerTrade,
           maxOpenTrades: bot.maxOpenTrades || 5,
           currentOpenTrades: allPositions.length,
           accountExposure: totalExposure,
+          instrument,
+          intradayMidPrices,
+          intradayEma20Series: indicators.ema20Series,
+          intradayMacdSeries: indicators.macdSeries,
+          intradayRsi7Series: indicators.rsi7Series,
+          intradayRsi14Series: indicators.rsi14Series,
+          higherTimeframeEma20: higherTimeframeIndicators.ema20,
+          higherTimeframeEma50: higherTimeframeIndicators.ema50,
+          higherTimeframeAtr3: higherTimeframeAtr3,
+          higherTimeframeAtr14: higherTimeframeAtr14,
+          higherTimeframeVolume,
+          higherTimeframeVolumeAverage,
+          higherTimeframeMacdSeries: higherTimeframeIndicators.macdSeries,
+          higherTimeframeRsi14Series: higherTimeframeIndicators.rsi14Series,
         };
 
         contexts.push(context);
-        marketDataSnapshot[symbol] = { marketData, indicators, position };
+        marketDataSnapshot[symbol] = {
+          marketData,
+          intradayIndicators: indicators,
+          higherTimeframeIndicators,
+          position,
+          instrument,
+        };
 
       } catch (error: any) {
         errors.push(`Error fetching data for ${symbol}: ${error.message}`);
@@ -322,15 +377,9 @@ async function executeBuyOrder(
   db: DbClient,
   botId: string
 ) {
-  const leverage = decision.suggestedLeverage || context.maxLeverage;
-  const quantity = decision.suggestedQuantity || AITrader.calculatePositionSize(
-    context.currentPrice,
-    leverage,
-    context.maxMarginPerTrade,
-    context.accountBalance
-  );
+  const leverage = sanitizeLeverage(decision.suggestedLeverage, context.maxLeverage);
+  const { quantity, notional } = determineOrderQuantity(decision, context, leverage);
 
-  // Place market buy order
   const order = await AsterAPI.placeOrder(
     {
       symbol: context.symbol,
@@ -342,48 +391,52 @@ async function executeBuyOrder(
     credentials
   );
 
-  // Calculate risk levels
-  const { stopLoss, takeProfit } = decision.suggestedStopLoss && decision.suggestedTakeProfit
-    ? { stopLoss: decision.suggestedStopLoss, takeProfit: decision.suggestedTakeProfit }
-    : AITrader.calculateRiskLevels(order.avgPrice, 'BUY', leverage);
+  const entryPrice = order.avgPrice || context.currentPrice;
+  const defaultRisk = AITrader.calculateRiskLevels(entryPrice, 'BUY', leverage);
+  const rawStopLoss = decision.suggestedStopLoss ?? defaultRisk.stopLoss;
+  const rawTakeProfit = decision.suggestedTakeProfit ?? defaultRisk.takeProfit;
 
-  // Place stop loss order
+  const stopLoss = normalizeStopPrice(rawStopLoss, context.instrument, 'floor');
+  const takeProfit = normalizeStopPrice(rawTakeProfit, context.instrument, 'ceil');
+
   let stopLossOrderId: string | undefined;
-  try {
-    const slOrder = await AsterAPI.placeOrder(
-      {
-        symbol: context.symbol,
-        side: 'SELL',
-        type: 'STOP_MARKET',
-        quantity,
-        stopPrice: stopLoss,
-      },
-      credentials
-    );
-    stopLossOrderId = slOrder.orderId;
-  } catch (error) {
-    console.error('Error placing stop loss:', error);
+  if (stopLoss > 0 && stopLoss < entryPrice) {
+    try {
+      const slOrder = await AsterAPI.placeOrder(
+        {
+          symbol: context.symbol,
+          side: 'SELL',
+          type: 'STOP_MARKET',
+          quantity,
+          stopPrice: stopLoss,
+        },
+        credentials
+      );
+      stopLossOrderId = slOrder.orderId;
+    } catch (error) {
+      console.error('Error placing stop loss:', error);
+    }
   }
 
-  // Place take profit order
   let takeProfitOrderId: string | undefined;
-  try {
-    const tpOrder = await AsterAPI.placeOrder(
-      {
-        symbol: context.symbol,
-        side: 'SELL',
-        type: 'TAKE_PROFIT_MARKET',
-        quantity,
-        stopPrice: takeProfit,
-      },
-      credentials
-    );
-    takeProfitOrderId = tpOrder.orderId;
-  } catch (error) {
-    console.error('Error placing take profit:', error);
+  if (takeProfit > 0 && takeProfit > entryPrice) {
+    try {
+      const tpOrder = await AsterAPI.placeOrder(
+        {
+          symbol: context.symbol,
+          side: 'SELL',
+          type: 'TAKE_PROFIT_MARKET',
+          quantity,
+          stopPrice: takeProfit,
+        },
+        credentials
+      );
+      takeProfitOrderId = tpOrder.orderId;
+    } catch (error) {
+      console.error('Error placing take profit:', error);
+    }
   }
 
-  // Record trade in database
   await db.insert(tradeHistory).values({
     id: nanoid(),
     botId,
@@ -391,9 +444,9 @@ async function executeBuyOrder(
     side: 'BUY',
     orderType: 'MARKET',
     quantity,
-    entryPrice: order.avgPrice,
+    entryPrice,
     leverage,
-    margin: (order.avgPrice * quantity) / leverage,
+    margin: notional / leverage,
     orderId: order.orderId,
     stopLossOrderId,
     takeProfitOrderId,
@@ -410,15 +463,9 @@ async function executeSellOrder(
   db: DbClient,
   botId: string
 ) {
-  const leverage = decision.suggestedLeverage || context.maxLeverage;
-  const quantity = decision.suggestedQuantity || AITrader.calculatePositionSize(
-    context.currentPrice,
-    leverage,
-    context.maxMarginPerTrade,
-    context.accountBalance
-  );
+  const leverage = sanitizeLeverage(decision.suggestedLeverage, context.maxLeverage);
+  const { quantity, notional } = determineOrderQuantity(decision, context, leverage);
 
-  // Place market sell order (short)
   const order = await AsterAPI.placeOrder(
     {
       symbol: context.symbol,
@@ -430,48 +477,52 @@ async function executeSellOrder(
     credentials
   );
 
-  // Calculate risk levels
-  const { stopLoss, takeProfit } = decision.suggestedStopLoss && decision.suggestedTakeProfit
-    ? { stopLoss: decision.suggestedStopLoss, takeProfit: decision.suggestedTakeProfit }
-    : AITrader.calculateRiskLevels(order.avgPrice, 'SELL', leverage);
+  const entryPrice = order.avgPrice || context.currentPrice;
+  const defaultRisk = AITrader.calculateRiskLevels(entryPrice, 'SELL', leverage);
+  const rawStopLoss = decision.suggestedStopLoss ?? defaultRisk.stopLoss;
+  const rawTakeProfit = decision.suggestedTakeProfit ?? defaultRisk.takeProfit;
 
-  // Place stop loss order (buy to close short)
+  const stopLoss = normalizeStopPrice(rawStopLoss, context.instrument, 'ceil');
+  const takeProfit = normalizeStopPrice(rawTakeProfit, context.instrument, 'floor');
+
   let stopLossOrderId: string | undefined;
-  try {
-    const slOrder = await AsterAPI.placeOrder(
-      {
-        symbol: context.symbol,
-        side: 'BUY',
-        type: 'STOP_MARKET',
-        quantity,
-        stopPrice: stopLoss,
-      },
-      credentials
-    );
-    stopLossOrderId = slOrder.orderId;
-  } catch (error) {
-    console.error('Error placing stop loss:', error);
+  if (stopLoss > 0 && stopLoss > entryPrice) {
+    try {
+      const slOrder = await AsterAPI.placeOrder(
+        {
+          symbol: context.symbol,
+          side: 'BUY',
+          type: 'STOP_MARKET',
+          quantity,
+          stopPrice: stopLoss,
+        },
+        credentials
+      );
+      stopLossOrderId = slOrder.orderId;
+    } catch (error) {
+      console.error('Error placing stop loss:', error);
+    }
   }
 
-  // Place take profit order
   let takeProfitOrderId: string | undefined;
-  try {
-    const tpOrder = await AsterAPI.placeOrder(
-      {
-        symbol: context.symbol,
-        side: 'BUY',
-        type: 'TAKE_PROFIT_MARKET',
-        quantity,
-        stopPrice: takeProfit,
-      },
-      credentials
-    );
-    takeProfitOrderId = tpOrder.orderId;
-  } catch (error) {
-    console.error('Error placing take profit:', error);
+  if (takeProfit > 0 && takeProfit < entryPrice) {
+    try {
+      const tpOrder = await AsterAPI.placeOrder(
+        {
+          symbol: context.symbol,
+          side: 'BUY',
+          type: 'TAKE_PROFIT_MARKET',
+          quantity,
+          stopPrice: takeProfit,
+        },
+        credentials
+      );
+      takeProfitOrderId = tpOrder.orderId;
+    } catch (error) {
+      console.error('Error placing take profit:', error);
+    }
   }
 
-  // Record trade in database
   await db.insert(tradeHistory).values({
     id: nanoid(),
     botId,
@@ -479,9 +530,9 @@ async function executeSellOrder(
     side: 'SELL',
     orderType: 'MARKET',
     quantity,
-    entryPrice: order.avgPrice,
+    entryPrice,
     leverage,
-    margin: (order.avgPrice * quantity) / leverage,
+    margin: notional / leverage,
     orderId: order.orderId,
     stopLossOrderId,
     takeProfitOrderId,
@@ -568,5 +619,169 @@ async function updateBotMetrics(
 
 function getDefaultPrompt(): string {
   return DEFAULT_PROMPT_TEMPLATE;
+}
+
+function sanitizeLeverage(suggested: number | undefined, maxLeverage: number): number {
+  const candidate = suggested && suggested > 0 ? suggested : maxLeverage;
+  const clamped = Math.min(candidate, maxLeverage);
+  return Math.max(1, clamped);
+}
+
+function determineOrderQuantity(
+  decision: TradingDecision,
+  context: TradingContext,
+  leverage: number
+): { quantity: number; notional: number } {
+  const { instrument } = context;
+  const price = context.currentPrice;
+
+  if (price <= 0) {
+    throw new Error('Invalid market price');
+  }
+
+  const minConfigNotional = Math.max(0, context.minNotionalPerTrade);
+  const maxConfigNotional = Math.max(context.maxNotionalPerTrade, minConfigNotional);
+
+  const minNotional = Math.max(minConfigNotional, instrument?.minNotional ?? minConfigNotional);
+  const maxNotional = Math.min(maxConfigNotional, instrument?.maxNotional ?? maxConfigNotional);
+
+  if (maxNotional < minNotional) {
+    throw new Error('Configured maximum notional is below minimum requirement');
+  }
+
+  let targetNotional: number;
+  if (decision.suggestedQuantity && decision.suggestedQuantity > 0) {
+    targetNotional = decision.suggestedQuantity * price;
+  } else {
+    targetNotional = AITrader.calculateTargetNotional(
+      price,
+      leverage,
+      minNotional,
+      maxNotional,
+      context.accountBalance
+    );
+  }
+
+  if (targetNotional <= 0) {
+    throw new Error('Insufficient balance to satisfy minimum notional requirement');
+  }
+
+  targetNotional = Math.min(Math.max(targetNotional, minNotional), maxNotional);
+
+  let quantity = decision.suggestedQuantity && decision.suggestedQuantity > 0
+    ? decision.suggestedQuantity
+    : targetNotional / price;
+
+  if (instrument) {
+    const minQtyBasedOnNotional = minNotional / price;
+    const maxQtyBasedOnNotional = maxNotional / price;
+    const minQty = Math.max(instrument.minQty, minQtyBasedOnNotional);
+    const maxQty = Math.min(instrument.maxQty ?? Number.POSITIVE_INFINITY, maxQtyBasedOnNotional);
+
+    quantity = Math.min(quantity, maxQty);
+    quantity = roundDownToStep(quantity, instrument.stepSize);
+
+    if (quantity < minQty) {
+      quantity = roundUpToStep(minQty, instrument.stepSize);
+    }
+
+    const maxQtyAdjusted = roundDownToStep(maxQty, instrument.stepSize);
+    if (quantity > maxQtyAdjusted) {
+      quantity = maxQtyAdjusted;
+    }
+
+    const postRoundNotional = quantity * price;
+    if (postRoundNotional < minNotional - 1e-6) {
+      const requiredQty = minNotional / price;
+      quantity = roundUpToStep(requiredQty, instrument.stepSize);
+    }
+  }
+
+  const precision = instrument?.quantityPrecision ?? 6;
+  const normalizedQuantity = Number(quantity.toFixed(Math.min(precision, 8)));
+  const finalNotional = normalizedQuantity * price;
+
+  if (finalNotional < minNotional - 1e-4) {
+    throw new Error('Quantity below minimum notional requirement');
+  }
+
+  if (finalNotional > maxNotional + 1e-4) {
+    throw new Error('Quantity exceeds maximum notional limit');
+  }
+
+  const marginRequired = finalNotional / leverage;
+  if (marginRequired > context.accountBalance * 0.95) {
+    throw new Error('Insufficient margin to support desired position size');
+  }
+
+  return {
+    quantity: normalizedQuantity,
+    notional: finalNotional,
+  };
+}
+
+function countDecimals(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  const valueString = value.toString().toLowerCase();
+  if (valueString.includes('e-')) {
+    const [base, exponent] = valueString.split('e-');
+    const baseDecimals = base.includes('.') ? base.split('.')[1].length : 0;
+    return parseInt(exponent, 10) + baseDecimals;
+  }
+
+  const parts = valueString.split('.');
+  return parts[1]?.length ?? 0;
+}
+
+function roundDownToStep(value: number, step: number): number {
+  if (step <= 0) {
+    return value;
+  }
+  const decimals = countDecimals(step);
+  const scaled = Math.floor(value / step + 1e-9);
+  return Number((scaled * step).toFixed(decimals));
+}
+
+function roundUpToStep(value: number, step: number): number {
+  if (step <= 0) {
+    return value;
+  }
+  const decimals = countDecimals(step);
+  const scaled = Math.ceil(value / step - 1e-9);
+  return Number((scaled * step).toFixed(decimals));
+}
+
+function roundToTick(value: number, tickSize: number, mode: 'round' | 'ceil' | 'floor' = 'round'): number {
+  if (tickSize <= 0) {
+    return value;
+  }
+  const decimals = countDecimals(tickSize);
+  const ratio = value / tickSize;
+  let adjusted: number;
+
+  if (mode === 'ceil') {
+    adjusted = Math.ceil(ratio - 1e-9);
+  } else if (mode === 'floor') {
+    adjusted = Math.floor(ratio + 1e-9);
+  } else {
+    adjusted = Math.round(ratio);
+  }
+
+  return Number((adjusted * tickSize).toFixed(decimals));
+}
+
+function normalizeStopPrice(
+  price: number,
+  instrument: AsterAPI.SymbolMetadata | undefined,
+  mode: 'round' | 'ceil' | 'floor'
+): number {
+  if (!instrument) {
+    return price;
+  }
+
+  return roundToTick(price, instrument.tickSize, mode);
 }
 

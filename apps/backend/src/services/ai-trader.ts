@@ -5,7 +5,7 @@
 
 import { generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
-import type { MarketData, Position } from './aster-api';
+import type { MarketData, Position, SymbolMetadata } from './aster-api';
 import type { TechnicalIndicators } from './indicators';
 
 export interface TradingContext {
@@ -21,10 +21,25 @@ export interface TradingContext {
   cycleCount: number;
   minutesTrading: number;
   maxLeverage: number;
-  maxMarginPerTrade: number;
+  minNotionalPerTrade: number;
+  maxNotionalPerTrade: number;
   maxOpenTrades: number;
   currentOpenTrades: number;
   accountExposure?: number;
+  instrument?: SymbolMetadata;
+  intradayMidPrices?: number[];
+  intradayEma20Series?: number[];
+  intradayMacdSeries?: number[];
+  intradayRsi7Series?: number[];
+  intradayRsi14Series?: number[];
+  higherTimeframeEma20?: number;
+  higherTimeframeEma50?: number;
+  higherTimeframeAtr3?: number;
+  higherTimeframeAtr14?: number;
+  higherTimeframeVolume?: number;
+  higherTimeframeVolumeAverage?: number;
+  higherTimeframeMacdSeries?: number[];
+  higherTimeframeRsi14Series?: number[];
 }
 
 export interface TradingDecision {
@@ -79,7 +94,8 @@ function populatePromptTemplate(
     total_return: formatNumber(firstContext.totalReturn, 2),
     sharpe_ratio: formatNumber(firstContext.sharpeRatio, 3),
     max_leverage: firstContext.maxLeverage,
-    max_margin_per_trade: formatNumber(firstContext.maxMarginPerTrade, 2),
+    min_notional_per_trade: formatNumber(firstContext.minNotionalPerTrade, 2),
+    max_notional_per_trade: formatNumber(firstContext.maxNotionalPerTrade, 2),
     max_open_trades: firstContext.maxOpenTrades,
     current_open_trades: firstContext.currentOpenTrades,
     account_exposure: formatNumber(firstContext.accountExposure ?? 0, 2),
@@ -114,18 +130,36 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
     symbol_lower: symbolBase.toLowerCase(),
     current_price: formatNumber(ctx.currentPrice, 2),
     current_ema20: formatNumber(ctx.indicators.ema20, 2),
+    current_ema50: formatNumber(ctx.indicators.ema50 ?? ctx.indicators.ema20, 2),
     current_macd: formatNumber(ctx.indicators.macd, 2),
+    current_macd_signal: formatNumber(ctx.indicators.macdSignal, 2),
+    current_macd_histogram: formatNumber(ctx.indicators.macdHistogram, 2),
     current_rsi: formatNumber(ctx.indicators.rsi7, 1),
+    current_rsi7: formatNumber(ctx.indicators.rsi7, 1),
+    current_rsi14: formatNumber(ctx.indicators.rsi14 ?? ctx.indicators.rsi7, 1),
     open_interest: formatNumber(ctx.marketData.openInterest, 0),
     funding_rate: `${formatNumber(ctx.marketData.fundingRate * 100, 4)}%`,
     funding_rate_decimal: formatNumber(ctx.marketData.fundingRate, 6),
-  funding_rate_percent: formatNumber(ctx.marketData.fundingRate * 100, 4),
+    funding_rate_percent: formatNumber(ctx.marketData.fundingRate * 100, 4),
     volume_24h: formatNumber(ctx.marketData.volume24h, 2),
     price_change_24h: formatNumber(ctx.marketData.priceChange24h, 2),
-  price_change_percent_24h: formatNumber(ctx.marketData.priceChange24h, 2),
+    price_change_percent_24h: formatNumber(ctx.marketData.priceChange24h, 2),
     exposure_notional: ctx.position
       ? formatNumber(ctx.position.quantity * ctx.currentPrice, 2)
       : undefined,
+    intraday_mid_prices: formatSeries(ctx.intradayMidPrices),
+    intraday_ema20_series: formatSeries(ctx.intradayEma20Series),
+    intraday_macd_series: formatSeries(ctx.intradayMacdSeries),
+    intraday_rsi7_series: formatSeries(ctx.intradayRsi7Series),
+    intraday_rsi14_series: formatSeries(ctx.intradayRsi14Series),
+    ht_ema20: ctx.higherTimeframeEma20 !== undefined ? formatNumber(ctx.higherTimeframeEma20, 2) : undefined,
+    ht_ema50: ctx.higherTimeframeEma50 !== undefined ? formatNumber(ctx.higherTimeframeEma50, 2) : undefined,
+    ht_atr3: ctx.higherTimeframeAtr3 !== undefined ? formatNumber(ctx.higherTimeframeAtr3, 2) : undefined,
+    ht_atr14: ctx.higherTimeframeAtr14 !== undefined ? formatNumber(ctx.higherTimeframeAtr14, 2) : undefined,
+    ht_volume_current: ctx.higherTimeframeVolume !== undefined ? formatNumber(ctx.higherTimeframeVolume, 2) : undefined,
+    ht_volume_average: ctx.higherTimeframeVolumeAverage !== undefined ? formatNumber(ctx.higherTimeframeVolumeAverage, 2) : undefined,
+    ht_macd_series: formatSeries(ctx.higherTimeframeMacdSeries),
+    ht_rsi14_series: formatSeries(ctx.higherTimeframeRsi14Series),
   };
 
   block = replaceTemplatePlaceholders(block, symbolReplacements);
@@ -141,18 +175,18 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
   const fallbackPositionReplacements = ctx.position
     ? getPositionReplacements(ctx.position)
     : {
-        'position.side': 'NONE',
-        'position.quantity': '0',
-        'position.entry_price': '0',
-        'position.current_price': '0',
-        'position.unrealized_pnl': '0',
-        'position.leverage': '0',
-        'position.margin': '0',
-        'position.liquidation_price': '0',
-        'position.stop_loss': 'N/A',
-        'position.profit_target': 'N/A',
-        'position.exposure': '0',
-      };
+      'position.side': 'NONE',
+      'position.quantity': '0',
+      'position.entry_price': '0',
+      'position.current_price': '0',
+      'position.unrealized_pnl': '0',
+      'position.leverage': '0',
+      'position.margin': '0',
+      'position.liquidation_price': '0',
+      'position.stop_loss': 'N/A',
+      'position.profit_target': 'N/A',
+      'position.exposure': '0',
+    };
 
   block = replaceTemplatePlaceholders(block, fallbackPositionReplacements);
 
@@ -170,7 +204,7 @@ function replaceTemplatePlaceholders(
       continue;
     }
 
-  const regex = new RegExp(`\\{\\{\s*${escapeRegExp(key)}\s*\\}\\}`, 'g');
+    const regex = new RegExp(`\\{\\{\s*${escapeRegExp(key)}\s*\\}\\}`, 'g');
     output = output.replace(regex, String(value));
   }
 
@@ -202,6 +236,16 @@ function formatNumber(value: number | null | undefined, decimals = 2): string {
     return (0).toFixed(decimals);
   }
   return value.toFixed(decimals);
+}
+
+function formatSeries(values?: number[], decimals = 3, maxLength = 10): string | undefined {
+  if (!values || values.length === 0) {
+    return undefined;
+  }
+
+  const slice = values.slice(-maxLength);
+  const formatted = slice.map(value => formatNumber(value, decimals));
+  return `[${formatted.join(', ')}]`;
 }
 
 export function buildTradingPrompt(
@@ -383,19 +427,26 @@ export async function getDecisionsFromPrompt(
 }
 
 /**
- * Calculate position size based on risk parameters
+ * Determine target notional based on leverage constraints and configured limits.
  */
-export function calculatePositionSize(
+export function calculateTargetNotional(
   price: number,
   leverage: number,
-  maxMarginPerTrade: number,
+  minNotional: number,
+  maxNotional: number,
   availableBalance: number
 ): number {
-  const maxMargin = Math.min(maxMarginPerTrade, availableBalance * 0.9); // Use max 90% of available balance
-  const notionalValue = maxMargin * leverage;
-  const quantity = notionalValue / price;
+  if (price <= 0 || leverage <= 0 || maxNotional <= 0 || availableBalance <= 0) {
+    return 0;
+  }
 
-  return quantity;
+  const maxAffordableNotional = availableBalance * leverage * 0.9;
+  if (maxAffordableNotional < minNotional) {
+    return 0;
+  }
+
+  const boundedMax = Math.min(maxNotional, maxAffordableNotional);
+  return Math.max(minNotional, boundedMax);
 }
 
 /**

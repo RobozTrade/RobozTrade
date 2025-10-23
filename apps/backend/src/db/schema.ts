@@ -47,7 +47,8 @@ export const tradingBots = sqliteTable('trading_bots', {
   aiModel: text('ai_model'), // AI model to use
   customPrompt: text('custom_prompt'), // Custom prompt template
   maxLeverage: integer('max_leverage'),
-  maxMarginPerTrade: real('max_margin_per_trade'),
+  minNotionalPerTrade: real('min_notional_per_trade'),
+  maxNotionalPerTrade: real('max_notional_per_trade'),
   maxOpenTrades: integer('max_open_trades'),
   // Legacy fields (kept for backward compatibility)
   strategyType: text('strategy_type'),

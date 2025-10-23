@@ -47,7 +47,8 @@ export default function CreateBotPageNew() {
   );
   const [customPrompt, setCustomPrompt] = useState(DEFAULT_PROMPT_TEMPLATE);
   const [maxLeverage, setMaxLeverage] = useState(10);
-  const [maxMarginPerTrade, setMaxMarginPerTrade] = useState(100);
+  const [minNotionalPerTrade, setMinNotionalPerTrade] = useState(5);
+  const [maxNotionalPerTrade, setMaxNotionalPerTrade] = useState(500);
   const [maxOpenTrades, setMaxOpenTrades] = useState(3);
   const [showPromptVariables, setShowPromptVariables] = useState(false);
 
@@ -95,7 +96,8 @@ export default function CreateBotPageNew() {
       customPrompt:
         customPrompt !== DEFAULT_PROMPT_TEMPLATE ? customPrompt : undefined,
       maxLeverage,
-      maxMarginPerTrade,
+      minNotionalPerTrade,
+      maxNotionalPerTrade,
       maxOpenTrades,
     };
 
@@ -112,7 +114,8 @@ export default function CreateBotPageNew() {
     aiModel &&
     maxLeverage >= 1 &&
     maxLeverage <= 10 &&
-    maxMarginPerTrade >= 1 &&
+    minNotionalPerTrade >= 5 &&
+    maxNotionalPerTrade >= minNotionalPerTrade &&
     maxOpenTrades >= 1 &&
     maxOpenTrades <= 5;
 
@@ -444,19 +447,40 @@ export default function CreateBotPageNew() {
               </div>
 
               <div>
-                <label className="label">Max Margin Per Trade (USDT) *</label>
+                <label className="label">Min Notional Per Trade (USDT) *</label>
                 <input
                   type="number"
-                  value={maxMarginPerTrade}
-                  onChange={(e) => setMaxMarginPerTrade(Number(e.target.value))}
+                  value={minNotionalPerTrade}
+                  onChange={(e) =>
+                    setMinNotionalPerTrade(Number(e.target.value))
+                  }
                   className="input"
-                  min="1"
+                  min="5"
                   max="100000"
                   step="1"
                   required
                 />
                 <p className="text-xs text-text-secondary mt-1">
-                  Maximum USDT per position
+                  Must be at least 5 USDT (exchange minimum)
+                </p>
+              </div>
+
+              <div>
+                <label className="label">Max Notional Per Trade (USDT) *</label>
+                <input
+                  type="number"
+                  value={maxNotionalPerTrade}
+                  onChange={(e) =>
+                    setMaxNotionalPerTrade(Number(e.target.value))
+                  }
+                  className="input"
+                  min={minNotionalPerTrade}
+                  max="100000"
+                  step="1"
+                  required
+                />
+                <p className="text-xs text-text-secondary mt-1">
+                  Must be greater than or equal to minimum notional
                 </p>
               </div>
 
@@ -598,10 +622,18 @@ export default function CreateBotPageNew() {
               </div>
               <div className="flex justify-between py-2 border-b border-border">
                 <span className="text-text-secondary">
-                  Max Margin Per Trade:
+                  Min Notional Per Trade:
                 </span>
                 <span className="text-text-primary font-medium">
-                  {maxMarginPerTrade} USDT
+                  {minNotionalPerTrade} USDT
+                </span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-border">
+                <span className="text-text-secondary">
+                  Max Notional Per Trade:
+                </span>
+                <span className="text-text-primary font-medium">
+                  {maxNotionalPerTrade} USDT
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-border">

@@ -41,12 +41,16 @@ const createBotSchema = z.object({
   maxLeverage: z.number()
     .min(1, 'Leverage must be at least 1x')
     .max(10, 'Maximum leverage is 10x'),
-  maxMarginPerTrade: z.number()
-    .min(1, 'Margin per trade must be at least 1 USDT')
-    .max(100000, 'Maximum margin per trade is 100,000 USDT'),
+  minNotionalPerTrade: z.number()
+    .min(5, 'Minimum notional per trade must be at least 5 USDT'),
+  maxNotionalPerTrade: z.number()
+    .min(5, 'Maximum notional must be at least 5 USDT'),
   maxOpenTrades: z.number()
     .min(1, 'Must allow at least 1 open trade')
     .max(5, 'Maximum 5 open trades allowed'),
+}).refine((data) => data.maxNotionalPerTrade >= data.minNotionalPerTrade, {
+  message: 'Maximum notional per trade must be greater than or equal to minimum notional',
+  path: ['maxNotionalPerTrade'],
 });
 
 // Legacy bot creation schema (for backward compatibility)
@@ -202,7 +206,8 @@ botsRoutes.post('/', async (c) => {
         aiModel: data.aiModel,
         customPrompt: data.customPrompt,
         maxLeverage: data.maxLeverage,
-        maxMarginPerTrade: data.maxMarginPerTrade,
+        minNotionalPerTrade: data.minNotionalPerTrade,
+        maxNotionalPerTrade: data.maxNotionalPerTrade,
         maxOpenTrades: data.maxOpenTrades,
         status: 'draft',
         // Legacy fields - set to null/default for new AI-driven bots
