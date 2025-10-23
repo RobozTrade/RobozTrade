@@ -656,15 +656,25 @@ function determineOrderQuantity(
     throw new Error('Configured maximum notional is below minimum requirement');
   }
 
+  // Calculate max affordable notional with the actual leverage being used
+  const maxAffordableWithLeverage = context.accountBalance * leverage * 0.95;
+  const effectiveMaxNotional = Math.min(maxNotional, maxAffordableWithLeverage);
+
   let targetNotional: number;
   if (decision.suggestedQuantity && decision.suggestedQuantity > 0) {
+    // AI suggested a quantity - calculate its notional value
     targetNotional = decision.suggestedQuantity * price;
+    // Cap it to what we can actually afford with this leverage
+    if (targetNotional > effectiveMaxNotional) {
+      console.log(`AI suggested notional $${targetNotional.toFixed(2)} exceeds affordable $${effectiveMaxNotional.toFixed(2)} with ${leverage}x leverage - adjusting down`);
+      targetNotional = effectiveMaxNotional;
+    }
   } else {
     targetNotional = AITrader.calculateTargetNotional(
       price,
       leverage,
       minNotional,
-      maxNotional,
+      effectiveMaxNotional,
       context.accountBalance
     );
   }
@@ -673,7 +683,8 @@ function determineOrderQuantity(
     throw new Error('Insufficient balance to satisfy minimum notional requirement');
   }
 
-  targetNotional = Math.min(Math.max(targetNotional, minNotional), maxNotional);
+  // Ensure we're within bounds
+  targetNotional = Math.min(Math.max(targetNotional, minNotional), effectiveMaxNotional);
 
   let quantity = decision.suggestedQuantity && decision.suggestedQuantity > 0
     ? decision.suggestedQuantity
@@ -712,19 +723,12 @@ function determineOrderQuantity(
     throw new Error(`Quantity below minimum notional requirement (${finalNotional.toFixed(2)} < ${minNotional.toFixed(2)})`);
   }
 
-  // Check margin requirement BEFORE checking max notional limit
+  // Final safety check: ensure margin requirement doesn't exceed available balance
+  // (This should rarely trigger since we capped targetNotional earlier, but good to have)
   const marginRequired = finalNotional / leverage;
   const maxMargin = context.accountBalance * 0.95;
   if (marginRequired > maxMargin) {
     throw new Error(`Insufficient margin: need $${marginRequired.toFixed(2)} but only $${maxMargin.toFixed(2)} available (balance: $${context.accountBalance.toFixed(2)}, leverage: ${leverage}x)`);
-  }
-
-  // Recalculate max notional based on actual leverage being used
-  const maxAffordableNotional = context.accountBalance * leverage * 0.95;
-  const actualMaxNotional = Math.min(maxNotional, maxAffordableNotional);
-
-  if (finalNotional > actualMaxNotional + 1e-4) {
-    throw new Error(`Quantity exceeds maximum notional limit (${finalNotional.toFixed(2)} > ${actualMaxNotional.toFixed(2)} with ${leverage}x leverage)`);
   }
 
   return {
