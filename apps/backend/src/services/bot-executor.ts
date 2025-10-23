@@ -283,7 +283,7 @@ export async function executeBot(
         if (!context) continue;
 
         // Skip if confidence is too low
-        if (decision.confidence < 0.4) {
+        if (decision.confidence < 0.65) {
           console.log(`Skipping ${decision.symbol} - low confidence: ${decision.confidence}`);
           continue;
         }
