@@ -177,8 +177,15 @@ export async function executeBot(
         const minutesTrading = Math.floor((Date.now() - new Date(bot.createdAt!).getTime()) / 60000);
 
         const minNotionalPerTrade = bot.minNotionalPerTrade ?? 150;
+        // Calculate max affordable notional based on available balance and leverage
+        const maxLeverageValue = bot.maxLeverage || 20;
+        const maxAffordableNotional = accountInfo.availableBalance * maxLeverageValue * 0.9;
         const configuredMaxNotional = bot.maxNotionalPerTrade ?? Math.max(minNotionalPerTrade, 500);
-        const maxNotionalPerTrade = Math.max(configuredMaxNotional, minNotionalPerTrade);
+        // Use the minimum of configured max and what's affordable
+        const maxNotionalPerTrade = Math.min(
+          Math.max(configuredMaxNotional, minNotionalPerTrade),
+          maxAffordableNotional
+        );
 
         const context: TradingContext = {
           symbol,
