@@ -5,6 +5,7 @@
 
 import { nanoid } from 'nanoid';
 import { eq, and } from 'drizzle-orm';
+import { DEFAULT_PROMPT_TEMPLATE } from '@roboz-trade/shared-types';
 import { tradingBots, tradeHistory, botExecutions, positionSnapshots, botMetrics, apiKeys } from '../db/schema';
 import { decrypt } from '../lib/crypto';
 import * as AsterAPI from './aster-api';
@@ -161,6 +162,7 @@ export async function executeBot(
           maxMarginPerTrade: bot.maxMarginPerTrade || 100,
           maxOpenTrades: bot.maxOpenTrades || 5,
           currentOpenTrades: allPositions.length,
+          accountExposure: totalExposure,
         };
 
         contexts.push(context);
@@ -565,6 +567,6 @@ async function updateBotMetrics(
 }
 
 function getDefaultPrompt(): string {
-  return `You are an expert cryptocurrency futures trader. Analyze the provided market data and make trading decisions.`;
+  return DEFAULT_PROMPT_TEMPLATE;
 }
 

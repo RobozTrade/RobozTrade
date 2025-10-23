@@ -24,6 +24,7 @@ export interface TradingContext {
   maxMarginPerTrade: number;
   maxOpenTrades: number;
   currentOpenTrades: number;
+  accountExposure?: number;
 }
 
 export interface TradingDecision {
@@ -60,42 +61,147 @@ function populatePromptTemplate(
   template: string,
   contexts: TradingContext[]
 ): string {
-  let prompt = template;
-
-  // Replace global variables
-  const firstContext = contexts[0];
-  prompt = prompt.replace(/\{\{current_time\}\}/g, new Date().toISOString());
-  prompt = prompt.replace(/\{\{cycle_count\}\}/g, firstContext.cycleCount.toString());
-  prompt = prompt.replace(/\{\{minutes_trading\}\}/g, firstContext.minutesTrading.toString());
-  prompt = prompt.replace(/\{\{available_cash\}\}/g, firstContext.accountBalance.toFixed(2));
-  prompt = prompt.replace(/\{\{account_value\}\}/g, firstContext.accountValue.toFixed(2));
-  prompt = prompt.replace(/\{\{total_return\}\}/g, firstContext.totalReturn.toFixed(2));
-  prompt = prompt.replace(/\{\{sharpe_ratio\}\}/g, firstContext.sharpeRatio.toFixed(3));
-  prompt = prompt.replace(/\{\{max_leverage\}\}/g, firstContext.maxLeverage.toString());
-  prompt = prompt.replace(/\{\{max_margin_per_trade\}\}/g, firstContext.maxMarginPerTrade.toString());
-  prompt = prompt.replace(/\{\{max_open_trades\}\}/g, firstContext.maxOpenTrades.toString());
-
-  // Build symbol-specific data
-  let symbolsData = '';
-  for (const ctx of contexts) {
-    const symbolName = ctx.symbol.replace('USDT', '');
-    symbolsData += `\n${symbolName}:\n`;
-    symbolsData += `- Price: ${ctx.currentPrice.toFixed(2)} (EMA20: ${ctx.indicators.ema20.toFixed(2)})\n`;
-    symbolsData += `- MACD: ${ctx.indicators.macd.toFixed(2)} | RSI(7): ${ctx.indicators.rsi7.toFixed(1)}\n`;
-    symbolsData += `- Open Interest: ${ctx.marketData.openInterest.toFixed(0)} | Funding Rate: ${(ctx.marketData.fundingRate * 100).toFixed(4)}%\n`;
-
-    if (ctx.position) {
-      symbolsData += `- Current Position: ${ctx.position.quantity.toFixed(4)} @ ${ctx.position.entryPrice.toFixed(2)} (PnL: ${ctx.position.unrealizedPnl.toFixed(2)} USDT)\n`;
-      symbolsData += `- Leverage: ${ctx.position.leverage}x | Liquidation: ${ctx.position.liquidationPrice.toFixed(2)}\n`;
-    } else {
-      symbolsData += `- No open position\n`;
-    }
+  if (contexts.length === 0) {
+    return template;
   }
 
-  // Replace the {{#each symbols}} block with actual data
-  prompt = prompt.replace(/\{\{#each symbols\}\}[\s\S]*?\{\{\/each\}\}/g, symbolsData);
+  let prompt = template;
+  const firstContext = contexts[0];
+
+  const globalReplacements: Record<string, string | number | undefined> = {
+    current_time: new Date().toISOString(),
+    cycle_count: firstContext.cycleCount,
+    minutes_trading: firstContext.minutesTrading,
+    available_cash: formatNumber(firstContext.accountBalance, 2),
+    account_balance: formatNumber(firstContext.accountBalance, 2),
+    balance: formatNumber(firstContext.accountBalance, 2),
+    account_value: formatNumber(firstContext.accountValue, 2),
+    total_return: formatNumber(firstContext.totalReturn, 2),
+    sharpe_ratio: formatNumber(firstContext.sharpeRatio, 3),
+    max_leverage: firstContext.maxLeverage,
+    max_margin_per_trade: formatNumber(firstContext.maxMarginPerTrade, 2),
+    max_open_trades: firstContext.maxOpenTrades,
+    current_open_trades: firstContext.currentOpenTrades,
+    account_exposure: formatNumber(firstContext.accountExposure ?? 0, 2),
+    exposure: formatNumber(firstContext.accountExposure ?? 0, 2),
+  };
+
+  prompt = replaceTemplatePlaceholders(prompt, globalReplacements);
+
+  prompt = prompt.replace(/\{\{#each symbols\}\}([\s\S]*?)\{\{\/each\}\}/g, (_, blockTemplate: string) => {
+    const renderedBlocks = contexts
+      .map(ctx => renderSymbolBlock(blockTemplate, ctx))
+      .join('\n')
+      .trim();
+
+    return renderedBlocks;
+  });
 
   return prompt;
+}
+
+function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
+  let block = blockTemplate;
+
+  const symbolPair = ctx.symbol;
+  const symbolBase = symbolPair.replace(/USDT$/i, '');
+
+  const symbolReplacements: Record<string, string | number | undefined> = {
+    symbol: symbolPair,
+    symbol_pair: symbolPair,
+    symbol_base: symbolBase,
+    symbol_upper: symbolBase.toUpperCase(),
+    symbol_lower: symbolBase.toLowerCase(),
+    current_price: formatNumber(ctx.currentPrice, 2),
+    current_ema20: formatNumber(ctx.indicators.ema20, 2),
+    current_macd: formatNumber(ctx.indicators.macd, 2),
+    current_rsi: formatNumber(ctx.indicators.rsi7, 1),
+    open_interest: formatNumber(ctx.marketData.openInterest, 0),
+    funding_rate: `${formatNumber(ctx.marketData.fundingRate * 100, 4)}%`,
+    funding_rate_decimal: formatNumber(ctx.marketData.fundingRate, 6),
+  funding_rate_percent: formatNumber(ctx.marketData.fundingRate * 100, 4),
+    volume_24h: formatNumber(ctx.marketData.volume24h, 2),
+    price_change_24h: formatNumber(ctx.marketData.priceChange24h, 2),
+  price_change_percent_24h: formatNumber(ctx.marketData.priceChange24h, 2),
+    exposure_notional: ctx.position
+      ? formatNumber(ctx.position.quantity * ctx.currentPrice, 2)
+      : undefined,
+  };
+
+  block = replaceTemplatePlaceholders(block, symbolReplacements);
+
+  block = block.replace(/\{\{#if position\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, inner) => {
+    if (!ctx.position) {
+      return '';
+    }
+
+    return replaceTemplatePlaceholders(inner, getPositionReplacements(ctx.position));
+  });
+
+  const fallbackPositionReplacements = ctx.position
+    ? getPositionReplacements(ctx.position)
+    : {
+        'position.side': 'NONE',
+        'position.quantity': '0',
+        'position.entry_price': '0',
+        'position.current_price': '0',
+        'position.unrealized_pnl': '0',
+        'position.leverage': '0',
+        'position.margin': '0',
+        'position.liquidation_price': '0',
+        'position.stop_loss': 'N/A',
+        'position.profit_target': 'N/A',
+        'position.exposure': '0',
+      };
+
+  block = replaceTemplatePlaceholders(block, fallbackPositionReplacements);
+
+  return block.trim();
+}
+
+function replaceTemplatePlaceholders(
+  template: string,
+  replacements: Record<string, string | number | undefined>
+): string {
+  let output = template;
+
+  for (const [key, value] of Object.entries(replacements)) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+
+  const regex = new RegExp(`\\{\\{\s*${escapeRegExp(key)}\s*\\}\\}`, 'g');
+    output = output.replace(regex, String(value));
+  }
+
+  return output;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getPositionReplacements(position: Position): Record<string, string> {
+  return {
+    'position.side': position.side,
+    'position.quantity': formatNumber(position.quantity, 4),
+    'position.entry_price': formatNumber(position.entryPrice, 2),
+    'position.current_price': formatNumber(position.currentPrice, 2),
+    'position.unrealized_pnl': formatNumber(position.unrealizedPnl, 2),
+    'position.leverage': String(position.leverage),
+    'position.margin': formatNumber(position.margin, 2),
+    'position.liquidation_price': formatNumber(position.liquidationPrice, 2),
+    'position.stop_loss': 'N/A',
+    'position.profit_target': 'N/A',
+    'position.exposure': formatNumber(position.quantity * position.entryPrice, 2),
+  };
+}
+
+function formatNumber(value: number | null | undefined, decimals = 2): string {
+  if (value === null || value === undefined || Number.isNaN(value) || !Number.isFinite(value)) {
+    return (0).toFixed(decimals);
+  }
+  return value.toFixed(decimals);
 }
 
 export function buildTradingPrompt(
