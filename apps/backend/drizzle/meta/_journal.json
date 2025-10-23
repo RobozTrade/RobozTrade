@@ -15,6 +15,20 @@
       "when": 1761124704190,
       "tag": "0001_hard_brood",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1766500000000,
+      "tag": "0005_store_ai_transcripts",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1766500001000,
+      "tag": "0006_store_ai_metadata",
+      "breakpoints": true
     }
   ]
 }

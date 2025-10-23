@@ -134,6 +134,13 @@ export const botExecutions = sqliteTable('bot_executions', {
   symbolsProcessed: text('symbols_processed', { mode: 'json' }), // array of symbols
   marketData: text('market_data', { mode: 'json' }), // snapshot of market data
   aiDecisions: text('ai_decisions', { mode: 'json' }), // AI decisions for each symbol
+  aiPrompt: text('ai_prompt'),
+  aiResponse: text('ai_response'),
+  aiThinking: text('ai_thinking'),
+  aiRuntimeMs: integer('ai_runtime_ms'),
+  aiInvocations: integer('ai_invocations'),
+  accountBalance: real('account_balance'),
+  accountExposure: real('account_exposure'),
   tradesExecuted: integer('trades_executed').notNull().default(0),
   errors: text('errors', { mode: 'json' }), // any errors encountered
   executionDuration: integer('execution_duration'), // milliseconds

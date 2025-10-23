@@ -37,6 +37,22 @@ export interface TradingDecision {
   suggestedTakeProfit?: number;
 }
 
+export interface TradingDecisionResult {
+  decisions: TradingDecision[];
+  prompt: string;
+  rawResponse: string;
+  summary?: string;
+  thinking?: string;
+  runtimeMs?: number;
+  invocations?: number;
+}
+
+interface ParsedAIResponse {
+  decisions: TradingDecision[];
+  summary?: string;
+  thinking?: string;
+}
+
 /**
  * Populate prompt template with actual values
  */
@@ -82,19 +98,47 @@ function populatePromptTemplate(
   return prompt;
 }
 
+export function buildTradingPrompt(
+  template: string,
+  contexts: TradingContext[]
+): string {
+  return populatePromptTemplate(template, contexts);
+}
+
 /**
  * Parse AI response to extract trading decisions
  */
-function parseAIResponse(response: string, symbols: string[]): TradingDecision[] {
+function parseAIResponse(response: string, symbols: string[]): ParsedAIResponse {
   const decisions: TradingDecision[] = [];
+  let summary: string | undefined;
+  let thinking: string | undefined;
 
   try {
     // Try to parse as JSON first
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
+      const leadingText = jsonMatch.index !== undefined && jsonMatch.index >= 0
+        ? response.slice(0, jsonMatch.index).trim()
+        : undefined;
+      if (typeof parsed.summary === 'string') {
+        summary = parsed.summary.trim();
+      }
+      if (typeof parsed.analysis === 'string') {
+        thinking = parsed.analysis.trim();
+      }
       if (Array.isArray(parsed.decisions)) {
-        return parsed.decisions;
+        if (!summary && leadingText) {
+          summary = leadingText;
+        }
+        if (!thinking && summary) {
+          thinking = summary;
+        }
+        return {
+          decisions: parsed.decisions,
+          summary,
+          thinking,
+        };
       }
     }
 
@@ -133,18 +177,35 @@ function parseAIResponse(response: string, symbols: string[]): TradingDecision[]
         });
       }
     }
+
+    if (!summary) {
+      const idx = jsonMatch?.index ?? -1;
+      const leadingText = idx >= 0 ? response.slice(0, idx).trim() : response.trim();
+      summary = leadingText || undefined;
+    }
+    if (!thinking && summary) {
+      thinking = summary;
+    }
   } catch (error) {
     console.error('Error parsing AI response:', error);
     // Return HOLD for all symbols on parse error
-    return symbols.map(symbol => ({
-      action: 'HOLD',
-      symbol,
-      reasoning: 'Error parsing AI response',
-      confidence: 0,
-    }));
+    return {
+      decisions: symbols.map(symbol => ({
+        action: 'HOLD',
+        symbol,
+        reasoning: 'Error parsing AI response',
+        confidence: 0,
+      })),
+      summary,
+      thinking,
+    };
   }
 
-  return decisions;
+  return {
+    decisions,
+    summary,
+    thinking,
+  };
 }
 
 /**
@@ -155,10 +216,18 @@ export async function getAIDecisions(
   aiModel: string,
   customPrompt: string,
   openRouterApiKey: string
-): Promise<TradingDecision[]> {
-  const populatedPrompt = populatePromptTemplate(customPrompt, contexts);
+): Promise<TradingDecisionResult> {
+  const populatedPrompt = buildTradingPrompt(customPrompt, contexts);
+  return getDecisionsFromPrompt(populatedPrompt, contexts, aiModel, openRouterApiKey);
+}
 
-  // Create OpenRouter provider using AI SDK
+export async function getDecisionsFromPrompt(
+  prompt: string,
+  contexts: TradingContext[],
+  aiModel: string,
+  openRouterApiKey: string
+): Promise<TradingDecisionResult> {
+  const maxAttempts = 3;
   const openrouter = createOpenAI({
     baseURL: 'https://openrouter.ai/api/v1',
     apiKey: openRouterApiKey,
@@ -168,21 +237,43 @@ export async function getAIDecisions(
     },
   });
 
-  try {
-    const { text } = await generateText({
-      model: openrouter(aiModel),
-      system: 'You are an expert cryptocurrency futures trader. Analyze the market data and provide clear trading decisions (BUY, SELL, HOLD, or CLOSE) for each symbol with reasoning. Format your response as JSON with a "decisions" array containing objects with: action, symbol, reasoning, confidence (0-1), and optional suggestedQuantity, suggestedLeverage, suggestedStopLoss, suggestedTakeProfit.',
-      prompt: populatedPrompt,
-      temperature: 0.7,
-      maxRetries: 2,
-    });
+  const symbols = contexts.map(ctx => ctx.symbol);
+  let lastError: unknown;
+  const startTime = Date.now();
 
-    const symbols = contexts.map(ctx => ctx.symbol);
-    return parseAIResponse(text, symbols);
-  } catch (error: any) {
-    console.error('AI SDK error:', error);
-    throw new Error(`AI decision error: ${error.message}`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const { text } = await generateText({
+        model: openrouter(aiModel),
+        system:
+          'You are an expert cryptocurrency futures trader. Analyze the market data and provide clear trading decisions (BUY, SELL, HOLD, or CLOSE) for each symbol with reasoning. Format your response as JSON with a "decisions" array containing objects with: action, symbol, reasoning, confidence (0-1), and optional suggestedQuantity, suggestedLeverage, suggestedStopLoss, suggestedTakeProfit. Include an optional "summary" field for a concise narrative of your outlook and an optional "analysis" field capturing your thinking process.',
+        prompt,
+        temperature: 0.7,
+        maxRetries: 0,
+      });
+
+      const parsed = parseAIResponse(text, symbols);
+      const runtimeMs = Date.now() - startTime;
+
+      return {
+        decisions: parsed.decisions,
+        prompt,
+        rawResponse: text,
+        summary: parsed.summary,
+        thinking: parsed.thinking,
+        runtimeMs,
+        invocations: attempt,
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts) {
+        console.error('AI SDK error:', error);
+        throw new Error(`AI decision error: ${(error as any)?.message || 'Unknown error'}`);
+      }
+    }
   }
+
+  throw lastError instanceof Error ? lastError : new Error('Unknown AI error');
 }
 
 /**

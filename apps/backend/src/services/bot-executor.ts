@@ -12,6 +12,7 @@ import * as AITrader from './ai-trader';
 import { calculateIndicators } from './indicators';
 import type { TradingContext, TradingDecision } from './ai-trader';
 import type { DbClient } from '../lib/db';
+import type { AccountInfo } from './aster-api';
 
 export interface BotExecutionResult {
   botId: string;
@@ -34,6 +35,13 @@ export async function executeBot(
   const errors: string[] = [];
   let tradesExecuted = 0;
   let decisions: TradingDecision[] = [];
+  let aiPrompt: string | null = null;
+  let aiRawResponse: string | null = null;
+  let aiThinking: string | null = null;
+  let aiRuntimeMs: number | null = null;
+  let aiInvocations: number | null = null;
+  let accountInfo: AccountInfo | null = null;
+  let totalExposure = 0;
 
   try {
     // Fetch bot configuration
@@ -90,10 +98,13 @@ export async function executeBot(
     };
 
     // Get account info
-    const accountInfo = await AsterAPI.getAccountInfo(credentials);
+    accountInfo = await AsterAPI.getAccountInfo(credentials);
 
     // Get current positions
     const allPositions = await AsterAPI.getPositions(credentials);
+    totalExposure = allPositions.reduce((sum, position) => {
+      return sum + Math.abs(position.quantity * position.entryPrice);
+    }, 0);
 
     // Get bot metrics for performance tracking
     let metrics = await db.select().from(botMetrics).where(eq(botMetrics.botId, botId)).get();
@@ -167,12 +178,18 @@ export async function executeBot(
 
     // Get AI trading decisions
     const customPrompt = bot.customPrompt || getDefaultPrompt();
-    decisions = await AITrader.getAIDecisions(
+    aiPrompt = AITrader.buildTradingPrompt(customPrompt, contexts);
+    const aiResult = await AITrader.getDecisionsFromPrompt(
+      aiPrompt,
       contexts,
       bot.aiModel || 'anthropic/claude-3.5-sonnet',
-      customPrompt,
       openRouterApiKey
     );
+    decisions = aiResult.decisions;
+    aiRawResponse = aiResult.rawResponse;
+    aiThinking = aiResult.thinking ?? aiResult.summary ?? null;
+    aiRuntimeMs = aiResult.runtimeMs ?? null;
+    aiInvocations = aiResult.invocations ?? null;
 
     // Execute trades based on AI decisions
     for (const decision of decisions) {
@@ -215,6 +232,13 @@ export async function executeBot(
       symbolsProcessed: tradingSymbols,
       marketData: marketDataSnapshot,
       aiDecisions: decisions,
+      aiPrompt,
+      aiResponse: aiRawResponse,
+      aiThinking,
+      aiRuntimeMs,
+      aiInvocations,
+      accountBalance: accountInfo?.availableBalance ?? null,
+      accountExposure: totalExposure,
       tradesExecuted,
       errors: errors.length > 0 ? errors : null,
       executionDuration: Date.now() - startTime,
@@ -262,6 +286,13 @@ export async function executeBot(
         symbolsProcessed: [],
         marketData: {},
         aiDecisions: decisions,
+        aiPrompt,
+        aiResponse: aiRawResponse,
+        aiThinking,
+        aiRuntimeMs,
+        aiInvocations,
+        accountBalance: accountInfo?.availableBalance ?? null,
+        accountExposure: totalExposure,
         tradesExecuted: 0,
         errors,
         executionDuration: Date.now() - startTime,
