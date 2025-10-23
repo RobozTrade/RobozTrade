@@ -176,7 +176,7 @@ export async function executeBot(
         // Calculate minutes trading (simplified - use bot creation time)
         const minutesTrading = Math.floor((Date.now() - new Date(bot.createdAt!).getTime()) / 60000);
 
-        const minNotionalPerTrade = bot.minNotionalPerTrade ?? 5;
+        const minNotionalPerTrade = bot.minNotionalPerTrade ?? 150;
         const configuredMaxNotional = bot.maxNotionalPerTrade ?? Math.max(minNotionalPerTrade, 500);
         const maxNotionalPerTrade = Math.max(configuredMaxNotional, minNotionalPerTrade);
 
@@ -192,7 +192,7 @@ export async function executeBot(
           sharpeRatio: metrics?.sharpeRatio || 0,
           cycleCount: metrics?.totalTrades || 0,
           minutesTrading,
-          maxLeverage: bot.maxLeverage || 10,
+          maxLeverage: bot.maxLeverage || 20,
           minNotionalPerTrade,
           maxNotionalPerTrade,
           maxOpenTrades: bot.maxOpenTrades || 5,

@@ -40,11 +40,11 @@ const createBotSchema = z.object({
   customPrompt: z.string().max(10000, 'Custom prompt too long').optional(),
   maxLeverage: z.number()
     .min(1, 'Leverage must be at least 1x')
-    .max(10, 'Maximum leverage is 10x'),
+    .max(20, 'Maximum leverage is 20x'),
   minNotionalPerTrade: z.number()
-    .min(5, 'Minimum notional per trade must be at least 5 USDT'),
+    .min(150, 'Minimum notional per trade must be at least 150 USDT'),
   maxNotionalPerTrade: z.number()
-    .min(5, 'Maximum notional must be at least 5 USDT'),
+    .min(150, 'Maximum notional must be at least 150 USDT'),
   maxOpenTrades: z.number()
     .min(1, 'Must allow at least 1 open trade')
     .max(5, 'Maximum 5 open trades allowed'),

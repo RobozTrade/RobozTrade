@@ -46,8 +46,8 @@ export default function CreateBotPageNew() {
     "anthropic/claude-3.5-sonnet"
   );
   const [customPrompt, setCustomPrompt] = useState(DEFAULT_PROMPT_TEMPLATE);
-  const [maxLeverage, setMaxLeverage] = useState(10);
-  const [minNotionalPerTrade, setMinNotionalPerTrade] = useState(5);
+  const [maxLeverage, setMaxLeverage] = useState(20);
+  const [minNotionalPerTrade, setMinNotionalPerTrade] = useState(150);
   const [maxNotionalPerTrade, setMaxNotionalPerTrade] = useState(500);
   const [maxOpenTrades, setMaxOpenTrades] = useState(3);
   const [showPromptVariables, setShowPromptVariables] = useState(false);
@@ -113,8 +113,8 @@ export default function CreateBotPageNew() {
     tradingSymbols.length <= 5 &&
     aiModel &&
     maxLeverage >= 1 &&
-    maxLeverage <= 10 &&
-    minNotionalPerTrade >= 5 &&
+    maxLeverage <= 20 &&
+    minNotionalPerTrade >= 150 &&
     maxNotionalPerTrade >= minNotionalPerTrade &&
     maxOpenTrades >= 1 &&
     maxOpenTrades <= 5;
@@ -432,17 +432,17 @@ export default function CreateBotPageNew() {
                   value={maxLeverage}
                   onChange={(e) => {
                     const val = Number(e.target.value);
-                    if (val >= 1 && val <= 10) {
+                    if (val >= 1 && val <= 20) {
                       setMaxLeverage(val);
                     }
                   }}
                   className="input"
                   min="1"
-                  max="10"
+                  max="20"
                   required
                 />
                 <p className="text-xs text-text-secondary mt-1">
-                  1x - 10x leverage
+                  1x - 20x leverage
                 </p>
               </div>
 
@@ -455,13 +455,13 @@ export default function CreateBotPageNew() {
                     setMinNotionalPerTrade(Number(e.target.value))
                   }
                   className="input"
-                  min="5"
+                  min="150"
                   max="100000"
                   step="1"
                   required
                 />
                 <p className="text-xs text-text-secondary mt-1">
-                  Must be at least 5 USDT (exchange minimum)
+                  Minimum 150 USDT per trade
                 </p>
               </div>
 
