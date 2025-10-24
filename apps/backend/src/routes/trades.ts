@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { getDb } from '../lib/db';
-import { trades, tradingBots } from '../db/schema';
+import { tradeHistory, tradingBots } from '../db/schema';
 import { authMiddleware, getUserId } from '../middleware/auth';
 
 export const tradesRoutes = new Hono<{ Bindings: { DB: D1Database; JWT_SECRET: string } }>();
@@ -12,6 +12,7 @@ tradesRoutes.use('/*', authMiddleware);
 tradesRoutes.get('/bot/:botId', async (c) => {
   const userId = getUserId(c);
   const botId = c.req.param('botId');
+  const limit = parseInt(c.req.query('limit') || '200');
   const db = getDb(c.env.DB);
 
   try {
@@ -24,10 +25,14 @@ tradesRoutes.get('/bot/:botId', async (c) => {
       return c.json({ success: false, error: 'Bot not found' }, 404);
     }
 
-    const botTrades = await db.query.trades.findMany({
-      where: eq(trades.botId, botId),
-      orderBy: [desc(trades.executedAt)],
-    });
+    // Get trades from tradeHistory table
+    const botTrades = await db
+      .select()
+      .from(tradeHistory)
+      .where(eq(tradeHistory.botId, botId))
+      .orderBy(desc(tradeHistory.openedAt))
+      .limit(limit)
+      .all();
 
     return c.json({ success: true, data: botTrades });
   } catch (error) {
@@ -39,6 +44,7 @@ tradesRoutes.get('/bot/:botId', async (c) => {
 // Get all trades for user
 tradesRoutes.get('/', async (c) => {
   const userId = getUserId(c);
+  const limit = parseInt(c.req.query('limit') || '200');
   const db = getDb(c.env.DB);
 
   try {
@@ -53,14 +59,16 @@ tradesRoutes.get('/', async (c) => {
       return c.json({ success: true, data: [] });
     }
 
-    // Get trades for all bots
-    const allTrades = await db.query.trades.findMany({
-      orderBy: [desc(trades.executedAt)],
-    });
+    // Get trades from tradeHistory table for all user's bots
+    const allTrades = await db
+      .select()
+      .from(tradeHistory)
+      .where(inArray(tradeHistory.botId, botIds))
+      .orderBy(desc(tradeHistory.openedAt))
+      .limit(limit)
+      .all();
 
-    const userTrades = allTrades.filter((trade) => botIds.includes(trade.botId));
-
-    return c.json({ success: true, data: userTrades });
+    return c.json({ success: true, data: allTrades });
   } catch (error) {
     console.error('Get all trades error:', error);
     return c.json({ success: false, error: 'Failed to get trades' }, 500);
@@ -74,9 +82,11 @@ tradesRoutes.get('/:id', async (c) => {
   const db = getDb(c.env.DB);
 
   try {
-    const trade = await db.query.trades.findFirst({
-      where: eq(trades.id, tradeId),
-    });
+    const trade = await db
+      .select()
+      .from(tradeHistory)
+      .where(eq(tradeHistory.id, tradeId))
+      .get();
 
     if (!trade) {
       return c.json({ success: false, error: 'Trade not found' }, 404);

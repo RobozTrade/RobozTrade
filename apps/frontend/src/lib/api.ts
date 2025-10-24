@@ -151,6 +151,29 @@ class ApiClient {
     return this.request(`/trades/bot/${botId}`, {}, true);
   }
 
+  // Bot Execution & Analytics
+  async getBotExecutionHistory(botId: string, limit = 50): Promise<ApiResponse<any[]>> {
+    return this.request(`/bot-execution/${botId}/history?limit=${limit}`, {}, true);
+  }
+
+  async getBotTradeHistory(botId: string, limit = 100, status?: string): Promise<ApiResponse<any[]>> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (status) params.append('status', status);
+    return this.request(`/bot-execution/${botId}/trades?${params}`, {}, true);
+  }
+
+  async getBotMetrics(botId: string): Promise<ApiResponse<any>> {
+    return this.request(`/bot-execution/${botId}/metrics`, {}, true);
+  }
+
+  async getBotPositions(botId: string): Promise<ApiResponse<any[]>> {
+    return this.request(`/bot-execution/${botId}/positions`, {}, true);
+  }
+
+  async getAllTradeHistory(limit = 200): Promise<ApiResponse<any[]>> {
+    return this.request(`/trades?limit=${limit}`, {}, true);
+  }
+
   // API Keys
   async getApiKeys(): Promise<ApiResponse<ApiKey[]>> {
     return this.request('/keys', {}, true);

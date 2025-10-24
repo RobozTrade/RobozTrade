@@ -282,7 +282,16 @@ export async function executeBot(
     aiInvocations = aiResult.invocations ?? null;
 
     // Execute trades based on AI decisions
-    for (const decision of decisions) {
+    // IMPORTANT: Sort decisions to execute CLOSE actions first to free up margin
+    // This prevents "insufficient margin" errors when closing and opening positions simultaneously
+    const sortedDecisions = [...decisions].sort((a, b) => {
+      const priority = { CLOSE: 0, SELL: 1, BUY: 2, HOLD: 3 };
+      return (priority[a.action] || 99) - (priority[b.action] || 99);
+    });
+
+    console.log(`Executing ${sortedDecisions.length} decisions in priority order: ${sortedDecisions.map(d => `${d.action} ${d.symbol}`).join(', ')}`);
+
+    for (const decision of sortedDecisions) {
       try {
         const context = contexts.find(ctx => ctx.symbol === decision.symbol);
         if (!context) continue;

@@ -4,6 +4,7 @@ import {
   Bot,
   TrendingUp,
   BarChart3,
+  History,
   Target,
   Settings,
 } from "lucide-react";
@@ -14,6 +15,7 @@ const navigation = [
   { name: "Trading Bots", href: "/app/bots", icon: Bot },
   { name: "Market", href: "/app/market", icon: TrendingUp },
   { name: "Analytics", href: "/app/analytics", icon: BarChart3 },
+  { name: "Trade History", href: "/app/trade-history", icon: History },
   { name: "Benchmarks", href: "/app/benchmarks", icon: Target },
   { name: "Settings", href: "/app/settings", icon: Settings },
 ];

@@ -10,6 +10,7 @@ import CreateBotPage from "./features/bots/CreateBotPage";
 import CreateBotPageNew from "./features/bots/CreateBotPageNew";
 import MarketPage from "./features/market/MarketPage";
 import AnalyticsPage from "./features/analytics/AnalyticsPage";
+import TradeHistoryPage from "./features/analytics/TradeHistoryPage";
 import BenchmarksPage from "./features/benchmarks/BenchmarksPage";
 import SettingsPage from "./features/settings/SettingsPage";
 
@@ -49,6 +50,7 @@ function App() {
         <Route path="bots/:id/edit" element={<EditBotPage />} />
         <Route path="market" element={<MarketPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
+        <Route path="trade-history" element={<TradeHistoryPage />} />
         <Route path="benchmarks" element={<BenchmarksPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>

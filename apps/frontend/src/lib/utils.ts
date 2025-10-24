@@ -24,8 +24,14 @@ export function formatNumber(value: number, decimals = 2): string {
   }).format(value);
 }
 
-export function formatDate(date: Date | string): string {
+export function formatDate(date: Date | string | null | undefined): string {
+  if (!date) return 'N/A';
+
   const d = typeof date === 'string' ? new Date(date) : date;
+
+  // Check if date is valid
+  if (isNaN(d.getTime())) return 'Invalid Date';
+
   return new Intl.DateTimeFormat('en-US', {
     year: 'numeric',
     month: 'short',
