@@ -21,6 +21,11 @@
     @apply opacity-50 cursor-not-allowed bg-light-bg-tertiary dark:bg-dark-bg-tertiary;
   }
 
+  /* Fix for select dropdown options in dark mode */
+  .input option {
+    @apply bg-light-bg-primary dark:bg-dark-bg-secondary text-light-text-primary dark:text-dark-text-primary;
+  }
+
   .label {
     @apply block text-sm font-medium text-light-text-primary dark:text-dark-text-primary mb-2;
   }

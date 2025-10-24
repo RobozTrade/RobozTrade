@@ -158,7 +158,7 @@ export default function AnalyticsPage() {
         <select
           value={selectedBot}
           onChange={(e) => setSelectedBot(e.target.value)}
-          className="input-field"
+          className="input"
         >
           <option value="ALL">All Bots</option>
           {bots?.data?.map((bot: any) => (

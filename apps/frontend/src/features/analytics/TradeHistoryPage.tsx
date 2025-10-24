@@ -188,7 +188,7 @@ export default function TradeHistoryPage() {
           <select
             value={selectedBot}
             onChange={(e) => setSelectedBot(e.target.value)}
-            className="input-field"
+            className="input"
           >
             <option value="ALL">All Bots</option>
             {bots?.data?.map((bot: any) => (
@@ -201,7 +201,7 @@ export default function TradeHistoryPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as TradeStatus)}
-            className="input-field"
+            className="input"
           >
             <option value="ALL">All Status</option>
             <option value="OPEN">Open</option>

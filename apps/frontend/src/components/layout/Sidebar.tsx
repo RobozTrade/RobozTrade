@@ -1,23 +1,12 @@
 import { NavLink } from "react-router-dom";
-import {
-  LayoutDashboard,
-  Bot,
-  TrendingUp,
-  BarChart3,
-  History,
-  Target,
-  Settings,
-} from "lucide-react";
+import { LayoutDashboard, Bot, BarChart3, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
   { name: "Dashboard", href: "/app/dashboard", icon: LayoutDashboard },
   { name: "Trading Bots", href: "/app/bots", icon: Bot },
-  { name: "Market", href: "/app/market", icon: TrendingUp },
   { name: "Analytics", href: "/app/analytics", icon: BarChart3 },
   { name: "Trade History", href: "/app/trade-history", icon: History },
-  { name: "Benchmarks", href: "/app/benchmarks", icon: Target },
-  { name: "Settings", href: "/app/settings", icon: Settings },
 ];
 
 export default function Sidebar() {

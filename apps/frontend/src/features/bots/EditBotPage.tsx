@@ -3,10 +3,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Save, Loader2, Info } from "lucide-react";
 import { api } from "@/lib/api";
-import type { TradingSymbol, AIModel } from "@roboz-trade/shared-types";
+import type { TradingSymbol } from "@roboz-trade/shared-types";
 import {
   SUPPORTED_TRADING_SYMBOLS,
-  SUPPORTED_AI_MODELS,
   DEFAULT_PROMPT_TEMPLATE,
   PROMPT_TEMPLATE_VARIABLES,
 } from "@roboz-trade/shared-types";
@@ -20,9 +19,6 @@ export default function EditBotPage() {
   const [tradingSymbols, setTradingSymbols] = useState<TradingSymbol[]>([
     "BTCUSDT",
   ]);
-  const [aiModel, setAiModel] = useState<AIModel>(
-    "anthropic/claude-3.5-sonnet"
-  );
   const [customPrompt, setCustomPrompt] = useState(DEFAULT_PROMPT_TEMPLATE);
   const [maxLeverage, setMaxLeverage] = useState(20);
   const [minNotionalPerTrade, setMinNotionalPerTrade] = useState(150);
@@ -47,9 +43,6 @@ export default function EditBotPage() {
       if (botData.tradingSymbols) {
         setTradingSymbols(botData.tradingSymbols);
       }
-      if (botData.aiModel) {
-        setAiModel(botData.aiModel);
-      }
       if (botData.customPrompt) {
         setCustomPrompt(botData.customPrompt);
       }
@@ -73,7 +66,6 @@ export default function EditBotPage() {
       api.updateBot(id!, {
         name,
         tradingSymbols,
-        aiModel,
         customPrompt:
           customPrompt !== DEFAULT_PROMPT_TEMPLATE ? customPrompt : undefined,
         maxLeverage,
@@ -157,23 +149,6 @@ export default function EditBotPage() {
                 className="input input-bordered"
                 required
               />
-            </div>
-
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">AI Model</span>
-              </label>
-              <select
-                value={aiModel}
-                onChange={(e) => setAiModel(e.target.value as AIModel)}
-                className="select select-bordered"
-              >
-                {SUPPORTED_AI_MODELS.map((model) => (
-                  <option key={model.value} value={model.value}>
-                    {model.label} - {model.description}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
         </div>
@@ -318,25 +293,25 @@ export default function EditBotPage() {
               </div>
             )}
 
-            <div className="form-control">
+            <div>
               <textarea
                 value={customPrompt}
                 onChange={(e) => setCustomPrompt(e.target.value)}
-                className="textarea textarea-bordered h-64 font-mono text-sm"
+                className="input font-mono text-sm"
+                rows={12}
                 placeholder="Enter custom prompt or leave default..."
+                maxLength={10000}
               />
-              <label className="label">
-                <span className="label-text-alt">
-                  Use Handlebars syntax for variables (e.g.,{" "}
-                  {`{{current_price}}`})
-                </span>
-              </label>
+              <p className="text-xs text-text-secondary mt-1">
+                Use Handlebars syntax for variables (e.g., {`{{current_price}}`}
+                )
+              </p>
             </div>
 
             <button
               type="button"
               onClick={() => setCustomPrompt(DEFAULT_PROMPT_TEMPLATE)}
-              className="btn btn-ghost btn-sm"
+              className="btn btn-secondary"
             >
               Reset to Default
             </button>

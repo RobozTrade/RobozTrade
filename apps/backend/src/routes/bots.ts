@@ -103,7 +103,7 @@ const updateBotSchema = z.object({
 
   // New AI-powered bot fields
   tradingSymbols: z.array(z.string()).optional(),
-  aiModel: z.enum(SUPPORTED_AI_MODELS as unknown as [string, ...string[]]).optional(),
+  // aiModel is NOT allowed to be changed after creation
   customPrompt: z.string().optional(),
   maxLeverage: z.number().min(1).max(125).optional(),
   minNotionalPerTrade: z.number().min(10).optional(),
