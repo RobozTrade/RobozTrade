@@ -18,7 +18,8 @@ interface BotPerformanceData {
 
 interface IndividualBotPerformanceProps {
   onSelectBot?: (botId: string) => void;
-  walletAddress?: string; // If provided, use public API endpoints
+  walletAddress?: string; // If provided, use public API endpoints for specific wallet
+  showAllPublicBots?: boolean; // If true, show all public bots (no wallet filter)
 }
 
 const getAIModelLogo = (aiModel: AIModel | null | undefined): string => {
@@ -30,15 +31,22 @@ const getAIModelLogo = (aiModel: AIModel | null | undefined): string => {
 export function IndividualBotPerformance({
   onSelectBot,
   walletAddress,
+  showAllPublicBots = false,
 }: IndividualBotPerformanceProps) {
   const [scrollPosition, setScrollPosition] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Fetch all bots to get AI model information
   const { data: botsData = [] } = useQuery<TradingBot[]>({
-    queryKey: walletAddress ? ["public-bots", walletAddress] : ["bots"],
+    queryKey: showAllPublicBots
+      ? ["all-public-bots"]
+      : walletAddress
+      ? ["public-bots", walletAddress]
+      : ["bots"],
     queryFn: async () => {
-      const response = walletAddress
+      const response = showAllPublicBots
+        ? await api.getAllPublicBots()
+        : walletAddress
         ? await api.getPublicBots(walletAddress)
         : await api.getBots();
       return (response.data ?? []) as TradingBot[];
@@ -51,11 +59,15 @@ export function IndividualBotPerformance({
 
   // Fetch latest bot performance data
   const { data: latestData } = useQuery({
-    queryKey: walletAddress
+    queryKey: showAllPublicBots
+      ? ["all-public-bot-performance-latest"]
+      : walletAddress
       ? ["public-bot-performance-latest", walletAddress]
       : ["bot-performance-latest"],
     queryFn: async () => {
-      const response = walletAddress
+      const response = showAllPublicBots
+        ? await api.getAllPublicBotPerformanceLatest()
+        : walletAddress
         ? await api.getPublicBotPerformanceLatest(walletAddress)
         : await api.getBotPerformanceLatest();
       return response.data as BotPerformanceData[];
@@ -65,14 +77,18 @@ export function IndividualBotPerformance({
 
   // Fetch initial balances for percentage calculations
   const { data: initialBalances } = useQuery({
-    queryKey: walletAddress
+    queryKey: showAllPublicBots
+      ? ["all-public-bot-initial-balances", latestData]
+      : walletAddress
       ? ["public-bot-initial-balances", walletAddress, latestData]
       : ["bot-initial-balances", latestData],
     queryFn: async () => {
       if (!latestData || latestData.length === 0) return {};
 
       const balancePromises = latestData.map(async (bot) => {
-        const response = walletAddress
+        const response = showAllPublicBots
+          ? await api.getAllPublicBotInitialBalance(bot.botId)
+          : walletAddress
           ? await api.getPublicBotInitialBalance(walletAddress, bot.botId)
           : await api.getBotInitialBalance(bot.botId);
         return {

@@ -7,8 +7,6 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8787/ws';
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const updatePrice = useMarketStore((state) => state.updatePrice);
-  const updateTicker = useMarketStore((state) => state.updateTicker);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -29,8 +27,9 @@ export function useWebSocket() {
         if (message.type === 'ticker') {
           const data = message.data;
           if (data.e === '24hrTicker') {
-            updatePrice(data.s, parseFloat(data.c));
-            updateTicker(data.s, {
+            // Access store methods directly to avoid dependency issues
+            useMarketStore.getState().updatePrice(data.s, parseFloat(data.c));
+            useMarketStore.getState().updateTicker(data.s, {
               symbol: data.s,
               price: parseFloat(data.c),
               change24h: parseFloat(data.P),
@@ -57,7 +56,7 @@ export function useWebSocket() {
         connect();
       }, 5000);
     };
-  }, [updatePrice, updateTicker]);
+  }, []); // Empty dependency array - connect function never changes
 
   const subscribe = useCallback((channels: string[]) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {

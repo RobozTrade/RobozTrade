@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { getDb } from '../lib/db';
 import { users, tradingBots, tradeHistory, positionSnapshots, botExecutions } from '../db/schema';
 
@@ -427,6 +427,325 @@ publicRoutes.get('/bot-performance/:walletAddress/:botId/initial-balance', async
       },
       500
     );
+  }
+});
+
+/**
+ * Get top performing bots ranked by total P&L (leaderboard)
+ * GET /api/public/leaderboard/top-bots?limit=50
+ */
+publicRoutes.get('/leaderboard/top-bots', async (c) => {
+  const limitParam = c.req.query('limit') || '50';
+  const limit = Math.min(parseInt(limitParam, 10) || 50, 100); // Max 100
+
+  const db = getDb(c.env.DB);
+
+  try {
+    // Get all bots with their trade statistics
+    const botsWithStats = await db
+      .select({
+        botId: tradingBots.id,
+        botName: tradingBots.name,
+        aiModel: tradingBots.aiModel,
+        userId: tradingBots.userId,
+        totalPnl: sql<number>`COALESCE(SUM(CASE WHEN ${tradeHistory.status} = 'CLOSED' THEN ${tradeHistory.realizedPnl} ELSE 0 END), 0)`,
+        totalTrades: sql<number>`COUNT(CASE WHEN ${tradeHistory.status} = 'CLOSED' THEN 1 END)`,
+        winningTrades: sql<number>`COUNT(CASE WHEN ${tradeHistory.status} = 'CLOSED' AND ${tradeHistory.realizedPnl} > 0 THEN 1 END)`,
+      })
+      .from(tradingBots)
+      .leftJoin(tradeHistory, eq(tradingBots.id, tradeHistory.botId))
+      .groupBy(tradingBots.id, tradingBots.name, tradingBots.aiModel, tradingBots.userId)
+      .orderBy(desc(sql`COALESCE(SUM(CASE WHEN ${tradeHistory.status} = 'CLOSED' THEN ${tradeHistory.realizedPnl} ELSE 0 END), 0)`))
+      .limit(limit)
+      .all();
+
+    // Get user wallet addresses for these bots
+    const userIds = [...new Set(botsWithStats.map(b => b.userId))];
+    const usersData = await db
+      .select({
+        id: users.id,
+        walletAddress: users.walletAddress,
+      })
+      .from(users)
+      .where(inArray(users.id, userIds))
+      .all();
+
+    const userMap = new Map(usersData.map(u => [u.id, u.walletAddress]));
+
+    // Format response
+    const bots = botsWithStats.map(bot => ({
+      botId: bot.botId,
+      botName: bot.botName,
+      aiModel: bot.aiModel,
+      walletAddress: userMap.get(bot.userId) || '',
+      totalPnl: bot.totalPnl,
+      winRate: bot.totalTrades > 0 ? (bot.winningTrades / bot.totalTrades) * 100 : 0,
+      totalTrades: bot.totalTrades,
+    }));
+
+    return c.json({ success: true, data: { bots } });
+  } catch (error) {
+    console.error('Get leaderboard top bots error:', error);
+    return c.json({ success: false, error: 'Failed to get leaderboard' }, 500);
+  }
+});
+
+/**
+ * Get top performing bot for each AI model
+ * GET /api/public/leaderboard/top-by-model
+ */
+publicRoutes.get('/leaderboard/top-by-model', async (c) => {
+  const db = getDb(c.env.DB);
+
+  try {
+    // Get all bots with their trade statistics
+    const botsWithStats = await db
+      .select({
+        botId: tradingBots.id,
+        botName: tradingBots.name,
+        aiModel: tradingBots.aiModel,
+        userId: tradingBots.userId,
+        totalPnl: sql<number>`COALESCE(SUM(CASE WHEN ${tradeHistory.status} = 'CLOSED' THEN ${tradeHistory.realizedPnl} ELSE 0 END), 0)`,
+        totalTrades: sql<number>`COUNT(CASE WHEN ${tradeHistory.status} = 'CLOSED' THEN 1 END)`,
+        winningTrades: sql<number>`COUNT(CASE WHEN ${tradeHistory.status} = 'CLOSED' AND ${tradeHistory.realizedPnl} > 0 THEN 1 END)`,
+      })
+      .from(tradingBots)
+      .leftJoin(tradeHistory, eq(tradingBots.id, tradeHistory.botId))
+      .groupBy(tradingBots.id, tradingBots.name, tradingBots.aiModel, tradingBots.userId)
+      .orderBy(desc(sql`COALESCE(SUM(CASE WHEN ${tradeHistory.status} = 'CLOSED' THEN ${tradeHistory.realizedPnl} ELSE 0 END), 0)`))
+      .all();
+
+    // Get user wallet addresses
+    const userIds = [...new Set(botsWithStats.map(b => b.userId))];
+    const usersData = await db
+      .select({
+        id: users.id,
+        walletAddress: users.walletAddress,
+      })
+      .from(users)
+      .where(inArray(users.id, userIds))
+      .all();
+
+    const userMap = new Map(usersData.map(u => [u.id, u.walletAddress]));
+
+    // Group by AI model and get top bot for each
+    const byModel: Record<string, any> = {};
+
+    for (const bot of botsWithStats) {
+      const aiModel = bot.aiModel || 'Unknown';
+
+      if (!byModel[aiModel] || bot.totalPnl > byModel[aiModel].totalPnl) {
+        byModel[aiModel] = {
+          botId: bot.botId,
+          botName: bot.botName,
+          walletAddress: userMap.get(bot.userId) || '',
+          totalPnl: bot.totalPnl,
+          winRate: bot.totalTrades > 0 ? (bot.winningTrades / bot.totalTrades) * 100 : 0,
+          totalTrades: bot.totalTrades,
+        };
+      }
+    }
+
+    return c.json({ success: true, data: { byModel } });
+  } catch (error) {
+    console.error('Get top by model error:', error);
+    return c.json({ success: false, error: 'Failed to get top bots by model' }, 500);
+  }
+});
+
+/**
+ * Get all trading bots from all users (public endpoint)
+ * GET /api/public/all-bots
+ */
+publicRoutes.get('/all-bots', async (c) => {
+  const db = getDb(c.env.DB);
+
+  try {
+    // Get all bots (active and running)
+    const bots = await db.query.tradingBots.findMany();
+
+    return c.json({ success: true, data: bots });
+  } catch (error) {
+    console.error('Get all bots error:', error);
+    return c.json({ success: false, error: 'Failed to get all bots' }, 500);
+  }
+});
+
+/**
+ * Get recent completed trades from all bots (public endpoint)
+ * GET /api/public/all-trades?limit=50
+ */
+publicRoutes.get('/all-trades', async (c) => {
+  const limitParam = c.req.query('limit') || '50';
+  const limit = Math.min(parseInt(limitParam, 10) || 50, 200);
+
+  const db = getDb(c.env.DB);
+
+  try {
+    // Get recent closed trades from all bots
+    const trades = await db.query.tradeHistory.findMany({
+      where: eq(tradeHistory.status, 'CLOSED'),
+      orderBy: desc(tradeHistory.closedAt),
+      limit,
+    });
+
+    return c.json({ success: true, data: trades });
+  } catch (error) {
+    console.error('Get all trades error:', error);
+    return c.json({ success: false, error: 'Failed to get all trades' }, 500);
+  }
+});
+
+/**
+ * Get current open positions from all bots (public endpoint)
+ * GET /api/public/all-positions
+ */
+publicRoutes.get('/all-positions', async (c) => {
+  const db = getDb(c.env.DB);
+
+  try {
+    // Get all position snapshots
+    const allSnapshots = await db.query.positionSnapshots.findMany({
+      orderBy: desc(positionSnapshots.snapshotTime),
+    });
+
+    // Group by botId + symbol to get latest snapshot for each position
+    const latestByBotSymbol = new Map<string, typeof allSnapshots[0]>();
+
+    for (const snapshot of allSnapshots) {
+      const key = `${snapshot.botId}-${snapshot.symbol}`;
+      if (!latestByBotSymbol.has(key)) {
+        latestByBotSymbol.set(key, snapshot);
+      }
+    }
+
+    const positions = Array.from(latestByBotSymbol.values());
+
+    // Enrich with entry time from open trades
+    const positionsWithEntryTime = await Promise.all(
+      positions.map(async (pos) => {
+        if (pos.tradeId) {
+          const trade = await db.query.tradeHistory.findFirst({
+            where: eq(tradeHistory.id, pos.tradeId),
+          });
+          return { ...pos, entryTime: trade?.openedAt ?? null };
+        }
+        return { ...pos, entryTime: null };
+      })
+    );
+
+    return c.json({ success: true, data: positionsWithEntryTime });
+  } catch (error) {
+    console.error('Get all positions error:', error);
+    return c.json({ success: false, error: 'Failed to get all positions' }, 500);
+  }
+});
+
+/**
+ * Get recent bot execution history from all bots (public endpoint)
+ * GET /api/public/all-executions?limit=50
+ */
+publicRoutes.get('/all-executions', async (c) => {
+  const limitParam = c.req.query('limit') || '50';
+  const limit = Math.min(parseInt(limitParam, 10) || 50, 200);
+
+  const db = getDb(c.env.DB);
+
+  try {
+    // Get recent executions from all bots
+    const executions = await db.query.botExecutions.findMany({
+      orderBy: desc(botExecutions.executionTime),
+      limit,
+    });
+
+    return c.json({ success: true, data: executions });
+  } catch (error) {
+    console.error('Get all executions error:', error);
+    return c.json({ success: false, error: 'Failed to get all executions' }, 500);
+  }
+});
+
+/**
+ * Get latest performance data for all bots (public endpoint)
+ * GET /api/public/all-bot-performance/latest
+ */
+publicRoutes.get('/all-bot-performance/latest', async (c) => {
+  const db = getDb(c.env.DB);
+
+  try {
+    // Get all bots
+    const bots = await db.query.tradingBots.findMany();
+
+    if (bots.length === 0) {
+      return c.json({ success: true, data: [] });
+    }
+
+    const botIds = bots.map(b => b.id);
+
+    // Get latest execution for each bot
+    const latestExecutions = await Promise.all(
+      botIds.map(async (botId) => {
+        const execution = await db.query.botExecutions.findFirst({
+          where: eq(botExecutions.botId, botId),
+          orderBy: desc(botExecutions.executionTime),
+        });
+        return execution;
+      })
+    );
+
+    // Filter out nulls and return
+    const validExecutions = latestExecutions.filter(e => e !== undefined);
+
+    return c.json({ success: true, data: validExecutions });
+  } catch (error) {
+    console.error('Get all bot performance error:', error);
+    return c.json({ success: false, error: 'Failed to get all bot performance' }, 500);
+  }
+});
+
+/**
+ * Get performance history for a specific bot (all public bots, no wallet filter)
+ * GET /api/public/all-bot-performance/:botId/history
+ */
+publicRoutes.get('/all-bot-performance/:botId/history', async (c) => {
+  const botId = c.req.param('botId');
+  const limit = parseInt(c.req.query('limit') || '100');
+  const db = getDb(c.env.DB);
+
+  try {
+    const history = await db.query.botExecutions.findMany({
+      where: eq(botExecutions.botId, botId),
+      orderBy: desc(botExecutions.executionTime),
+      limit: Math.min(limit, 500),
+    });
+
+    return c.json({ success: true, data: history });
+  } catch (error) {
+    console.error('Get bot performance history error:', error);
+    return c.json({ success: false, error: 'Failed to get bot performance history' }, 500);
+  }
+});
+
+/**
+ * Get initial balance for a specific bot (all public bots, no wallet filter)
+ * GET /api/public/all-bot-performance/:botId/initial-balance
+ */
+publicRoutes.get('/all-bot-performance/:botId/initial-balance', async (c) => {
+  const botId = c.req.param('botId');
+  const db = getDb(c.env.DB);
+
+  try {
+    const firstExecution = await db.query.botExecutions.findFirst({
+      where: eq(botExecutions.botId, botId),
+      orderBy: botExecutions.executionTime,
+    });
+
+    const initialBalance = firstExecution?.accountBalance ?? 10000;
+
+    return c.json({ success: true, data: { initialBalance } });
+  } catch (error) {
+    console.error('Get bot initial balance error:', error);
+    return c.json({ success: false, error: 'Failed to get bot initial balance' }, 500);
   }
 });
 

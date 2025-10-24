@@ -306,6 +306,66 @@ class ApiClient {
   async getPublicBotInitialBalance(walletAddress: string, botId: string): Promise<ApiResponse<{ initialBalance: number | null; firstExecutionTime: string | null }>> {
     return this.request(`/public/bot-performance/${walletAddress}/${botId}/initial-balance`);
   }
+
+  // Leaderboard endpoints
+  async getPublicTopBots(limit = 50): Promise<ApiResponse<{
+    bots: Array<{
+      botId: string;
+      botName: string;
+      aiModel: string | null;
+      walletAddress: string;
+      totalPnl: number;
+      winRate: number;
+      totalTrades: number;
+    }>
+  }>> {
+    return this.request(`/public/leaderboard/top-bots?limit=${limit}`);
+  }
+
+  async getPublicTopBotsByModel(): Promise<ApiResponse<{
+    byModel: Record<string, {
+      botId: string;
+      botName: string;
+      walletAddress: string;
+      totalPnl: number;
+      winRate: number;
+      totalTrades: number;
+    }>
+  }>> {
+    return this.request(`/public/leaderboard/top-by-model`);
+  }
+
+  // Aggregated public endpoints (all bots across all users)
+  async getAllPublicBots(): Promise<ApiResponse<TradingBot[]>> {
+    return this.request(`/public/all-bots`);
+  }
+
+  async getAllPublicTrades(limit = 50): Promise<ApiResponse<any[]>> {
+    return this.request(`/public/all-trades?limit=${limit}`);
+  }
+
+  async getAllPublicPositions(): Promise<ApiResponse<any[]>> {
+    return this.request(`/public/all-positions`);
+  }
+
+  async getAllPublicExecutions(limit = 50): Promise<ApiResponse<any[]>> {
+    return this.request(`/public/all-executions?limit=${limit}`);
+  }
+
+  async getAllPublicBotPerformanceLatest(): Promise<ApiResponse<any[]>> {
+    return this.request(`/public/all-bot-performance/latest`);
+  }
+
+  async getAllPublicBotPerformanceHistory(
+    botId: string,
+    limit = 100
+  ): Promise<ApiResponse<any[]>> {
+    return this.request(`/public/all-bot-performance/${botId}/history?limit=${limit}`);
+  }
+
+  async getAllPublicBotInitialBalance(botId: string): Promise<ApiResponse<{ initialBalance: number }>> {
+    return this.request(`/public/all-bot-performance/${botId}/initial-balance`);
+  }
 }
 
 export const api = new ApiClient();
