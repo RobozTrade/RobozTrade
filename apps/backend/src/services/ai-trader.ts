@@ -292,8 +292,61 @@ function parseAIResponse(response: string, symbols: string[]): ParsedAIResponse 
         if (!thinking && summary) {
           thinking = summary;
         }
+
+        // Map AI response fields to expected interface fields
+        const mappedDecisions: TradingDecision[] = parsed.decisions.map((d: any) => {
+          const decision: TradingDecision = {
+            action: d.action,
+            symbol: d.symbol,
+            reasoning: d.reasoning || '',
+            confidence: d.confidence || 0.5,
+          };
+
+          // Map leverage field
+          if (d.leverage !== undefined && d.leverage !== null) {
+            decision.suggestedLeverage = Number(d.leverage);
+          } else if (d.suggestedLeverage !== undefined && d.suggestedLeverage !== null) {
+            decision.suggestedLeverage = Number(d.suggestedLeverage);
+          }
+
+          // Map target_notional to suggestedQuantity (will be converted to quantity later)
+          // Store target_notional as a special field that will be used in quantity calculation
+          if (d.target_notional !== undefined && d.target_notional !== null) {
+            (decision as any).targetNotional = Number(d.target_notional);
+          } else if (d.suggestedQuantity !== undefined && d.suggestedQuantity !== null) {
+            const qty = Number(d.suggestedQuantity);
+            // Heuristic: If suggestedQuantity is in the range of typical notional values (10-10000 USDT)
+            // and seems too large to be a coin quantity, treat it as target_notional instead
+            // This handles cases where AI returns suggestedQuantity thinking it means notional value
+            if (qty >= 10 && qty <= 10000) {
+              // Likely a notional value in USDT, not a coin quantity
+              console.log(`Interpreting suggestedQuantity ${qty} as target_notional (USDT) for ${d.symbol}`);
+              (decision as any).targetNotional = qty;
+            } else {
+              // Likely an actual coin quantity
+              decision.suggestedQuantity = qty;
+            }
+          }
+
+          // Map stop_loss field
+          if (d.stop_loss !== undefined && d.stop_loss !== null) {
+            decision.suggestedStopLoss = Number(d.stop_loss);
+          } else if (d.suggestedStopLoss !== undefined && d.suggestedStopLoss !== null) {
+            decision.suggestedStopLoss = Number(d.suggestedStopLoss);
+          }
+
+          // Map take_profit field
+          if (d.take_profit !== undefined && d.take_profit !== null) {
+            decision.suggestedTakeProfit = Number(d.take_profit);
+          } else if (d.suggestedTakeProfit !== undefined && d.suggestedTakeProfit !== null) {
+            decision.suggestedTakeProfit = Number(d.suggestedTakeProfit);
+          }
+
+          return decision;
+        });
+
         return {
-          decisions: parsed.decisions,
+          decisions: mappedDecisions,
           summary,
           thinking,
         };
@@ -404,7 +457,7 @@ export async function getDecisionsFromPrompt(
       const { text } = await generateText({
         model: openrouter(aiModel),
         system:
-          'You are an expert cryptocurrency futures trader. Analyze the market data and provide clear trading decisions (BUY, SELL, HOLD, or CLOSE) for each symbol with reasoning. Format your response as JSON with a "decisions" array containing objects with: action, symbol, reasoning, confidence (0-1), and optional suggestedQuantity, suggestedLeverage, suggestedStopLoss, suggestedTakeProfit. Include an optional "summary" field for a concise narrative of your outlook and an optional "analysis" field capturing your thinking process.',
+          'You are an expert cryptocurrency futures trader. Analyze the market data and provide clear trading decisions (BUY, SELL, HOLD, or CLOSE) for each symbol with reasoning. Format your response as JSON with a "decisions" array containing objects with: action, symbol, reasoning, confidence (0-1), and optional target_notional (in USDT), leverage (multiplier), stop_loss (price in USDT), take_profit (price in USDT). IMPORTANT: target_notional should be the desired position size in USDT (e.g., 150 means $150 worth of the asset), NOT the quantity of coins. Include an optional "summary" field for a concise narrative of your outlook and an optional "analysis" field capturing your thinking process.',
         prompt,
         temperature: 0.7,
         maxRetries: 0,

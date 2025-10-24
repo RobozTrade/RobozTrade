@@ -697,15 +697,37 @@ function determineOrderQuantity(
   const effectiveMaxNotional = Math.min(maxNotional, maxAffordableWithLeverage);
 
   let targetNotional: number;
-  if (decision.suggestedQuantity && decision.suggestedQuantity > 0) {
+
+  // Check if AI provided target_notional (preferred)
+  const aiTargetNotional = (decision as any).targetNotional;
+  if (aiTargetNotional && aiTargetNotional > 0) {
+    // AI suggested a target notional value
+    targetNotional = aiTargetNotional;
+    console.log(`Using AI target notional: $${targetNotional.toFixed(2)}`);
+
+    // Cap it to what we can actually afford with this leverage
+    if (targetNotional > effectiveMaxNotional) {
+      console.log(`AI target notional $${targetNotional.toFixed(2)} exceeds affordable $${effectiveMaxNotional.toFixed(2)} with ${leverage}x leverage - adjusting down`);
+      targetNotional = effectiveMaxNotional;
+    }
+
+    // Ensure it meets minimum requirements
+    if (targetNotional < minNotional) {
+      console.log(`AI target notional $${targetNotional.toFixed(2)} below minimum $${minNotional.toFixed(2)} - adjusting up`);
+      targetNotional = minNotional;
+    }
+  } else if (decision.suggestedQuantity && decision.suggestedQuantity > 0) {
     // AI suggested a quantity - calculate its notional value
     targetNotional = decision.suggestedQuantity * price;
+    console.log(`Using AI suggested quantity ${decision.suggestedQuantity} -> notional $${targetNotional.toFixed(2)}`);
+
     // Cap it to what we can actually afford with this leverage
     if (targetNotional > effectiveMaxNotional) {
       console.log(`AI suggested notional $${targetNotional.toFixed(2)} exceeds affordable $${effectiveMaxNotional.toFixed(2)} with ${leverage}x leverage - adjusting down`);
       targetNotional = effectiveMaxNotional;
     }
   } else {
+    // No AI suggestion - calculate based on risk parameters
     targetNotional = AITrader.calculateTargetNotional(
       price,
       leverage,
@@ -713,6 +735,7 @@ function determineOrderQuantity(
       effectiveMaxNotional,
       context.accountBalance
     );
+    console.log(`Calculated target notional: $${targetNotional.toFixed(2)} (leverage: ${leverage}x, balance: $${context.accountBalance.toFixed(2)})`);
   }
 
   if (targetNotional <= 0) {
@@ -722,9 +745,22 @@ function determineOrderQuantity(
   // Ensure we're within bounds
   targetNotional = Math.min(Math.max(targetNotional, minNotional), effectiveMaxNotional);
 
-  let quantity = decision.suggestedQuantity && decision.suggestedQuantity > 0
-    ? decision.suggestedQuantity
-    : targetNotional / price;
+  // Calculate quantity from target notional (don't use suggestedQuantity if we have targetNotional)
+  let quantity: number;
+
+  if (aiTargetNotional && aiTargetNotional > 0) {
+    // Use target notional to calculate quantity
+    quantity = targetNotional / price;
+    console.log(`Calculated quantity from target notional: ${quantity.toFixed(6)} (notional: $${targetNotional.toFixed(2)}, price: $${price.toFixed(2)})`);
+  } else if (decision.suggestedQuantity && decision.suggestedQuantity > 0) {
+    // Use AI's suggested quantity directly
+    quantity = decision.suggestedQuantity;
+    console.log(`Using AI suggested quantity: ${quantity.toFixed(6)}`);
+  } else {
+    // Calculate from target notional
+    quantity = targetNotional / price;
+    console.log(`Calculated quantity: ${quantity.toFixed(6)} (notional: $${targetNotional.toFixed(2)}, price: $${price.toFixed(2)})`);
+  }
 
   if (instrument) {
     const minQtyBasedOnNotional = minNotional / price;
