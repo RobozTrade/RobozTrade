@@ -74,6 +74,9 @@ export function BotPerformanceChart({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRefs = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
+  const priceLineRef = useRef<{ series: ISeriesApi<"Line">; line: any } | null>(
+    null
+  ); // Store reference to the price line and its series
   const [chartMode, setChartMode] = useState<ChartMode>("unrealized_pnl");
   const [legendScrollPosition, setLegendScrollPosition] = useState(0);
   const legendContainerRef = useRef<HTMLDivElement>(null);
@@ -323,6 +326,16 @@ export function BotPerformanceChart({
     if (!chartRef.current || !historyData || !initialBalances || !latestData)
       return;
 
+    // Remove the price line from its series before clearing
+    if (priceLineRef.current) {
+      try {
+        priceLineRef.current.series.removePriceLine(priceLineRef.current.line);
+      } catch (e) {
+        // Price line may have already been removed
+      }
+      priceLineRef.current = null;
+    }
+
     // Clear existing series and data maps
     seriesRefs.current.forEach((series) => {
       try {
@@ -356,6 +369,8 @@ export function BotPerformanceChart({
         color,
         lineWidth: 2,
         title: bot.botName,
+        lastValueVisible: false, // Disable the last value price line
+        priceLineVisible: false, // Disable the price line at last value
       };
 
       const series = chartRef.current!.addLineSeries(seriesOptions);
@@ -434,8 +449,9 @@ export function BotPerformanceChart({
     chartRef.current.timeScale().fitContent();
 
     // Add middle point indicator line after a delay to ensure data is rendered
+    // Only add ONE reference line, not one per bot
     setTimeout(() => {
-      if (chartRef.current) {
+      if (chartRef.current && seriesRefs.current.size > 0) {
         chartRef.current.timeScale().fitContent();
 
         // Calculate the middle value based on chart mode
@@ -457,10 +473,10 @@ export function BotPerformanceChart({
         }
 
         // Add horizontal line at the middle point
-        // We'll add it to the first series if available
+        // Only add it ONCE to the first series and store the reference
         const firstSeries = Array.from(seriesRefs.current.values())[0];
-        if (firstSeries) {
-          firstSeries.createPriceLine({
+        if (firstSeries && !priceLineRef.current) {
+          const priceLine = firstSeries.createPriceLine({
             price: middleValue,
             color: "rgba(255, 255, 255, 0.4)",
             lineWidth: 2,
@@ -468,6 +484,7 @@ export function BotPerformanceChart({
             axisLabelVisible: true,
             title: middleLabel,
           });
+          priceLineRef.current = { series: firstSeries, line: priceLine };
         }
       }
     }, 100);
