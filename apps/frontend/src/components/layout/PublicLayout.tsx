@@ -1,5 +1,5 @@
 import { Outlet, Link } from "react-router-dom";
-import { Activity, Sun, Moon } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { NavbarWalletAuth } from "@/components/auth/NavbarWalletAuth";
 
@@ -14,12 +14,11 @@ export default function PublicLayout() {
           <div className="flex items-center justify-between">
             {/* Logo/Brand */}
             <Link to="/" className="flex items-center gap-2 sm:gap-3 group">
-              <div className="p-1.5 sm:p-2 rounded-xl bg-gradient-to-br from-accent-blue to-accent-purple group-hover:scale-110 transition-transform duration-200">
-                <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-              </div>
-              <span className="text-lg sm:text-xl font-semibold bg-gradient-to-r from-accent-blue to-accent-purple bg-clip-text text-transparent">
-                RobozTrade
-              </span>
+              <img
+                src="/logo-text.png"
+                alt="RobozTrade"
+                className="h-8 sm:h-10 object-contain group-hover:scale-105 transition-transform duration-200"
+              />
             </Link>
 
             {/* Right Side: Theme Toggle + Auth Buttons */}
@@ -52,10 +51,17 @@ export default function PublicLayout() {
       {/* Footer */}
       <footer className="border-t border-light-border dark:border-dark-border backdrop-blur-2xl bg-white/50 dark:bg-black/50 py-4 sm:py-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
-          <p className="text-xs sm:text-sm text-light-text-tertiary dark:text-dark-text-tertiary">
-            RobozTrade v1.2 · AI-Powered Trading Platform ·{" "}
-            {new Date().getFullYear()}
-          </p>
+          <div className="flex flex-col items-center gap-3">
+            <img
+              src="/logo.png"
+              alt="RobozTrade Logo"
+              className="h-12 sm:h-16 object-contain"
+            />
+            <p className="text-xs sm:text-sm text-light-text-tertiary dark:text-dark-text-tertiary">
+              RobozTrade v1.2 · AI-Powered Trading Platform ·{" "}
+              {new Date().getFullYear()}
+            </p>
+          </div>
         </div>
       </footer>
     </div>

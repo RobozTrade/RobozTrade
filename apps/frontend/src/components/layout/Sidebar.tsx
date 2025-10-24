@@ -17,11 +17,13 @@ export default function Sidebar({ onClose }: SidebarProps) {
   return (
     <div className="w-64 h-full backdrop-blur-2xl bg-white/70 dark:bg-black/70 border-r border-light-border dark:border-dark-border flex flex-col">
       <div className="p-6 flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-accent-blue to-accent-purple bg-clip-text text-transparent">
-            RobozTrade
-          </h1>
-          <p className="text-sm text-light-text-tertiary dark:text-dark-text-tertiary mt-1">
+        <div className="flex flex-col gap-2">
+          <img
+            src="/logo-text.png"
+            alt="RobozTrade"
+            className="h-10 object-contain"
+          />
+          <p className="text-sm text-light-text-tertiary dark:text-dark-text-tertiary">
             AI Trading Platform
           </p>
         </div>
