@@ -106,6 +106,7 @@ Position Status
 - Side: {{position.side}} | Quantity: {{position.quantity}} | Entry: {{position.entry_price}}
 - Unrealized PnL: {{position.unrealized_pnl}} USDT
 - Leverage: {{position.leverage}}x | Margin: {{position.margin}} USDT | Liquidation: {{position.liquidation_price}}
+- Time in Position: {{position.entry_time}} ({{position.minutes_held}} minutes)
 {{/if}}
 {{/each}}
 
@@ -167,6 +168,8 @@ export const PROMPT_TEMPLATE_VARIABLES = [
   { name: '{{position.liquidation_price}}', description: 'Liquidation price for the position' },
   { name: '{{position.stop_loss}}', description: 'Position stop loss price' },
   { name: '{{position.profit_target}}', description: 'Position take profit price' },
+  { name: '{{position.entry_time}}', description: 'Time since position entry (formatted as "X min", "Xh Ym", or "Xd Yh")' },
+  { name: '{{position.minutes_held}}', description: 'Total minutes the position has been held' },
 ];
 
 // User Types

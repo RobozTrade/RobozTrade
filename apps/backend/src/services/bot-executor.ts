@@ -4,7 +4,7 @@
  */
 
 import { nanoid } from 'nanoid';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, desc } from 'drizzle-orm';
 import { DEFAULT_PROMPT_TEMPLATE } from '@roboz-trade/shared-types';
 import { tradingBots, tradeHistory, botExecutions, positionSnapshots, botMetrics, apiKeys } from '../db/schema';
 import { decrypt } from '../lib/crypto';
@@ -108,7 +108,33 @@ export async function executeBot(
 
     // Get current positions
     const allPositions = await AsterAPI.getPositions(credentials);
-    totalExposure = allPositions.reduce((sum, position) => {
+
+    // Enrich positions with entry time from trade history
+    const enrichedPositions = await Promise.all(
+      allPositions.map(async (position) => {
+        // Find the open trade for this symbol to get entry time
+        const openTrade = await db
+          .select()
+          .from(tradeHistory)
+          .where(
+            and(
+              eq(tradeHistory.botId, botId),
+              eq(tradeHistory.symbol, position.symbol),
+              eq(tradeHistory.status, 'OPEN')
+            )
+          )
+          .orderBy(desc(tradeHistory.openedAt))
+          .limit(1)
+          .get();
+
+        return {
+          ...position,
+          entryTime: openTrade?.openedAt || undefined,
+        };
+      })
+    );
+
+    totalExposure = enrichedPositions.reduce((sum, position) => {
       return sum + Math.abs(position.quantity * position.entryPrice);
     }, 0);
 
@@ -197,7 +223,7 @@ export async function executeBot(
           Math.max(1, Math.min(10, higherTimeframeCandles.length));
 
         // Find position for this symbol
-        const position = allPositions.find(p => p.symbol === symbol);
+        const position = enrichedPositions.find(p => p.symbol === symbol);
 
         const minNotionalPerTrade = bot.minNotionalPerTrade ?? 150;
         // Calculate max affordable notional based on available balance and leverage
@@ -229,7 +255,7 @@ export async function executeBot(
           minNotionalPerTrade,
           maxNotionalPerTrade,
           maxOpenTrades: bot.maxOpenTrades || 5,
-          currentOpenTrades: allPositions.length,
+          currentOpenTrades: enrichedPositions.length,
           accountExposure: totalExposure,
           instrument,
           intradayMidPrices,
@@ -347,7 +373,7 @@ export async function executeBot(
     });
 
     // Update position snapshots
-    for (const position of allPositions) {
+    for (const position of enrichedPositions) {
       await db.insert(positionSnapshots).values({
         id: nanoid(),
         botId,

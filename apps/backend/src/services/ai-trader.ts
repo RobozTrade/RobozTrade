@@ -194,6 +194,8 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
       'position.stop_loss': 'N/A',
       'position.profit_target': 'N/A',
       'position.exposure': '0',
+      'position.entry_time': 'N/A',
+      'position.minutes_held': 'N/A',
     };
 
   block = replaceTemplatePlaceholders(block, fallbackPositionReplacements);
@@ -224,6 +226,18 @@ function escapeRegExp(value: string): string {
 }
 
 function getPositionReplacements(position: Position): Record<string, string> {
+  const minutesSinceEntry = position.entryTime
+    ? Math.floor((Date.now() - new Date(position.entryTime).getTime()) / 60000)
+    : null;
+
+  const entryTimeFormatted = minutesSinceEntry !== null
+    ? minutesSinceEntry < 60
+      ? `${minutesSinceEntry} min`
+      : minutesSinceEntry < 1440
+        ? `${Math.floor(minutesSinceEntry / 60)}h ${minutesSinceEntry % 60}m`
+        : `${Math.floor(minutesSinceEntry / 1440)}d ${Math.floor((minutesSinceEntry % 1440) / 60)}h`
+    : 'N/A';
+
   return {
     'position.side': position.side,
     'position.quantity': formatNumber(position.quantity, 4),
@@ -236,6 +250,8 @@ function getPositionReplacements(position: Position): Record<string, string> {
     'position.stop_loss': 'N/A',
     'position.profit_target': 'N/A',
     'position.exposure': formatNumber(position.quantity * position.entryPrice, 2),
+    'position.entry_time': entryTimeFormatted,
+    'position.minutes_held': minutesSinceEntry !== null ? String(minutesSinceEntry) : 'N/A',
   };
 }
 

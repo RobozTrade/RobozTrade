@@ -216,9 +216,34 @@ botExecutionRoutes.get('/:botId/positions', async (c) => {
       return acc;
     }, {} as Record<string, typeof positions[0]>);
 
+    // Enrich positions with entry time from trade history
+    const enrichedPositions = await Promise.all(
+      Object.values(latestPositions).map(async (position) => {
+        // Find the open trade for this symbol to get entry time
+        const openTrade = await db
+          .select()
+          .from(tradeHistory)
+          .where(
+            and(
+              eq(tradeHistory.botId, botId),
+              eq(tradeHistory.symbol, position.symbol),
+              eq(tradeHistory.status, 'OPEN')
+            )
+          )
+          .orderBy(desc(tradeHistory.openedAt))
+          .limit(1)
+          .get();
+
+        return {
+          ...position,
+          entryTime: openTrade?.openedAt || null,
+        };
+      })
+    );
+
     return c.json({
       success: true,
-      data: Object.values(latestPositions),
+      data: enrichedPositions,
     });
   } catch (error: any) {
     console.error('Error fetching positions:', error);

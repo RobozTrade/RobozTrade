@@ -51,6 +51,7 @@ interface PositionSnapshot {
   stopLoss: number | null;
   takeProfit: number | null;
   snapshotTime: string | number | Date | null;
+  entryTime?: string | number | Date | null;
 }
 
 interface CompletedTradeRow {
@@ -77,6 +78,7 @@ interface BotPositionRow {
   stopLoss: number | null;
   unrealizedPnl: number;
   unrealizedPnlPercent: number;
+  entryTime?: string | number | Date | null;
 }
 
 interface BotPositionGroup {
@@ -168,6 +170,32 @@ const formatDuration = (
   }
   if (minutes > 0) {
     return `${minutes}m`;
+  }
+  const seconds = Math.floor(diffMs / 1000);
+  return `${seconds}s`;
+};
+
+const formatTimeSinceEntry = (
+  entryTime: string | number | Date | null | undefined
+): string => {
+  const entryDate = toDate(entryTime);
+  if (!entryDate) return "—";
+  const now = new Date();
+  const diffMs = Math.max(now.getTime() - entryDate.getTime(), 0);
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const totalHours = Math.floor(totalMinutes / 60);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+  if (totalHours > 0) {
+    return `${totalHours}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes} min`;
   }
   const seconds = Math.floor(diffMs / 1000);
   return `${seconds}s`;
@@ -689,6 +717,7 @@ export default function DashboardPageNew() {
               stopLoss: position.stopLoss ?? null,
               unrealizedPnl,
               unrealizedPnlPercent: margin ? (unrealizedPnl / margin) * 100 : 0,
+              entryTime: position.entryTime ?? null,
             } satisfies BotPositionRow;
           });
 
@@ -928,6 +957,9 @@ export default function DashboardPageNew() {
                                   Current
                                 </th>
                                 <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                  Time
+                                </th>
+                                <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
                                   TP
                                 </th>
                                 <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
@@ -963,6 +995,9 @@ export default function DashboardPageNew() {
                                   </td>
                                   <td className="py-2 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
                                     {formatCurrency(position.currentPrice)}
+                                  </td>
+                                  <td className="py-2 px-2 text-right text-light-text-secondary dark:text-dark-text-secondary text-xs">
+                                    {formatTimeSinceEntry(position.entryTime)}
                                   </td>
                                   <td className="py-2 px-2 text-right text-accent-green">
                                     {position.takeProfit !== null

@@ -44,6 +44,7 @@ export interface Position {
   unrealizedPnl: number;
   leverage: number;
   margin: number;
+  entryTime?: Date; // Entry time from trade history
 }
 
 export interface AccountInfo {
