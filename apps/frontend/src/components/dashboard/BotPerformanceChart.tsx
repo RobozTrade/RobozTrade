@@ -62,6 +62,7 @@ export function BotPerformanceChart() {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [tooltipData, setTooltipData] = useState<BotDataPoint | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const [selectedBots, setSelectedBots] = useState<Set<string> | null>(null); // null = show all, Set = show selected
 
   // Map to store bot data for each series
   const botDataMapRef = useRef<Map<string, Map<number, BotDataPoint>>>(
@@ -69,7 +70,7 @@ export function BotPerformanceChart() {
   );
 
   // Fetch latest bot performance data
-  const { data: latestData, refetch } = useQuery({
+  const { data: latestData } = useQuery({
     queryKey: ["bot-performance-latest"],
     queryFn: async () => {
       const response = await api.getBotPerformanceLatest();
@@ -132,6 +133,36 @@ export function BotPerformanceChart() {
         ...Object.values(initialBalances).filter((b) => b !== null && b > 0)
       )
     : null;
+
+  // Handle legend item click
+  const handleLegendClick = (botId: string) => {
+    setSelectedBots((prev) => {
+      if (prev === null) {
+        // Currently showing all, select only this bot
+        return new Set([botId]);
+      } else if (prev.has(botId)) {
+        // Bot is selected, remove it
+        const newSet = new Set(prev);
+        newSet.delete(botId);
+        // If no bots selected, show all
+        return newSet.size === 0 ? null : newSet;
+      } else {
+        // Bot not selected, add it
+        return new Set([...prev, botId]);
+      }
+    });
+  };
+
+  // Clear selection to show all bots
+  const clearSelection = () => {
+    setSelectedBots(null);
+  };
+
+  // Get filtered data based on selection
+  const getFilteredData = () => {
+    if (!latestData || selectedBots === null) return latestData;
+    return latestData.filter((bot) => selectedBots.has(bot.botId));
+  };
 
   // Initialize chart
   useEffect(() => {
@@ -233,8 +264,12 @@ export function BotPerformanceChart() {
     seriesRefs.current.clear();
     botDataMapRef.current.clear();
 
+    // Get filtered data based on selection
+    const filteredData = getFilteredData();
+    if (!filteredData) return;
+
     // Create a line series for each bot
-    latestData.forEach((bot, index) => {
+    filteredData.forEach((bot, index) => {
       const history = historyData[bot.botId];
       if (!history || history.length === 0) return;
 
@@ -363,7 +398,7 @@ export function BotPerformanceChart() {
         }
       }
     }, 100);
-  }, [chartMode, historyData, initialBalances, latestData]);
+  }, [chartMode, historyData, initialBalances, latestData, selectedBots]);
 
   // Legend scroll handlers
   const scrollLegend = (direction: "left" | "right") => {
@@ -493,6 +528,19 @@ export function BotPerformanceChart() {
 
       {/* Legend */}
       <div className="relative">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-sm font-medium text-light-text-secondary dark:text-dark-text-secondary">
+            Legend:
+          </span>
+          {selectedBots !== null && (
+            <button
+              onClick={clearSelection}
+              className="px-3 py-1 text-xs bg-accent-blue hover:bg-accent-blue/80 text-white rounded-md transition-colors"
+            >
+              Clear Selection
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => scrollLegend("left")}
@@ -520,30 +568,45 @@ export function BotPerformanceChart() {
             style={{ scrollBehavior: "smooth" }}
           >
             <div className="flex gap-4 min-w-max">
-              {latestData?.map((bot, index) => (
-                <div
-                  key={bot.botId}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
-                >
+              {latestData?.map((bot, index) => {
+                const isSelected =
+                  selectedBots === null || selectedBots.has(bot.botId);
+                return (
                   <div
-                    className="w-3 h-3 rounded-full"
-                    style={{
-                      backgroundColor: BOT_COLORS[index % BOT_COLORS.length],
-                    }}
-                  />
-                  <img
-                    src="/ai-icon.svg"
-                    alt="AI"
-                    className="w-4 h-4"
-                    onError={(e) => {
-                      e.currentTarget.style.display = "none";
-                    }}
-                  />
-                  <span className="text-sm font-medium text-light-text-primary dark:text-dark-text-primary">
-                    {bot.botName}
-                  </span>
-                </div>
-              ))}
+                    key={bot.botId}
+                    onClick={() => handleLegendClick(bot.botId)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer ${
+                      isSelected
+                        ? "bg-accent-green/20 border border-accent-green/30"
+                        : "bg-white/5 hover:bg-white/10 opacity-60"
+                    }`}
+                  >
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{
+                        backgroundColor: BOT_COLORS[index % BOT_COLORS.length],
+                      }}
+                    />
+                    <img
+                      src="/ai-icon.svg"
+                      alt="AI"
+                      className="w-4 h-4"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                    <span
+                      className={`text-sm font-medium ${
+                        isSelected
+                          ? "text-light-text-primary dark:text-dark-text-primary"
+                          : "text-light-text-secondary dark:text-dark-text-secondary"
+                      }`}
+                    >
+                      {bot.botName}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
