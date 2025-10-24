@@ -28,7 +28,7 @@ export const SUPPORTED_AI_MODELS: {
 }[] = [
     // OpenAI Models (Latest - October 2025)
     { value: 'openai/gpt-5', label: 'GPT-5', description: 'Latest flagship model with advanced reasoning', logo: '/logos/openai.svg', provider: 'OpenAI' },
-    { value: 'openai/gpt-5-instant', label: 'GPT-5 Instant', description: 'Fast GPT-5 variant for quick responses', logo: '/logos/openai.svg', provider: 'OpenAI' },
+    { value: 'openai/gpt-5-mini', label: 'GPT-5 Mini', description: 'Fast GPT-5 variant for quick responses', logo: '/logos/openai.svg', provider: 'OpenAI' },
     { value: 'openai/o3', label: 'OpenAI o3', description: 'Most advanced reasoning model', logo: '/logos/openai.svg', provider: 'OpenAI' },
 
     // Anthropic Models (Latest - October 2025)
@@ -38,14 +38,14 @@ export const SUPPORTED_AI_MODELS: {
     // Google Models (Latest - October 2025)
     { value: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Latest flagship with advanced reasoning', logo: '/logos/gemini.svg', provider: 'Google' },
     { value: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash', description: 'Fast and efficient latest model', logo: '/logos/gemini.svg', provider: 'Google' },
-    { value: 'google/gemma-3-27b', label: 'Gemma 3 27B', description: 'Latest open-source model from Google', logo: '/logos/gemini.svg', provider: 'Google' },
+    { value: 'google/gemma-3-27b-it', label: 'Gemma 3 27B', description: 'Latest open-source model from Google', logo: '/logos/gemini.svg', provider: 'Google' },
 
     // Meta Llama Models (Latest Open Source - October 2025)
-    { value: 'meta-llama/llama-4-scout-17b', label: 'Llama 4 Scout 17B', description: 'Latest multimodal Llama model', logo: '/logos/meta.svg', provider: 'Meta' },
-    { value: 'meta-llama/llama-4-maverick-17b', label: 'Llama 4 Maverick 17B', description: 'Latest multimodal Llama variant', logo: '/logos/meta.svg', provider: 'Meta' },
+    { value: 'meta-llama/llama-4-scout', label: 'Llama 4 Scout 17B', description: 'Latest multimodal Llama model', logo: '/logos/meta.svg', provider: 'Meta' },
+    { value: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick 17B', description: 'Latest multimodal Llama variant', logo: '/logos/meta.svg', provider: 'Meta' },
 
     // DeepSeek Models (Latest Open Source, Finance-focused)
-    { value: 'deepseek/deepseek-v3.1', label: 'DeepSeek V3.1', description: 'Latest DeepSeek model with enhanced capabilities', logo: '/logos/deepseek.svg', provider: 'DeepSeek' },
+    { value: 'deepseek/deepseek-v3.1-terminus', label: 'DeepSeek V3.1', description: 'Latest DeepSeek model with enhanced capabilities', logo: '/logos/deepseek.svg', provider: 'DeepSeek' },
     { value: 'deepseek/deepseek-r1', label: 'DeepSeek R1', description: 'Advanced reasoning model', logo: '/logos/deepseek.svg', provider: 'DeepSeek' },
 
     // Qwen Models (Latest Open Source)
@@ -61,7 +61,7 @@ export const SUPPORTED_AI_MODELS: {
     { value: 'cohere/command-r-plus', label: 'Command R+', description: 'Enterprise-grade RAG and reasoning', logo: '/logos/cohere.svg', provider: 'Cohere' },
 
     // Perplexity Models (Latest with real-time web access)
-    { value: 'perplexity/llama-3.1-sonar-large-128k-online', label: 'Sonar Large Online', description: 'Real-time web search and reasoning', logo: '/logos/perplexity.svg', provider: 'Perplexity' },
+    { value: 'perplexity/sonar-pro', label: 'Sonar Pro', description: 'Latest flagship model from Perplexity', logo: '/logos/perplexity.svg', provider: 'Perplexity' },
   ]; export const DEFAULT_PROMPT_TEMPLATE = `You are an expert cryptocurrency futures trader overseeing a multi-asset USDT-margined portfolio.
 
 SESSION CONTEXT
@@ -264,7 +264,7 @@ export type TradingSymbol =
 export type AIModel =
   // OpenAI (Latest - October 2025)
   | 'openai/gpt-5'
-  | 'openai/gpt-5-instant'
+  | 'openai/gpt-5-mini'
   | 'openai/o3'
   // Anthropic (Latest - October 2025)
   | 'anthropic/claude-4.5-sonnet'
@@ -272,12 +272,12 @@ export type AIModel =
   // Google (Latest - October 2025)
   | 'google/gemini-2.5-pro'
   | 'google/gemini-2.5-flash'
-  | 'google/gemma-3-27b'
+  | 'google/gemma-3-27b-it'
   // Meta Llama (Latest Open Source - October 2025)
-  | 'meta-llama/llama-4-scout-17b'
-  | 'meta-llama/llama-4-maverick-17b'
+  | 'meta-llama/llama-4-scout'
+  | 'meta-llama/llama-4-maverick'
   // DeepSeek (Latest Open Source)
-  | 'deepseek/deepseek-v3.1'
+  | 'deepseek/deepseek-v3.1-terminus'
   | 'deepseek/deepseek-r1'
   // Qwen (Latest Open Source)
   | 'qwen/qwen-2.5-72b-instruct'
@@ -288,7 +288,7 @@ export type AIModel =
   // Cohere (Latest)
   | 'cohere/command-r-plus'
   // Perplexity (Latest)
-  | 'perplexity/llama-3.1-sonar-large-128k-online';
+  | 'perplexity/sonar-pro';
 
 export interface TradingBot {
   id: string;

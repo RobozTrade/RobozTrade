@@ -18,15 +18,15 @@ const SUPPORTED_SYMBOLS = [
 // Supported AI models (Latest - October 2025)
 const SUPPORTED_AI_MODELS = [
   // OpenAI (Latest - October 2025)
-  'openai/gpt-5', 'openai/gpt-5-instant', 'openai/o3',
+  'openai/gpt-5', 'openai/gpt-5-mini', 'openai/o3',
   // Anthropic (Latest - October 2025)
   'anthropic/claude-4.5-sonnet', 'anthropic/claude-3.5-sonnet',
   // Google (Latest - October 2025)
-  'google/gemini-2.5-pro', 'google/gemini-2.5-flash', 'google/gemma-3-27b',
+  'google/gemini-2.5-pro', 'google/gemini-2.5-flash', 'google/gemma-3-27b-it',
   // Meta Llama (Latest Open Source - October 2025)
-  'meta-llama/llama-4-scout-17b', 'meta-llama/llama-4-maverick-17b',
+  'meta-llama/llama-4-scout', 'meta-llama/llama-4-maverick',
   // DeepSeek (Latest Open Source)
-  'deepseek/deepseek-v3.1', 'deepseek/deepseek-r1',
+  'deepseek/deepseek-v3.1-terminus', 'deepseek/deepseek-r1',
   // Qwen (Latest Open Source)
   'qwen/qwen-2.5-72b-instruct',
   // Mistral (Latest Open Source)
@@ -36,7 +36,7 @@ const SUPPORTED_AI_MODELS = [
   // Cohere (Latest)
   'cohere/command-r-plus',
   // Perplexity (Latest)
-  'perplexity/llama-3.1-sonar-large-128k-online'
+  'perplexity/sonar-pro'
 ] as const;
 
 // New bot creation schema with payment and direct API keys
