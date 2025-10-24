@@ -255,8 +255,8 @@ interface BotExecutionEntry {
   totalBalance?: number | null;
   unrealizedPnl?: number | null;
   accountBalance?: number | null;
-  runtimeMs?: number | null;
-  invocations?: number | null;
+  aiRuntimeMs?: number | null;
+  aiInvocations?: number | null;
 }
 
 interface PublicDashboardProps {
@@ -503,7 +503,15 @@ export default function PublicDashboard({
     runtimeMs: number | null | undefined;
     invocations: number | null | undefined;
     balance: number | null | undefined;
+    exposure: number | null | undefined;
     tradesExecuted: number | null | undefined;
+    decisions: Array<{
+      symbol: string;
+      action: string;
+      confidence: number | null;
+      reasoning?: string | null;
+      analysis?: string | null;
+    }>;
   }
 
   const filteredTranscripts = useMemo<BotTranscriptEntry[]>(() => {
@@ -520,6 +528,35 @@ export default function PublicDashboard({
       const aiModel = bot?.aiModel ?? null;
       const color = colorByBotId.get(exec.botId) ?? "#007aff";
 
+      // Parse AI decisions from aiDecisions field
+      let decisions: Array<{
+        symbol: string;
+        action: string;
+        confidence: number | null;
+        reasoning?: string | null;
+        analysis?: string | null;
+      }> = [];
+
+      if (exec.aiDecisions) {
+        try {
+          const parsed =
+            typeof exec.aiDecisions === "string"
+              ? JSON.parse(exec.aiDecisions)
+              : exec.aiDecisions;
+          if (Array.isArray(parsed)) {
+            decisions = parsed.map((d: any) => ({
+              symbol: d.symbol ?? "Unknown",
+              action: d.action ?? "HOLD",
+              confidence: d.confidence ?? null,
+              reasoning: d.reasoning ?? null,
+              analysis: d.analysis ?? null,
+            }));
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+
       return {
         id: exec.id,
         botId: exec.botId,
@@ -528,10 +565,12 @@ export default function PublicDashboard({
         color,
         timestamp: toDate(exec.executionTime),
         message: extractSummary(exec.aiResponse),
-        runtimeMs: exec.runtimeMs,
-        invocations: exec.invocations,
+        runtimeMs: exec.aiRuntimeMs,
+        invocations: exec.aiInvocations,
         balance: exec.totalBalance,
+        exposure: exec.unrealizedPnl,
         tradesExecuted: null,
+        decisions,
       };
     });
   }, [
@@ -645,146 +684,12 @@ export default function PublicDashboard({
         />
       )}
 
-      {/* Two-Column Layout: Tables + AI Decision Feed */}
+      {/* Two-Column Layout: Current Positions + AI Decision Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
-        {/* Left Column: Trading Tables (60%) */}
-        <div className="lg:col-span-3 space-y-4 sm:space-y-6">
-          {/* Completed Trades Table */}
-          <GlassCard className="p-4 sm:p-6">
-            <h3 className="text-base sm:text-lg font-semibold text-light-text-primary dark:text-dark-text-primary mb-3 sm:mb-4">
-              Completed Trades
-            </h3>
-            {botsLoading || tradesLoading ? (
-              <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
-                Loading completed trades...
-              </div>
-            ) : botsError ? (
-              <div className="py-6 text-center text-accent-red">
-                Failed to load bots. Please try again.
-              </div>
-            ) : tradesError ? (
-              <div className="py-6 text-center text-accent-red">
-                Failed to load completed trades.
-              </div>
-            ) : !hasBots ? (
-              <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
-                No trading bots found for this wallet.
-              </div>
-            ) : completedTrades.length === 0 ? (
-              <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
-                No completed trades yet.
-              </div>
-            ) : (
-              <div className="overflow-x-auto -mx-4 sm:mx-0">
-                <div className="inline-block min-w-full align-middle px-4 sm:px-0">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-white/10 dark:border-white/5">
-                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                          AI Model
-                        </th>
-                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                          Pair
-                        </th>
-                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                          Side
-                        </th>
-                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                          Leverage
-                        </th>
-                        <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                          Entry
-                        </th>
-                        <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                          Exit
-                        </th>
-                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                          Time
-                        </th>
-                        <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                          P&L
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {completedTrades.map((trade) => (
-                        <tr
-                          key={trade.id}
-                          className="border-b border-white/5 hover:bg-white/5 dark:hover:bg-black/5 transition-colors"
-                        >
-                          <td className="py-3 px-2">
-                            <div className="flex items-center gap-2">
-                              <img
-                                src={getAIModelLogo(trade.aiModelValue)}
-                                alt="AI Model"
-                                className="w-5 h-5 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
-                              />
-                              <span className="text-light-text-primary dark:text-dark-text-primary">
-                                {trade.aiModel}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-2 text-light-text-primary dark:text-dark-text-primary">
-                            {trade.pair}
-                          </td>
-                          <td className="py-3 px-2">
-                            <span
-                              className={`px-2 py-1 rounded text-xs font-medium ${
-                                trade.side === "LONG"
-                                  ? "bg-accent-green/20 text-accent-green"
-                                  : "bg-accent-red/20 text-accent-red"
-                              }`}
-                            >
-                              {trade.side}
-                            </span>
-                          </td>
-                          <td className="py-3 px-2 text-light-text-secondary dark:text-dark-text-secondary">
-                            {trade.leverage}
-                          </td>
-                          <td className="py-3 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
-                            {formatCurrency(trade.entryPrice)}
-                          </td>
-                          <td className="py-3 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
-                            {trade.exitPrice !== null
-                              ? formatCurrency(trade.exitPrice)
-                              : "—"}
-                          </td>
-                          <td className="py-3 px-2 text-light-text-secondary dark:text-dark-text-secondary">
-                            {trade.holdingTime}
-                          </td>
-                          <td className="py-3 px-2 text-right">
-                            <div className="flex flex-col items-end">
-                              <span
-                                className={`font-semibold ${
-                                  trade.pnl >= 0
-                                    ? "text-accent-green"
-                                    : "text-accent-red"
-                                }`}
-                              >
-                                {formatSignedCurrency(trade.pnl)}
-                              </span>
-                              <span
-                                className={`text-xs ${
-                                  trade.pnl >= 0
-                                    ? "text-accent-green"
-                                    : "text-accent-red"
-                                }`}
-                              >
-                                ({formatPercentage(trade.pnlPercent)})
-                              </span>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </GlassCard>
-
+        {/* Left Column: Current Positions (60%) */}
+        <div className="lg:col-span-3">
           {/* Current Positions Table - Grouped by Bot */}
-          <GlassCard className="p-4 sm:p-6">
+          <GlassCard className="p-4 sm:p-6 h-[600px] sm:h-[700px] lg:h-[800px] flex flex-col">
             <h3 className="text-base sm:text-lg font-semibold text-light-text-primary dark:text-dark-text-primary mb-3 sm:mb-4">
               Current Positions
             </h3>
@@ -809,7 +714,7 @@ export default function PublicDashboard({
                 No open positions at the moment.
               </div>
             ) : (
-              <div className="space-y-3 sm:space-y-4">
+              <div className="space-y-3 sm:space-y-4 flex-1 overflow-y-auto">
                 {positionsByBot.map((group) => (
                   <details key={group.botId} className="group" open>
                     <summary className="cursor-pointer list-none flex items-center justify-between p-2 sm:p-3 rounded-xl hover:bg-white/5 dark:hover:bg-black/5 transition-colors">
@@ -872,10 +777,14 @@ export default function PublicDashboard({
                             </tr>
                           </thead>
                           <tbody>
-                            {group.positions.map((position) => (
+                            {group.positions.map((position, posIndex) => (
                               <tr
                                 key={position.id}
-                                className="border-b border-white/5 hover:bg-white/5 dark:hover:bg-black/5 transition-colors"
+                                className="border-b border-white/5 hover:bg-white/5 dark:hover:bg-black/5 transition-colors animate-fade-in-up"
+                                style={{
+                                  animationDelay: `${posIndex * 50}ms`,
+                                  animationFillMode: "backwards",
+                                }}
                               >
                                 <td className="py-2 px-2">
                                   <span
@@ -914,25 +823,25 @@ export default function PublicDashboard({
                                   <div className="flex flex-col items-end">
                                     <span
                                       className={`font-semibold ${
-                                        position.unrealizedPnl >= 0
+                                        (position.unrealizedPnl ?? 0) >= 0
                                           ? "text-accent-green"
                                           : "text-accent-red"
                                       }`}
                                     >
                                       {formatSignedCurrency(
-                                        position.unrealizedPnl
+                                        position.unrealizedPnl ?? 0
                                       )}
                                     </span>
                                     <span
                                       className={`text-xs ${
-                                        position.unrealizedPnl >= 0
+                                        (position.unrealizedPnl ?? 0) >= 0
                                           ? "text-accent-green"
                                           : "text-accent-red"
                                       }`}
                                     >
                                       (
                                       {formatPercentage(
-                                        position.unrealizedPnlPercent
+                                        position.unrealizedPnlPercent ?? 0
                                       )}
                                       )
                                     </span>
@@ -1026,7 +935,7 @@ export default function PublicDashboard({
                   No AI updates for the selected bots yet.
                 </div>
               ) : (
-                filteredTranscripts.map((entry) => {
+                filteredTranscripts.map((entry, index) => {
                   const aiModelInfo = entry.aiModel
                     ? SUPPORTED_AI_MODELS.find((m) => m.value === entry.aiModel)
                     : null;
@@ -1036,7 +945,11 @@ export default function PublicDashboard({
                   return (
                     <div
                       key={`${entry.id}-${entry.timestamp?.getTime() ?? ""}`}
-                      className="p-4 rounded-2xl border border-white/10 bg-white/5 dark:bg-black/10 backdrop-blur-xl shadow-glass space-y-3"
+                      className="p-4 rounded-2xl border border-white/10 bg-white/5 dark:bg-black/10 backdrop-blur-xl shadow-glass space-y-3 animate-fade-in-up"
+                      style={{
+                        animationDelay: `${index * 100}ms`,
+                        animationFillMode: "backwards",
+                      }}
                     >
                       <div className="flex items-start gap-3">
                         <div className="flex-shrink-0">
@@ -1071,7 +984,93 @@ export default function PublicDashboard({
                             <span>
                               Balance: {formatCurrency(entry.balance ?? null)}
                             </span>
+                            <span>
+                              Exposure: {formatCurrency(entry.exposure ?? null)}
+                            </span>
                           </div>
+
+                          {entry.decisions.length > 0 && (
+                            <details className="group mt-2 border border-white/10 rounded-xl bg-white/5 dark:bg-black/5">
+                              <summary className="cursor-pointer list-none flex items-center justify-between px-3 py-2 text-xs font-semibold text-accent-blue">
+                                <span className="group-open:hidden">
+                                  Show individual decisions
+                                </span>
+                                <span className="hidden group-open:inline">
+                                  Hide individual decisions
+                                </span>
+                                <svg
+                                  className="w-3.5 h-3.5 transition-transform group-open:rotate-180"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 9l-7 7-7-7"
+                                  />
+                                </svg>
+                              </summary>
+                              <div className="px-3 pb-3 space-y-3">
+                                {entry.decisions.map((decision, index) => (
+                                  <div
+                                    key={`${entry.id}-decision-${index}`}
+                                    className="rounded-lg border border-white/10 bg-white/5 dark:bg-black/10 p-3 space-y-2"
+                                  >
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
+                                          {decision.symbol}
+                                        </span>
+                                        <span
+                                          className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                            decision.action === "BUY" ||
+                                            decision.action === "LONG"
+                                              ? "bg-accent-green/20 text-accent-green"
+                                              : decision.action === "SELL" ||
+                                                decision.action === "SHORT"
+                                              ? "bg-accent-red/20 text-accent-red"
+                                              : decision.action === "CLOSE"
+                                              ? "bg-accent-blue/20 text-accent-blue"
+                                              : "bg-light-text-tertiary/20 text-light-text-tertiary dark:bg-dark-text-tertiary/20 dark:text-dark-text-tertiary"
+                                          }`}
+                                        >
+                                          {decision.action}
+                                        </span>
+                                      </div>
+                                      <div className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+                                        CONF{" "}
+                                        {decision.confidence !== null &&
+                                        decision.confidence !== undefined
+                                          ? `${(
+                                              decision.confidence * 100
+                                            ).toFixed(0)}%`
+                                          : "—"}
+                                      </div>
+                                    </div>
+
+                                    {decision.reasoning && (
+                                      <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line">
+                                        {decision.reasoning}
+                                      </p>
+                                    )}
+
+                                    {decision.analysis && (
+                                      <div className="text-xs space-y-1">
+                                        <p className="font-semibold text-light-text-primary dark:text-dark-text-primary">
+                                          Analysis:
+                                        </p>
+                                        <p className="text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line">
+                                          {decision.analysis}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1082,6 +1081,144 @@ export default function PublicDashboard({
           </GlassCard>
         </div>
       </div>
+
+      {/* Completed Trades Table - Full Width */}
+      <GlassCard className="p-4 sm:p-6">
+        <h3 className="text-base sm:text-lg font-semibold text-light-text-primary dark:text-dark-text-primary mb-3 sm:mb-4">
+          Completed Trades
+        </h3>
+        {botsLoading || tradesLoading ? (
+          <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
+            Loading completed trades...
+          </div>
+        ) : botsError ? (
+          <div className="py-6 text-center text-accent-red">
+            Failed to load bots. Please try again.
+          </div>
+        ) : tradesError ? (
+          <div className="py-6 text-center text-accent-red">
+            Failed to load completed trades.
+          </div>
+        ) : !hasBots ? (
+          <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
+            No trading bots found for this wallet.
+          </div>
+        ) : completedTrades.length === 0 ? (
+          <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
+            No completed trades yet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <div className="inline-block min-w-full align-middle px-4 sm:px-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 dark:border-white/5">
+                    <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                      AI Model
+                    </th>
+                    <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                      Pair
+                    </th>
+                    <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                      Side
+                    </th>
+                    <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                      Leverage
+                    </th>
+                    <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                      Entry
+                    </th>
+                    <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                      Exit
+                    </th>
+                    <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                      Time
+                    </th>
+                    <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                      P&L
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {completedTrades.map((trade, index) => (
+                    <tr
+                      key={trade.id}
+                      className="border-b border-white/5 hover:bg-white/5 dark:hover:bg-black/5 transition-colors animate-fade-in-up"
+                      style={{
+                        animationDelay: `${index * 50}ms`,
+                        animationFillMode: "backwards",
+                      }}
+                    >
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={getAIModelLogo(trade.aiModelValue)}
+                            alt="AI Model"
+                            className="w-5 h-5 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
+                          />
+                          <span className="text-light-text-primary dark:text-dark-text-primary">
+                            {trade.aiModel}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-2 text-light-text-primary dark:text-dark-text-primary">
+                        {trade.pair}
+                      </td>
+                      <td className="py-3 px-2">
+                        <span
+                          className={`px-2 py-1 rounded text-xs font-medium ${
+                            trade.side === "LONG"
+                              ? "bg-accent-green/20 text-accent-green"
+                              : "bg-accent-red/20 text-accent-red"
+                          }`}
+                        >
+                          {trade.side}
+                        </span>
+                      </td>
+                      <td className="py-3 px-2 text-light-text-secondary dark:text-dark-text-secondary">
+                        {trade.leverage}
+                      </td>
+                      <td className="py-3 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
+                        {formatCurrency(trade.entryPrice)}
+                      </td>
+                      <td className="py-3 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
+                        {trade.exitPrice !== null
+                          ? formatCurrency(trade.exitPrice)
+                          : "—"}
+                      </td>
+                      <td className="py-3 px-2 text-light-text-secondary dark:text-dark-text-secondary">
+                        {trade.holdingTime}
+                      </td>
+                      <td className="py-3 px-2 text-right">
+                        <div className="flex flex-col items-end">
+                          <span
+                            className={`font-semibold ${
+                              trade.pnl >= 0
+                                ? "text-accent-green"
+                                : "text-accent-red"
+                            }`}
+                          >
+                            {formatSignedCurrency(trade.pnl)}
+                          </span>
+                          <span
+                            className={`text-xs ${
+                              trade.pnl >= 0
+                                ? "text-accent-green"
+                                : "text-accent-red"
+                            }`}
+                          >
+                            ({formatPercentage(trade.pnlPercent)})
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </GlassCard>
     </div>
   );
 }
