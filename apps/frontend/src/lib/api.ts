@@ -262,6 +262,20 @@ class ApiClient {
   async getPayments(): Promise<ApiResponse<BotPayment[]>> {
     return this.request('/payments', {}, true);
   }
+
+  // Bot Performance
+  async getBotPerformanceLatest(): Promise<ApiResponse<any[]>> {
+    return this.request('/bot-performance/latest', {}, true);
+  }
+
+  async getBotPerformanceHistory(botId: string, limit?: number): Promise<ApiResponse<any[]>> {
+    const params = limit ? `?limit=${limit}` : '';
+    return this.request(`/bot-performance/${botId}/history${params}`, {}, true);
+  }
+
+  async getBotInitialBalance(botId: string): Promise<ApiResponse<any>> {
+    return this.request(`/bot-performance/${botId}/initial-balance`, {}, true);
+  }
 }
 
 export const api = new ApiClient();

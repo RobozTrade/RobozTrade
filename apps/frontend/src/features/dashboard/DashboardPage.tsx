@@ -2,6 +2,8 @@ import { useState } from "react";
 import { PriceTicker } from "@/components/dashboard/PriceTicker";
 import { AIModelCard, AIModel } from "@/components/dashboard/AIModelCard";
 import { MultiModelChart } from "@/components/dashboard/MultiModelChart";
+import { BotPerformanceChart } from "@/components/dashboard/BotPerformanceChart";
+import { IndividualBotPerformance } from "@/components/dashboard/IndividualBotPerformance";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Send } from "lucide-react";
 
@@ -155,10 +157,13 @@ export default function DashboardPageNew() {
       <PriceTicker />
 
       <div className="max-w-[1920px] mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
-        {/* Multi-line Chart Section */}
+        {/* Bot Performance Chart Section */}
         <GlassCard className="p-4 sm:p-6">
-          <MultiModelChart models={AI_MODELS} />
+          <BotPerformanceChart />
         </GlassCard>
+
+        {/* Individual Bot Performance Section */}
+        <IndividualBotPerformance />
 
         {/* AI Model Summary Cards */}
         <div className="overflow-x-auto pb-4 -mx-4 sm:mx-0 px-4 sm:px-0">

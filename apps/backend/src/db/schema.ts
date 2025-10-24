@@ -140,7 +140,9 @@ export const botExecutions = sqliteTable('bot_executions', {
   aiThinking: text('ai_thinking'),
   aiRuntimeMs: integer('ai_runtime_ms'),
   aiInvocations: integer('ai_invocations'),
-  accountBalance: real('account_balance'),
+  accountBalance: real('account_balance'), // Available balance
+  totalBalance: real('total_balance'), // Total account balance (wallet balance)
+  unrealizedPnl: real('unrealized_pnl'), // Total unrealized P&L
   accountExposure: real('account_exposure'),
   tradesExecuted: integer('trades_executed').notNull().default(0),
   errors: text('errors', { mode: 'json' }), // any errors encountered

@@ -467,13 +467,22 @@ export interface CreateBenchmarkInput {
 
 // WebSocket Types
 export interface WebSocketMessage {
-  type: 'ticker' | 'kline' | 'trade' | 'error';
+  type: 'ticker' | 'kline' | 'trade' | 'error' | 'bot_performance';
   data: any;
 }
 
 export interface SubscribeMessage {
   action: 'subscribe' | 'unsubscribe';
   channels: string[];
+}
+
+export interface BotPerformanceUpdate {
+  botId: string;
+  botName: string;
+  totalBalance: number;
+  unrealizedPnl: number;
+  executionTime: string;
+  status: string;
 }
 
 // Analytics Types
