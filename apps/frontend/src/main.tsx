@@ -10,9 +10,10 @@ import "./index.css";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true, // Enable refetch on window focus
       retry: 1,
       staleTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: Infinity, // Never garbage collect cached data
     },
   },
 });
