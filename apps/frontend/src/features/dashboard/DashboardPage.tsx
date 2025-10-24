@@ -165,19 +165,6 @@ export default function DashboardPageNew() {
         {/* Individual Bot Performance Section */}
         <IndividualBotPerformance />
 
-        {/* AI Model Summary Cards */}
-        <div className="overflow-x-auto pb-4 -mx-4 sm:mx-0 px-4 sm:px-0">
-          <div className="flex gap-3 sm:gap-4 min-w-max sm:min-w-0">
-            {AI_MODELS.map((model) => (
-              <AIModelCard
-                key={model.id}
-                model={model}
-                onClick={() => setSelectedModel(model)}
-              />
-            ))}
-          </div>
-        </div>
-
         {/* Two-Column Layout: Tables + Chat */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Left Column: Trading Tables (70%) */}
