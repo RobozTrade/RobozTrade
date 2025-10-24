@@ -149,15 +149,15 @@ export default function DashboardPageNew() {
       {/* Price Ticker */}
       <PriceTicker />
 
-      <div className="max-w-[1920px] mx-auto p-6 space-y-6">
+      <div className="max-w-[1920px] mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
         {/* Multi-line Chart Section */}
-        <GlassCard className="p-6">
+        <GlassCard className="p-4 sm:p-6">
           <MultiModelChart models={AI_MODELS} />
         </GlassCard>
 
         {/* AI Model Summary Cards */}
-        <div className="overflow-x-auto pb-4">
-          <div className="flex gap-4">
+        <div className="overflow-x-auto pb-4 -mx-4 sm:mx-0 px-4 sm:px-0">
+          <div className="flex gap-3 sm:gap-4 min-w-max sm:min-w-0">
             {AI_MODELS.map((model) => (
               <AIModelCard
                 key={model.id}
@@ -169,141 +169,143 @@ export default function DashboardPageNew() {
         </div>
 
         {/* Two-Column Layout: Tables + Chat */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Left Column: Trading Tables (70%) */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
             {/* Completed Trades Table */}
-            <GlassCard className="p-6">
-              <h3 className="text-lg font-semibold text-light-text-primary dark:text-dark-text-primary mb-4">
+            <GlassCard className="p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-semibold text-light-text-primary dark:text-dark-text-primary mb-3 sm:mb-4">
                 Completed Trades
               </h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-white/10 dark:border-white/5">
-                      <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                        AI Model
-                      </th>
-                      <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                        Pair
-                      </th>
-                      <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                        Side
-                      </th>
-                      <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                        Leverage
-                      </th>
-                      <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                        Entry
-                      </th>
-                      <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                        Exit
-                      </th>
-                      <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                        Time
-                      </th>
-                      <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
-                        P&L
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {COMPLETED_TRADES.map((trade) => (
-                      <tr
-                        key={trade.id}
-                        className="border-b border-white/5 hover:bg-white/5 dark:hover:bg-black/5 transition-colors"
-                      >
-                        <td className="py-3 px-2">
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="w-2 h-2 rounded-full"
-                              style={{ backgroundColor: trade.modelColor }}
-                            />
-                            <span className="text-light-text-primary dark:text-dark-text-primary">
-                              {trade.aiModel}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-2 text-light-text-primary dark:text-dark-text-primary">
-                          {trade.pair}
-                        </td>
-                        <td className="py-3 px-2">
-                          <span
-                            className={`px-2 py-1 rounded text-xs font-medium ${
-                              trade.side === "LONG"
-                                ? "bg-accent-green/20 text-accent-green"
-                                : "bg-accent-red/20 text-accent-red"
-                            }`}
-                          >
-                            {trade.side}
-                          </span>
-                        </td>
-                        <td className="py-3 px-2 text-light-text-secondary dark:text-dark-text-secondary">
-                          {trade.leverage}
-                        </td>
-                        <td className="py-3 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
-                          ${trade.entryPrice.toLocaleString()}
-                        </td>
-                        <td className="py-3 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
-                          ${trade.exitPrice.toLocaleString()}
-                        </td>
-                        <td className="py-3 px-2 text-light-text-secondary dark:text-dark-text-secondary">
-                          {trade.holdingTime}
-                        </td>
-                        <td className="py-3 px-2 text-right">
-                          <div className="flex flex-col items-end">
-                            <span
-                              className={`font-semibold ${
-                                trade.pnl >= 0
-                                  ? "text-accent-green"
-                                  : "text-accent-red"
-                              }`}
-                            >
-                              {trade.pnl >= 0 ? "+" : ""}$
-                              {trade.pnl.toLocaleString()}
-                            </span>
-                            <span
-                              className={`text-xs ${
-                                trade.pnl >= 0
-                                  ? "text-accent-green"
-                                  : "text-accent-red"
-                              }`}
-                            >
-                              ({trade.pnl >= 0 ? "+" : ""}
-                              {trade.pnlPercent}%)
-                            </span>
-                          </div>
-                        </td>
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <div className="inline-block min-w-full align-middle px-4 sm:px-0">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 dark:border-white/5">
+                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          AI Model
+                        </th>
+                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          Pair
+                        </th>
+                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          Side
+                        </th>
+                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          Leverage
+                        </th>
+                        <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          Entry
+                        </th>
+                        <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          Exit
+                        </th>
+                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          Time
+                        </th>
+                        <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          P&L
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {COMPLETED_TRADES.map((trade) => (
+                        <tr
+                          key={trade.id}
+                          className="border-b border-white/5 hover:bg-white/5 dark:hover:bg-black/5 transition-colors"
+                        >
+                          <td className="py-3 px-2">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-2 h-2 rounded-full"
+                                style={{ backgroundColor: trade.modelColor }}
+                              />
+                              <span className="text-light-text-primary dark:text-dark-text-primary">
+                                {trade.aiModel}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-2 text-light-text-primary dark:text-dark-text-primary">
+                            {trade.pair}
+                          </td>
+                          <td className="py-3 px-2">
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-medium ${
+                                trade.side === "LONG"
+                                  ? "bg-accent-green/20 text-accent-green"
+                                  : "bg-accent-red/20 text-accent-red"
+                              }`}
+                            >
+                              {trade.side}
+                            </span>
+                          </td>
+                          <td className="py-3 px-2 text-light-text-secondary dark:text-dark-text-secondary">
+                            {trade.leverage}
+                          </td>
+                          <td className="py-3 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
+                            ${trade.entryPrice.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
+                            ${trade.exitPrice.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-2 text-light-text-secondary dark:text-dark-text-secondary">
+                            {trade.holdingTime}
+                          </td>
+                          <td className="py-3 px-2 text-right">
+                            <div className="flex flex-col items-end">
+                              <span
+                                className={`font-semibold ${
+                                  trade.pnl >= 0
+                                    ? "text-accent-green"
+                                    : "text-accent-red"
+                                }`}
+                              >
+                                {trade.pnl >= 0 ? "+" : ""}$
+                                {trade.pnl.toLocaleString()}
+                              </span>
+                              <span
+                                className={`text-xs ${
+                                  trade.pnl >= 0
+                                    ? "text-accent-green"
+                                    : "text-accent-red"
+                                }`}
+                              >
+                                ({trade.pnl >= 0 ? "+" : ""}
+                                {trade.pnlPercent}%)
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </GlassCard>
 
             {/* Current Positions Table - Grouped by AI Model */}
-            <GlassCard className="p-6">
-              <h3 className="text-lg font-semibold text-light-text-primary dark:text-dark-text-primary mb-4">
+            <GlassCard className="p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-semibold text-light-text-primary dark:text-dark-text-primary mb-3 sm:mb-4">
                 Current Positions
               </h3>
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 {AI_MODELS.filter((m) => m.activePositions > 0).map((model) => (
                   <details key={model.id} className="group" open>
-                    <summary className="cursor-pointer list-none flex items-center justify-between p-3 rounded-xl hover:bg-white/5 dark:hover:bg-black/5 transition-colors">
-                      <div className="flex items-center gap-3">
+                    <summary className="cursor-pointer list-none flex items-center justify-between p-2 sm:p-3 rounded-xl hover:bg-white/5 dark:hover:bg-black/5 transition-colors">
+                      <div className="flex items-center gap-2 sm:gap-3">
                         <div
-                          className="w-3 h-3 rounded-full"
+                          className="w-2 h-2 sm:w-3 sm:h-3 rounded-full"
                           style={{ backgroundColor: model.color }}
                         />
-                        <span className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                        <span className="text-sm sm:text-base font-medium text-light-text-primary dark:text-dark-text-primary">
                           {model.name}
                         </span>
-                        <span className="text-sm text-light-text-tertiary dark:text-dark-text-tertiary">
-                          ({model.activePositions} positions)
+                        <span className="text-xs sm:text-sm text-light-text-tertiary dark:text-dark-text-tertiary">
+                          ({model.activePositions})
                         </span>
                       </div>
                       <svg
-                        className="w-5 h-5 text-light-text-tertiary dark:text-dark-text-tertiary transition-transform group-open:rotate-180"
+                        className="w-4 h-4 sm:w-5 sm:h-5 text-light-text-tertiary dark:text-dark-text-tertiary transition-transform group-open:rotate-180"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -316,95 +318,97 @@ export default function DashboardPageNew() {
                         />
                       </svg>
                     </summary>
-                    <div className="mt-2 overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-white/10 dark:border-white/5">
-                            <th className="text-left py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
-                              Side
-                            </th>
-                            <th className="text-left py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
-                              Pair
-                            </th>
-                            <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
-                              Entry
-                            </th>
-                            <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
-                              Current
-                            </th>
-                            <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
-                              TP
-                            </th>
-                            <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
-                              SL
-                            </th>
-                            <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
-                              Unrealized P&L
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {CURRENT_POSITIONS.filter(
-                            (p) => p.aiModel === model.name
-                          ).map((position) => (
-                            <tr
-                              key={position.id}
-                              className="border-b border-white/5 hover:bg-white/5 dark:hover:bg-black/5 transition-colors"
-                            >
-                              <td className="py-2 px-2">
-                                <span
-                                  className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                    position.side === "LONG"
-                                      ? "bg-accent-green/20 text-accent-green"
-                                      : "bg-accent-red/20 text-accent-red"
-                                  }`}
-                                >
-                                  {position.side}
-                                </span>
-                              </td>
-                              <td className="py-2 px-2 text-light-text-primary dark:text-dark-text-primary">
-                                {position.pair}
-                              </td>
-                              <td className="py-2 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
-                                ${position.entryPrice.toLocaleString()}
-                              </td>
-                              <td className="py-2 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
-                                ${position.currentPrice.toLocaleString()}
-                              </td>
-                              <td className="py-2 px-2 text-right text-accent-green">
-                                ${position.takeProfit.toLocaleString()}
-                              </td>
-                              <td className="py-2 px-2 text-right text-accent-red">
-                                ${position.stopLoss.toLocaleString()}
-                              </td>
-                              <td className="py-2 px-2 text-right">
-                                <div className="flex flex-col items-end">
-                                  <span
-                                    className={`font-semibold ${
-                                      position.unrealizedPnL >= 0
-                                        ? "text-accent-green"
-                                        : "text-accent-red"
-                                    }`}
-                                  >
-                                    {position.unrealizedPnL >= 0 ? "+" : ""}$
-                                    {position.unrealizedPnL.toLocaleString()}
-                                  </span>
-                                  <span
-                                    className={`text-xs ${
-                                      position.unrealizedPnL >= 0
-                                        ? "text-accent-green"
-                                        : "text-accent-red"
-                                    }`}
-                                  >
-                                    ({position.unrealizedPnL >= 0 ? "+" : ""}
-                                    {position.unrealizedPnLPercent}%)
-                                  </span>
-                                </div>
-                              </td>
+                    <div className="mt-2 overflow-x-auto -mx-4 sm:mx-0">
+                      <div className="inline-block min-w-full align-middle px-4 sm:px-0">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-white/10 dark:border-white/5">
+                              <th className="text-left py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                Side
+                              </th>
+                              <th className="text-left py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                Pair
+                              </th>
+                              <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                Entry
+                              </th>
+                              <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                Current
+                              </th>
+                              <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                TP
+                              </th>
+                              <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                SL
+                              </th>
+                              <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                Unrealized P&L
+                              </th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {CURRENT_POSITIONS.filter(
+                              (p) => p.aiModel === model.name
+                            ).map((position) => (
+                              <tr
+                                key={position.id}
+                                className="border-b border-white/5 hover:bg-white/5 dark:hover:bg-black/5 transition-colors"
+                              >
+                                <td className="py-2 px-2">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                      position.side === "LONG"
+                                        ? "bg-accent-green/20 text-accent-green"
+                                        : "bg-accent-red/20 text-accent-red"
+                                    }`}
+                                  >
+                                    {position.side}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-2 text-light-text-primary dark:text-dark-text-primary">
+                                  {position.pair}
+                                </td>
+                                <td className="py-2 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
+                                  ${position.entryPrice.toLocaleString()}
+                                </td>
+                                <td className="py-2 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
+                                  ${position.currentPrice.toLocaleString()}
+                                </td>
+                                <td className="py-2 px-2 text-right text-accent-green">
+                                  ${position.takeProfit.toLocaleString()}
+                                </td>
+                                <td className="py-2 px-2 text-right text-accent-red">
+                                  ${position.stopLoss.toLocaleString()}
+                                </td>
+                                <td className="py-2 px-2 text-right">
+                                  <div className="flex flex-col items-end">
+                                    <span
+                                      className={`font-semibold ${
+                                        position.unrealizedPnL >= 0
+                                          ? "text-accent-green"
+                                          : "text-accent-red"
+                                      }`}
+                                    >
+                                      {position.unrealizedPnL >= 0 ? "+" : ""}$
+                                      {position.unrealizedPnL.toLocaleString()}
+                                    </span>
+                                    <span
+                                      className={`text-xs ${
+                                        position.unrealizedPnL >= 0
+                                          ? "text-accent-green"
+                                          : "text-accent-red"
+                                      }`}
+                                    >
+                                      ({position.unrealizedPnL >= 0 ? "+" : ""}
+                                      {position.unrealizedPnLPercent}%)
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </details>
                 ))}
@@ -414,7 +418,7 @@ export default function DashboardPageNew() {
 
           {/* Right Column: Chat Interface (30%) */}
           <div className="lg:col-span-1">
-            <GlassCard className="p-0 h-[800px] flex flex-col">
+            <GlassCard className="p-0 h-[600px] sm:h-[700px] lg:h-[800px] flex flex-col">
               {/* Chat Header */}
               <div className="p-4 border-b border-white/10 dark:border-white/5">
                 <h3 className="font-semibold text-light-text-primary dark:text-dark-text-primary">

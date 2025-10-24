@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Bot, BarChart3, History } from "lucide-react";
+import { LayoutDashboard, Bot, BarChart3, History, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
@@ -9,16 +9,32 @@ const navigation = [
   { name: "Trade History", href: "/app/trade-history", icon: History },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void;
+}
+
+export default function Sidebar({ onClose }: SidebarProps) {
   return (
-    <div className="w-64 backdrop-blur-2xl bg-white/70 dark:bg-black/70 border-r border-light-border dark:border-dark-border flex flex-col">
-      <div className="p-6">
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-accent-blue to-accent-purple bg-clip-text text-transparent">
-          RobozTrade
-        </h1>
-        <p className="text-sm text-light-text-tertiary dark:text-dark-text-tertiary mt-1">
-          AI Trading Platform
-        </p>
+    <div className="w-64 h-full backdrop-blur-2xl bg-white/70 dark:bg-black/70 border-r border-light-border dark:border-dark-border flex flex-col">
+      <div className="p-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-accent-blue to-accent-purple bg-clip-text text-transparent">
+            RobozTrade
+          </h1>
+          <p className="text-sm text-light-text-tertiary dark:text-dark-text-tertiary mt-1">
+            AI Trading Platform
+          </p>
+        </div>
+        {/* Close button for mobile */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="lg:hidden p-2 rounded-lg hover:bg-white/20 dark:hover:bg-black/20 transition-colors"
+            aria-label="Close menu"
+          >
+            <X className="w-5 h-5 text-light-text-secondary dark:text-dark-text-secondary" />
+          </button>
+        )}
       </div>
 
       <nav className="flex-1 px-4 space-y-1">
@@ -26,6 +42,7 @@ export default function Sidebar() {
           <NavLink
             key={item.name}
             to={item.href}
+            onClick={onClose}
             className={({ isActive }) =>
               cn(
                 "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200",

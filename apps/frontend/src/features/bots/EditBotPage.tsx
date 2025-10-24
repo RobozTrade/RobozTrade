@@ -116,23 +116,24 @@ export default function EditBotPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className="container mx-auto px-4 py-4 sm:py-8 max-w-4xl">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6 sm:mb-8">
         <button
           onClick={() => navigate(`/app/bots/${id}`)}
-          className="btn btn-ghost mb-4 flex items-center gap-2"
+          className="btn btn-ghost mb-3 sm:mb-4 flex items-center gap-2 text-sm sm:text-base"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Bot Details
+          <span className="hidden sm:inline">Back to Bot Details</span>
+          <span className="sm:hidden">Back</span>
         </button>
-        <h1 className="text-3xl font-bold">Edit Bot</h1>
-        <p className="text-base-content/70 mt-2">
+        <h1 className="text-2xl sm:text-3xl font-bold">Edit Bot</h1>
+        <p className="text-sm sm:text-base text-base-content/70 mt-2">
           Update your bot configuration
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
         {/* Basic Configuration */}
         <div className="card bg-base-200">
           <div className="card-body">

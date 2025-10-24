@@ -127,32 +127,32 @@ export default function CreateBotPageNew() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center gap-4">
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+      <div className="flex items-center gap-3 sm:gap-4">
         <button
           onClick={() => navigate("/app/bots")}
-          className="btn btn-secondary"
+          className="btn btn-secondary p-2 sm:px-4"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
         <div>
-          <h1 className="text-3xl font-bold text-text-primary">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-text-primary">
             Create Trading Bot
           </h1>
-          <p className="text-text-secondary mt-1">
-            Set up your AI-powered trading bot with secure payment
+          <p className="text-sm sm:text-base text-text-secondary mt-1">
+            Set up your AI-powered trading bot
           </p>
         </div>
       </div>
 
       {/* Progress Steps */}
       <div className="card">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between overflow-x-auto pb-2 sm:pb-0">
           {steps.map((step, index) => (
-            <div key={step.id} className="flex items-center flex-1">
-              <div className="flex flex-col items-center flex-1">
+            <div key={step.id} className="flex items-center flex-1 min-w-0">
+              <div className="flex flex-col items-center flex-1 px-1">
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${
+                  className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 ${
                     step.completed
                       ? "bg-success border-success text-white"
                       : currentStep === step.id
@@ -161,24 +161,25 @@ export default function CreateBotPageNew() {
                   }`}
                 >
                   {step.completed ? (
-                    <CheckCircle className="w-5 h-5" />
+                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                   ) : (
-                    <span>{index + 1}</span>
+                    <span className="text-xs sm:text-base">{index + 1}</span>
                   )}
                 </div>
                 <span
-                  className={`text-sm mt-2 ${
+                  className={`text-xs sm:text-sm mt-1 sm:mt-2 text-center ${
                     currentStep === step.id
                       ? "text-text-primary font-medium"
                       : "text-text-secondary"
                   }`}
                 >
-                  {step.label}
+                  <span className="hidden sm:inline">{step.label}</span>
+                  <span className="sm:hidden">{step.label.split(" ")[0]}</span>
                 </span>
               </div>
               {index < steps.length - 1 && (
                 <div
-                  className={`h-0.5 flex-1 mx-2 ${
+                  className={`h-0.5 flex-1 mx-1 sm:mx-2 ${
                     step.completed ? "bg-success" : "bg-border"
                   }`}
                 />

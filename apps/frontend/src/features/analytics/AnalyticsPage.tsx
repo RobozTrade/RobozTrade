@@ -146,19 +146,21 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0">
         <div>
-          <h1 className="text-3xl font-bold text-text-primary">Analytics</h1>
-          <p className="text-text-secondary mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary">
+            Analytics
+          </h1>
+          <p className="text-sm sm:text-base text-text-secondary mt-1">
             Performance metrics and insights
           </p>
         </div>
         <select
           value={selectedBot}
           onChange={(e) => setSelectedBot(e.target.value)}
-          className="input"
+          className="input w-full sm:w-auto sm:max-w-xs"
         >
           <option value="ALL">All Bots</option>
           {bots?.data?.map((bot: any) => (
@@ -170,7 +172,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="card">
           <div className="flex items-center justify-between mb-2">
             <p className="text-sm text-text-secondary">Total Trades</p>

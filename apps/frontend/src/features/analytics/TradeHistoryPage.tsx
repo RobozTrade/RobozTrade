@@ -111,28 +111,29 @@ export default function TradeHistoryPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0">
         <div>
-          <h1 className="text-3xl font-bold text-text-primary">
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary">
             Trade History
           </h1>
-          <p className="text-text-secondary mt-1">
+          <p className="text-sm sm:text-base text-text-secondary mt-1">
             Complete history of all executed trades
           </p>
         </div>
         <button
           onClick={handleExport}
-          className="btn btn-secondary flex items-center gap-2"
+          className="btn btn-secondary flex items-center gap-2 self-start sm:self-auto"
         >
           <Download className="w-4 h-4" />
-          Export CSV
+          <span className="hidden sm:inline">Export CSV</span>
+          <span className="sm:hidden">Export</span>
         </button>
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         <div className="card">
           <p className="text-sm text-text-secondary">Total Trades</p>
           <p className="text-2xl font-bold text-text-primary mt-1">
@@ -177,7 +178,7 @@ export default function TradeHistoryPage() {
 
       {/* Filters */}
       <div className="card">
-        <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-text-secondary" />
             <span className="text-sm font-medium text-text-secondary">
@@ -185,29 +186,31 @@ export default function TradeHistoryPage() {
             </span>
           </div>
 
-          <select
-            value={selectedBot}
-            onChange={(e) => setSelectedBot(e.target.value)}
-            className="input"
-          >
-            <option value="ALL">All Bots</option>
-            {bots?.data?.map((bot: any) => (
-              <option key={bot.id} value={bot.id}>
-                {bot.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 flex-1">
+            <select
+              value={selectedBot}
+              onChange={(e) => setSelectedBot(e.target.value)}
+              className="input flex-1 sm:max-w-xs"
+            >
+              <option value="ALL">All Bots</option>
+              {bots?.data?.map((bot: any) => (
+                <option key={bot.id} value={bot.id}>
+                  {bot.name}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as TradeStatus)}
-            className="input"
-          >
-            <option value="ALL">All Status</option>
-            <option value="OPEN">Open</option>
-            <option value="CLOSED">Closed</option>
-            <option value="CANCELLED">Cancelled</option>
-          </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as TradeStatus)}
+              className="input flex-1 sm:max-w-xs"
+            >
+              <option value="ALL">All Status</option>
+              <option value="OPEN">Open</option>
+              <option value="CLOSED">Closed</option>
+              <option value="CANCELLED">Cancelled</option>
+            </select>
+          </div>
         </div>
       </div>
 
