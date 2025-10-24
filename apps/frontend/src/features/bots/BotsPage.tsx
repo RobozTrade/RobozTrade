@@ -5,6 +5,13 @@ import { api } from "@/lib/api";
 import { getStatusColor } from "@/lib/utils";
 import { SUPPORTED_AI_MODELS } from "@roboz-trade/shared-types";
 
+// Helper function to get crypto icon path
+const getCryptoIcon = (symbol: string | undefined): string => {
+  if (!symbol) return "/crypto/btc.svg"; // Default fallback
+  const coin = symbol.replace("USDT", "").toLowerCase();
+  return `/crypto/${coin}.svg`;
+};
+
 export default function BotsPage() {
   const { data: bots } = useQuery({
     queryKey: ["bots"],
@@ -47,13 +54,36 @@ export default function BotsPage() {
                   <h3 className="text-lg font-semibold text-text-primary">
                     {bot.name}
                   </h3>
-                  <p className="text-sm text-text-secondary">
-                    {isNewBot
-                      ? `${
-                          (bot.tradingSymbols as string[])?.length || 0
-                        } Symbols`
-                      : bot.tradingPair}
-                  </p>
+                  {isNewBot ? (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {(bot.tradingSymbols as string[])
+                        ?.slice(0, 3)
+                        .map((symbol) => (
+                          <div
+                            key={symbol}
+                            className="flex items-center gap-1 px-1.5 py-0.5 bg-background-tertiary rounded"
+                          >
+                            <img
+                              src={getCryptoIcon(symbol)}
+                              alt={symbol}
+                              className="w-3.5 h-3.5"
+                            />
+                            <span className="text-xs font-medium text-text-primary">
+                              {symbol.replace("USDT", "")}
+                            </span>
+                          </div>
+                        ))}
+                      {(bot.tradingSymbols as string[])?.length > 3 && (
+                        <span className="text-xs text-text-secondary px-1.5 py-0.5">
+                          +{(bot.tradingSymbols as string[]).length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-text-secondary">
+                      {bot.tradingPair}
+                    </p>
+                  )}
                 </div>
                 <span className={`badge badge-${getStatusColor(bot.status)}`}>
                   {bot.status}

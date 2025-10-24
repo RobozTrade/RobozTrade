@@ -11,6 +11,13 @@ import {
   BarChart3,
 } from "lucide-react";
 
+// Helper function to get crypto icon path
+const getCryptoIcon = (symbol: string | undefined): string => {
+  if (!symbol) return "/crypto/btc.svg"; // Default fallback
+  const coin = symbol.replace("USDT", "").toLowerCase();
+  return `/crypto/${coin}.svg`;
+};
+
 export default function AnalyticsPage() {
   const [selectedBot, setSelectedBot] = useState<string>("ALL");
 
@@ -324,12 +331,19 @@ export default function AnalyticsPage() {
                 className="flex items-center justify-between p-3 bg-background-tertiary rounded-lg"
               >
                 <div className="flex items-center gap-3">
-                  <span className="font-medium text-text-primary">
-                    {stat.symbol.replace("USDT", "")}
-                  </span>
-                  <span className="text-xs text-text-secondary">
-                    {stat.trades} trades
-                  </span>
+                  <img
+                    src={getCryptoIcon(stat.symbol)}
+                    alt={stat.symbol}
+                    className="w-6 h-6"
+                  />
+                  <div className="flex items-center gap-3">
+                    <span className="font-medium text-text-primary">
+                      {stat.symbol.replace("USDT", "")}
+                    </span>
+                    <span className="text-xs text-text-secondary">
+                      {stat.trades} trades
+                    </span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-sm text-text-secondary">

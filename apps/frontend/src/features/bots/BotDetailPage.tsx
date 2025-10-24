@@ -7,6 +7,13 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { SUPPORTED_AI_MODELS } from "@roboz-trade/shared-types";
 import type { BotStatus } from "@roboz-trade/shared-types";
 
+// Helper function to get crypto icon path
+const getCryptoIcon = (symbol: string | undefined): string => {
+  if (!symbol) return "/crypto/btc.svg"; // Default fallback
+  const coin = symbol.replace("USDT", "").toLowerCase();
+  return `/crypto/${coin}.svg`;
+};
+
 export default function BotDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -21,8 +28,8 @@ export default function BotDetailPage() {
   });
 
   const { data: trades } = useQuery({
-    queryKey: ["bot-trades", id],
-    queryFn: () => api.getBotTrades(id!),
+    queryKey: ["bot-trade-history", id],
+    queryFn: () => api.getBotTradeHistory(id!, 50),
     enabled: !!id,
   });
 
@@ -191,12 +198,26 @@ export default function BotDetailPage() {
             {isNewBot ? (
               <>
                 <div>
-                  <p className="text-sm text-text-secondary">Trading Symbols</p>
-                  <p className="text-text-primary font-medium">
-                    {(botData.tradingSymbols as string[])
-                      ?.map((s) => s.replace("USDT", ""))
-                      .join(", ") || "N/A"}
+                  <p className="text-sm text-text-secondary mb-2">
+                    Trading Symbols
                   </p>
+                  <div className="flex flex-wrap gap-2">
+                    {(botData.tradingSymbols as string[])?.map((symbol) => (
+                      <div
+                        key={symbol}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-background-tertiary rounded-lg"
+                      >
+                        <img
+                          src={getCryptoIcon(symbol)}
+                          alt={symbol}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm font-medium text-text-primary">
+                          {symbol.replace("USDT", "")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <p className="text-sm text-text-secondary">Margin Asset</p>
@@ -456,46 +477,127 @@ export default function BotDetailPage() {
                   Date
                 </th>
                 <th className="text-left py-3 text-text-secondary font-medium">
+                  Symbol
+                </th>
+                <th className="text-left py-3 text-text-secondary font-medium">
                   Side
                 </th>
                 <th className="text-right py-3 text-text-secondary font-medium">
-                  Price
+                  Entry Price
+                </th>
+                <th className="text-right py-3 text-text-secondary font-medium">
+                  Exit Price
                 </th>
                 <th className="text-right py-3 text-text-secondary font-medium">
                   Quantity
                 </th>
+                <th className="text-center py-3 text-text-secondary font-medium">
+                  Leverage
+                </th>
                 <th className="text-right py-3 text-text-secondary font-medium">
                   P&L
+                </th>
+                <th className="text-center py-3 text-text-secondary font-medium">
+                  Status
                 </th>
               </tr>
             </thead>
             <tbody>
-              {trades?.data?.map((trade) => (
+              {trades?.data?.map((trade: any) => (
                 <tr key={trade.id} className="border-b border-border">
-                  <td className="py-3 text-text-primary">
-                    {formatDate(trade.executedAt)}
+                  <td className="py-3 text-text-primary text-sm">
+                    {trade.openedAt
+                      ? formatDate(
+                          typeof trade.openedAt === "number"
+                            ? new Date(trade.openedAt * 1000)
+                            : new Date(trade.openedAt)
+                        )
+                      : "N/A"}
+                  </td>
+                  <td className="py-3">
+                    {trade.symbol ? (
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={getCryptoIcon(trade.symbol)}
+                          alt={trade.symbol}
+                          className="w-5 h-5"
+                        />
+                        <span className="text-sm font-medium text-text-primary">
+                          {trade.symbol.replace("USDT", "")}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-text-secondary">N/A</span>
+                    )}
                   </td>
                   <td className="py-3">
                     <span
-                      className={`badge ${
-                        trade.side === "BUY" ? "badge-success" : "badge-danger"
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
+                        trade.side === "BUY"
+                          ? "bg-success/10 text-success"
+                          : "bg-danger/10 text-danger"
                       }`}
                     >
                       {trade.side}
                     </span>
                   </td>
-                  <td className="py-3 text-right text-text-primary">
-                    {formatCurrency(trade.price)}
+                  <td className="py-3 text-right text-text-primary text-sm">
+                    ${trade.entryPrice?.toFixed(2) || "0.00"}
                   </td>
-                  <td className="py-3 text-right text-text-primary">
-                    {trade.quantity}
+                  <td className="py-3 text-right text-text-primary text-sm">
+                    {(() => {
+                      // Calculate exit price if missing but trade is closed
+                      if (
+                        (!trade.exitPrice || trade.exitPrice === 0) &&
+                        trade.status === "CLOSED" &&
+                        trade.realizedPnl &&
+                        trade.quantity &&
+                        trade.entryPrice &&
+                        trade.leverage
+                      ) {
+                        const pnlPerUnit = trade.realizedPnl / trade.quantity;
+                        const priceChange = pnlPerUnit / trade.leverage;
+                        const calculatedExitPrice =
+                          trade.side === "BUY"
+                            ? trade.entryPrice + priceChange
+                            : trade.entryPrice - priceChange;
+                        return `$${calculatedExitPrice.toFixed(2)}`;
+                      }
+                      return trade.exitPrice
+                        ? `$${trade.exitPrice.toFixed(2)}`
+                        : "-";
+                    })()}
+                  </td>
+                  <td className="py-3 text-right text-text-primary text-sm">
+                    {trade.quantity?.toFixed(4) || "0"}
+                  </td>
+                  <td className="py-3 text-center text-text-primary text-sm">
+                    {trade.leverage}x
                   </td>
                   <td
-                    className={`py-3 text-right font-medium ${
-                      (trade.pnl || 0) >= 0 ? "text-success" : "text-danger"
+                    className={`py-3 text-right font-medium text-sm ${
+                      (trade.realizedPnl || 0) >= 0
+                        ? "text-success"
+                        : "text-danger"
                     }`}
                   >
-                    {trade.pnl ? formatCurrency(trade.pnl) : "-"}
+                    {trade.realizedPnl !== null &&
+                    trade.realizedPnl !== undefined
+                      ? formatCurrency(trade.realizedPnl)
+                      : "-"}
+                  </td>
+                  <td className="py-3 text-center">
+                    <span
+                      className={`inline-flex px-2 py-1 rounded text-xs font-medium ${
+                        trade.status === "OPEN"
+                          ? "bg-primary/10 text-primary"
+                          : trade.status === "CLOSED"
+                          ? "bg-success/10 text-success"
+                          : "bg-text-secondary/10 text-text-secondary"
+                      }`}
+                    >
+                      {trade.status}
+                    </span>
                   </td>
                 </tr>
               ))}

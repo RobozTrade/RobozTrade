@@ -2,13 +2,28 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { TrendingUp, TrendingDown, Filter, Download } from "lucide-react";
+import {
+  TrendingUp,
+  TrendingDown,
+  Filter,
+  Download,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 
 type TradeStatus = "OPEN" | "CLOSED" | "CANCELLED" | "ALL";
+
+// Helper function to get crypto icon path
+const getCryptoIcon = (symbol: string | undefined): string => {
+  if (!symbol) return "/crypto/btc.svg"; // Default fallback
+  const coin = symbol.replace("USDT", "").toLowerCase();
+  return `/crypto/${coin}.svg`;
+};
 
 export default function TradeHistoryPage() {
   const [statusFilter, setStatusFilter] = useState<TradeStatus>("ALL");
   const [selectedBot, setSelectedBot] = useState<string>("ALL");
+  const [expandedTradeId, setExpandedTradeId] = useState<string | null>(null);
 
   const { data: bots } = useQuery({
     queryKey: ["bots"],
@@ -259,93 +274,211 @@ export default function TradeHistoryPage() {
                   <th className="px-4 py-3 text-center text-xs font-medium text-text-secondary uppercase tracking-wider">
                     Status
                   </th>
+                  <th className="px-4 py-3 w-10"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredTrades.map((trade: any) => (
-                  <tr
-                    key={trade.id}
-                    className="hover:bg-background-tertiary/50 transition-colors"
-                  >
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-text-primary">
-                      {trade.openedAt
-                        ? formatDate(
-                            typeof trade.openedAt === "number"
-                              ? new Date(trade.openedAt * 1000)
-                              : new Date(trade.openedAt)
-                          )
-                        : "N/A"}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="text-sm font-medium text-text-primary">
-                        {trade.symbol.replace("USDT", "")}
-                      </span>
-                      <span className="text-xs text-text-secondary ml-1">
-                        USDT
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
-                          trade.side === "BUY"
-                            ? "bg-success/10 text-success"
-                            : "bg-danger/10 text-danger"
-                        }`}
+                {filteredTrades.map((trade: any) => {
+                  const isExpanded = expandedTradeId === trade.id;
+                  return (
+                    <>
+                      <tr
+                        key={trade.id}
+                        className="hover:bg-background-tertiary/50 transition-colors cursor-pointer"
+                        onClick={() =>
+                          setExpandedTradeId(isExpanded ? null : trade.id)
+                        }
                       >
-                        {trade.side === "BUY" ? (
-                          <TrendingUp className="w-3 h-3" />
-                        ) : (
-                          <TrendingDown className="w-3 h-3" />
-                        )}
-                        {trade.side}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-text-secondary">
-                      {trade.orderType}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-text-primary text-right">
-                      {trade.quantity.toFixed(6)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-text-primary text-right">
-                      ${trade.entryPrice.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-text-primary text-right">
-                      {trade.exitPrice ? `$${trade.exitPrice.toFixed(2)}` : "-"}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-text-primary text-center">
-                      {trade.leverage}x
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
-                      {trade.realizedPnl !== null &&
-                      trade.realizedPnl !== undefined ? (
-                        <span
-                          className={
-                            trade.realizedPnl >= 0
-                              ? "text-success font-medium"
-                              : "text-danger font-medium"
-                          }
-                        >
-                          {formatCurrency(trade.realizedPnl)}
-                        </span>
-                      ) : (
-                        <span className="text-text-secondary">-</span>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-text-primary">
+                          {trade.openedAt
+                            ? formatDate(
+                                typeof trade.openedAt === "number"
+                                  ? new Date(trade.openedAt * 1000)
+                                  : new Date(trade.openedAt)
+                              )
+                            : "N/A"}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {trade.symbol ? (
+                            <div className="flex items-center gap-2">
+                              <img
+                                src={getCryptoIcon(trade.symbol)}
+                                alt={trade.symbol}
+                                className="w-5 h-5"
+                              />
+                              <div>
+                                <span className="text-sm font-medium text-text-primary">
+                                  {trade.symbol.replace("USDT", "")}
+                                </span>
+                                <span className="text-xs text-text-secondary ml-1">
+                                  /USDT
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-text-secondary">
+                              N/A
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
+                              trade.side === "BUY"
+                                ? "bg-success/10 text-success"
+                                : "bg-danger/10 text-danger"
+                            }`}
+                          >
+                            {trade.side === "BUY" ? (
+                              <TrendingUp className="w-3 h-3" />
+                            ) : (
+                              <TrendingDown className="w-3 h-3" />
+                            )}
+                            {trade.side}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-text-secondary">
+                          {trade.orderType}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-text-primary text-right">
+                          {trade.quantity.toFixed(6)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-text-primary text-right">
+                          ${trade.entryPrice.toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-text-primary text-right">
+                          {(() => {
+                            // If exitPrice is 0 or missing but trade is closed with PnL, calculate it
+                            if (
+                              (!trade.exitPrice || trade.exitPrice === 0) &&
+                              trade.status === "CLOSED" &&
+                              trade.realizedPnl &&
+                              trade.quantity &&
+                              trade.entryPrice &&
+                              trade.leverage
+                            ) {
+                              // Formula: exitPrice = entryPrice + (realizedPnl / quantity) / leverage
+                              const pnlPerUnit =
+                                trade.realizedPnl / trade.quantity;
+                              const priceChange = pnlPerUnit / trade.leverage;
+                              const calculatedExitPrice =
+                                trade.side === "BUY"
+                                  ? trade.entryPrice + priceChange
+                                  : trade.entryPrice - priceChange;
+                              return `$${calculatedExitPrice.toFixed(2)}`;
+                            }
+                            return trade.exitPrice
+                              ? `$${trade.exitPrice.toFixed(2)}`
+                              : "-";
+                          })()}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-text-primary text-center">
+                          {trade.leverage}x
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
+                          {trade.realizedPnl !== null &&
+                          trade.realizedPnl !== undefined ? (
+                            <span
+                              className={
+                                trade.realizedPnl >= 0
+                                  ? "text-success font-medium"
+                                  : "text-danger font-medium"
+                              }
+                            >
+                              {formatCurrency(trade.realizedPnl)}
+                            </span>
+                          ) : (
+                            <span className="text-text-secondary">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-center">
+                          <span
+                            className={`inline-flex px-2 py-1 rounded text-xs font-medium ${
+                              trade.status === "OPEN"
+                                ? "bg-primary/10 text-primary"
+                                : trade.status === "CLOSED"
+                                ? "bg-success/10 text-success"
+                                : "bg-text-secondary/10 text-text-secondary"
+                            }`}
+                          >
+                            {trade.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {isExpanded ? (
+                            <ChevronDown className="w-4 h-4 text-text-secondary" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-text-secondary" />
+                          )}
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr>
+                          <td
+                            colSpan={10}
+                            className="px-4 py-4 bg-background-tertiary/30"
+                          >
+                            <div className="space-y-3 text-sm">
+                              {trade.aiReasoning && (
+                                <div>
+                                  <p className="font-medium text-text-primary mb-1">
+                                    AI Reasoning:
+                                  </p>
+                                  <p className="text-text-secondary">
+                                    {trade.aiReasoning}
+                                  </p>
+                                </div>
+                              )}
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                {trade.margin && (
+                                  <div>
+                                    <p className="text-text-secondary">
+                                      Margin:
+                                    </p>
+                                    <p className="text-text-primary font-medium">
+                                      {formatCurrency(trade.margin)}
+                                    </p>
+                                  </div>
+                                )}
+                                {trade.fees !== null &&
+                                  trade.fees !== undefined && (
+                                    <div>
+                                      <p className="text-text-secondary">
+                                        Fees:
+                                      </p>
+                                      <p className="text-text-primary font-medium">
+                                        {formatCurrency(trade.fees)}
+                                      </p>
+                                    </div>
+                                  )}
+                                {trade.orderId && (
+                                  <div>
+                                    <p className="text-text-secondary">
+                                      Order ID:
+                                    </p>
+                                    <p className="text-text-primary font-mono text-xs">
+                                      {trade.orderId}
+                                    </p>
+                                  </div>
+                                )}
+                                {trade.closedAt && (
+                                  <div>
+                                    <p className="text-text-secondary">
+                                      Closed At:
+                                    </p>
+                                    <p className="text-text-primary">
+                                      {formatDate(new Date(trade.closedAt))}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-center">
-                      <span
-                        className={`inline-flex px-2 py-1 rounded text-xs font-medium ${
-                          trade.status === "OPEN"
-                            ? "bg-primary/10 text-primary"
-                            : trade.status === "CLOSED"
-                            ? "bg-success/10 text-success"
-                            : "bg-text-secondary/10 text-text-secondary"
-                        }`}
-                      >
-                        {trade.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                    </>
+                  );
+                })}
               </tbody>
             </table>
           )}
