@@ -1,5 +1,5 @@
-import { useNavigate } from "react-router-dom";
-import { LogOut, User, Sun, Moon, Menu } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Home, LogOut, Menu, Moon, Sun, User } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { useTheme } from "@/contexts/ThemeContext";
 import { GlassButton } from "@/components/ui/GlassCard";
@@ -12,6 +12,9 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const { user, logout } = useAuthStore();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const isDashboard = location.pathname.startsWith("/app/dashboard");
 
   const handleLogout = () => {
     logout();
@@ -51,6 +54,16 @@ export default function Header({ onMenuClick }: HeaderProps) {
             <Sun className="w-5 h-5 text-dark-text-secondary" />
           )}
         </button>
+
+        {isDashboard && (
+          <button
+            onClick={() => navigate("/")}
+            className="p-2 rounded-xl backdrop-blur-xl bg-white/10 dark:bg-black/10 border border-white/20 dark:border-white/10 hover:bg-white/20 dark:hover:bg-black/20 transition-all duration-200"
+            aria-label="Go to home"
+          >
+            <Home className="w-5 h-5 text-light-text-secondary dark:text-dark-text-secondary" />
+          </button>
+        )}
 
         {/* User info - hidden on small mobile */}
         <div className="hidden md:flex items-center gap-2 text-light-text-secondary dark:text-dark-text-secondary">
