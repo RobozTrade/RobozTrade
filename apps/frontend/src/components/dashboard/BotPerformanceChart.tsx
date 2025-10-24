@@ -52,7 +52,13 @@ const BOT_COLORS = [
   "#14b8a6", // teal
 ];
 
-export function BotPerformanceChart() {
+interface BotPerformanceChartProps {
+  selectedSingleBotId?: string | null;
+}
+
+export function BotPerformanceChart({
+  selectedSingleBotId,
+}: BotPerformanceChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRefs = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
@@ -160,6 +166,12 @@ export function BotPerformanceChart() {
 
   // Get filtered data based on selection
   const getFilteredData = () => {
+    if (selectedSingleBotId) {
+      // When single bot is selected, show only that bot
+      return (
+        latestData?.filter((bot) => bot.botId === selectedSingleBotId) || []
+      );
+    }
     if (!latestData || selectedBots === null) return latestData;
     return latestData.filter((bot) => selectedBots.has(bot.botId));
   };
@@ -398,7 +410,14 @@ export function BotPerformanceChart() {
         }
       }
     }, 100);
-  }, [chartMode, historyData, initialBalances, latestData, selectedBots]);
+  }, [
+    chartMode,
+    historyData,
+    initialBalances,
+    latestData,
+    selectedBots,
+    selectedSingleBotId,
+  ]);
 
   // Legend scroll handlers
   const scrollLegend = (direction: "left" | "right") => {
@@ -526,111 +545,114 @@ export function BotPerformanceChart() {
         </p>
       )}
 
-      {/* Legend */}
-      <div className="relative">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-sm font-medium text-light-text-secondary dark:text-dark-text-secondary">
-            Legend:
-          </span>
-          {selectedBots !== null && (
+      {/* Legend - Only show when not in single bot mode */}
+      {!selectedSingleBotId && (
+        <div className="relative">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm font-medium text-light-text-secondary dark:text-dark-text-secondary">
+              Legend:
+            </span>
+            {selectedBots !== null && (
+              <button
+                onClick={clearSelection}
+                className="px-3 py-1 text-xs bg-accent-blue hover:bg-accent-blue/80 text-white rounded-md transition-colors"
+              >
+                Clear Selection
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
             <button
-              onClick={clearSelection}
-              className="px-3 py-1 text-xs bg-accent-blue hover:bg-accent-blue/80 text-white rounded-md transition-colors"
+              onClick={() => scrollLegend("left")}
+              className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+              aria-label="Scroll left"
             >
-              Clear Selection
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
             </button>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => scrollLegend("left")}
-            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
-            aria-label="Scroll left"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-          </button>
 
-          <div
-            ref={legendContainerRef}
-            className="flex-1 overflow-x-auto scrollbar-hide"
-            style={{ scrollBehavior: "smooth" }}
-          >
-            <div className="flex gap-4 min-w-max">
-              {latestData?.map((bot, index) => {
-                const isSelected =
-                  selectedBots === null || selectedBots.has(bot.botId);
-                return (
-                  <div
-                    key={bot.botId}
-                    onClick={() => handleLegendClick(bot.botId)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer ${
-                      isSelected
-                        ? "bg-accent-green/20 border border-accent-green/30"
-                        : "bg-white/5 hover:bg-white/10 opacity-60"
-                    }`}
-                  >
+            <div
+              ref={legendContainerRef}
+              className="flex-1 overflow-x-auto scrollbar-hide"
+              style={{ scrollBehavior: "smooth" }}
+            >
+              <div className="flex gap-4 min-w-max">
+                {latestData?.map((bot, index) => {
+                  const isSelected =
+                    selectedBots === null || selectedBots.has(bot.botId);
+                  return (
                     <div
-                      className="w-3 h-3 rounded-full"
-                      style={{
-                        backgroundColor: BOT_COLORS[index % BOT_COLORS.length],
-                      }}
-                    />
-                    <img
-                      src="/ai-icon.svg"
-                      alt="AI"
-                      className="w-4 h-4"
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                      }}
-                    />
-                    <span
-                      className={`text-sm font-medium ${
+                      key={bot.botId}
+                      onClick={() => handleLegendClick(bot.botId)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                         isSelected
-                          ? "text-light-text-primary dark:text-dark-text-primary"
-                          : "text-light-text-secondary dark:text-dark-text-secondary"
+                          ? "bg-accent-green/20 border border-accent-green/30"
+                          : "bg-white/5 hover:bg-white/10 opacity-60"
                       }`}
                     >
-                      {bot.botName}
-                    </span>
-                  </div>
-                );
-              })}
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{
+                          backgroundColor:
+                            BOT_COLORS[index % BOT_COLORS.length],
+                        }}
+                      />
+                      <img
+                        src="/ai-icon.svg"
+                        alt="AI"
+                        className="w-4 h-4"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                      <span
+                        className={`text-sm font-medium ${
+                          isSelected
+                            ? "text-light-text-primary dark:text-dark-text-primary"
+                            : "text-light-text-secondary dark:text-dark-text-secondary"
+                        }`}
+                      >
+                        {bot.botName}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
 
-          <button
-            onClick={() => scrollLegend("right")}
-            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
-            aria-label="Scroll right"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+            <button
+              onClick={() => scrollLegend("right")}
+              className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+              aria-label="Scroll right"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </button>
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

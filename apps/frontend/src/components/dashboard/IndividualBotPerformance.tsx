@@ -1,8 +1,8 @@
-import { useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
-import { TrendingUp, TrendingDown } from 'lucide-react';
-import { GlassCard } from '@/components/ui/GlassCard';
+import { useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { TrendingUp, TrendingDown } from "lucide-react";
+import { GlassCard } from "@/components/ui/GlassCard";
 
 interface BotPerformanceData {
   botId: string;
@@ -14,13 +14,19 @@ interface BotPerformanceData {
   status: string;
 }
 
-export function IndividualBotPerformance() {
+interface IndividualBotPerformanceProps {
+  onSelectBot?: (botId: string) => void;
+}
+
+export function IndividualBotPerformance({
+  onSelectBot,
+}: IndividualBotPerformanceProps) {
   const [scrollPosition, setScrollPosition] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Fetch latest bot performance data
   const { data: latestData } = useQuery({
-    queryKey: ['bot-performance-latest'],
+    queryKey: ["bot-performance-latest"],
     queryFn: async () => {
       const response = await api.getBotPerformanceLatest();
       return response.data as BotPerformanceData[];
@@ -30,13 +36,16 @@ export function IndividualBotPerformance() {
 
   // Fetch initial balances for percentage calculations
   const { data: initialBalances } = useQuery({
-    queryKey: ['bot-initial-balances', latestData],
+    queryKey: ["bot-initial-balances", latestData],
     queryFn: async () => {
       if (!latestData || latestData.length === 0) return {};
-      
+
       const balancePromises = latestData.map(async (bot) => {
         const response = await api.getBotInitialBalance(bot.botId);
-        return { botId: bot.botId, initialBalance: response.data.initialBalance };
+        return {
+          botId: bot.botId,
+          initialBalance: response.data.initialBalance,
+        };
       });
 
       const results = await Promise.all(balancePromises);
@@ -49,34 +58,38 @@ export function IndividualBotPerformance() {
     enabled: !!latestData && latestData.length > 0,
   });
 
-  const scroll = (direction: 'left' | 'right') => {
+  const scroll = (direction: "left" | "right") => {
     if (!containerRef.current) return;
     const scrollAmount = 400;
-    const newPosition = direction === 'left' 
-      ? Math.max(0, scrollPosition - scrollAmount)
-      : scrollPosition + scrollAmount;
-    
-    containerRef.current.scrollTo({ left: newPosition, behavior: 'smooth' });
+    const newPosition =
+      direction === "left"
+        ? Math.max(0, scrollPosition - scrollAmount)
+        : scrollPosition + scrollAmount;
+
+    containerRef.current.scrollTo({ left: newPosition, behavior: "smooth" });
     setScrollPosition(newPosition);
   };
 
-  const calculatePercentageChange = (current: number | null, initial: number | null): number => {
+  const calculatePercentageChange = (
+    current: number | null,
+    initial: number | null
+  ): number => {
     if (!current || !initial || initial === 0) return 0;
     return ((current - initial) / initial) * 100;
   };
 
   const formatCurrency = (value: number | null): string => {
-    if (value === null) return 'N/A';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+    if (value === null) return "N/A";
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value);
   };
 
   const formatPercentage = (value: number): string => {
-    return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+    return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
   };
 
   if (!latestData || latestData.length === 0) {
@@ -99,34 +112,49 @@ export function IndividualBotPerformance() {
         <div className="flex items-center gap-4">
           {/* Left Arrow */}
           <button
-            onClick={() => scroll('left')}
+            onClick={() => scroll("left")}
             className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors flex-shrink-0"
             aria-label="Scroll left"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
           </button>
 
           {/* Bot Cards Container */}
-          <div 
+          <div
             ref={containerRef}
             className="flex-1 overflow-x-auto scrollbar-hide"
-            style={{ scrollBehavior: 'smooth' }}
+            style={{ scrollBehavior: "smooth" }}
           >
             <div className="flex gap-4 min-w-max pb-2">
               {latestData.map((bot) => {
                 const initialBalance = initialBalances?.[bot.botId] ?? null;
-                const balanceChange = calculatePercentageChange(bot.totalBalance, initialBalance);
-                const pnlPercentage = initialBalance && bot.unrealizedPnl !== null
-                  ? (bot.unrealizedPnl / initialBalance) * 100
-                  : 0;
+                const balanceChange = calculatePercentageChange(
+                  bot.totalBalance,
+                  initialBalance
+                );
+                const pnlPercentage =
+                  initialBalance && bot.unrealizedPnl !== null
+                    ? (bot.unrealizedPnl / initialBalance) * 100
+                    : 0;
                 const isProfit = (bot.unrealizedPnl ?? 0) >= 0;
 
                 return (
                   <GlassCard
                     key={bot.botId}
-                    className="min-w-[280px] p-4 space-y-3"
+                    className="min-w-[280px] p-4 space-y-3 cursor-pointer hover:bg-white/10 dark:hover:bg-black/20 transition-colors"
+                    onClick={() => onSelectBot?.(bot.botId)}
                   >
                     {/* Bot Header */}
                     <div className="flex items-center gap-2">
@@ -135,7 +163,7 @@ export function IndividualBotPerformance() {
                         alt="AI"
                         className="w-6 h-6"
                         onError={(e) => {
-                          e.currentTarget.style.display = 'none';
+                          e.currentTarget.style.display = "none";
                         }}
                       />
                       <div className="flex-1">
@@ -145,11 +173,11 @@ export function IndividualBotPerformance() {
                         <div className="flex items-center gap-2 mt-1">
                           <div
                             className={`w-2 h-2 rounded-full ${
-                              bot.status === 'SUCCESS'
-                                ? 'bg-accent-green animate-pulse'
-                                : bot.status === 'FAILED'
-                                ? 'bg-accent-red'
-                                : 'bg-light-text-tertiary dark:bg-dark-text-tertiary'
+                              bot.status === "SUCCESS"
+                                ? "bg-accent-green animate-pulse"
+                                : bot.status === "FAILED"
+                                ? "bg-accent-red"
+                                : "bg-light-text-tertiary dark:bg-dark-text-tertiary"
                             }`}
                           />
                           <span className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
@@ -168,9 +196,13 @@ export function IndividualBotPerformance() {
                         <p className="text-xl font-bold text-light-text-primary dark:text-dark-text-primary">
                           {formatCurrency(bot.totalBalance)}
                         </p>
-                        <div className={`flex items-center gap-1 text-sm ${
-                          balanceChange >= 0 ? 'text-accent-green' : 'text-accent-red'
-                        }`}>
+                        <div
+                          className={`flex items-center gap-1 text-sm ${
+                            balanceChange >= 0
+                              ? "text-accent-green"
+                              : "text-accent-red"
+                          }`}
+                        >
                           {balanceChange >= 0 ? (
                             <TrendingUp className="w-4 h-4" />
                           ) : (
@@ -187,14 +219,18 @@ export function IndividualBotPerformance() {
                         Unrealized P&L
                       </p>
                       <div className="flex items-baseline gap-2">
-                        <p className={`text-lg font-semibold ${
-                          isProfit ? 'text-accent-green' : 'text-accent-red'
-                        }`}>
+                        <p
+                          className={`text-lg font-semibold ${
+                            isProfit ? "text-accent-green" : "text-accent-red"
+                          }`}
+                        >
                           {formatCurrency(bot.unrealizedPnl)}
                         </p>
-                        <span className={`text-sm ${
-                          isProfit ? 'text-accent-green' : 'text-accent-red'
-                        }`}>
+                        <span
+                          className={`text-sm ${
+                            isProfit ? "text-accent-green" : "text-accent-red"
+                          }`}
+                        >
                           {formatPercentage(pnlPercentage)}
                         </span>
                       </div>
@@ -204,7 +240,8 @@ export function IndividualBotPerformance() {
                     {bot.executionTime && (
                       <div className="pt-2">
                         <p className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
-                          Last updated: {new Date(bot.executionTime).toLocaleTimeString()}
+                          Last updated:{" "}
+                          {new Date(bot.executionTime).toLocaleTimeString()}
                         </p>
                       </div>
                     )}
@@ -216,12 +253,22 @@ export function IndividualBotPerformance() {
 
           {/* Right Arrow */}
           <button
-            onClick={() => scroll('right')}
+            onClick={() => scroll("right")}
             className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors flex-shrink-0"
             aria-label="Scroll right"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
             </svg>
           </button>
         </div>
@@ -229,4 +276,3 @@ export function IndividualBotPerformance() {
     </div>
   );
 }
-

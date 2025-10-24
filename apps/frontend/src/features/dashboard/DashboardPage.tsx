@@ -429,6 +429,9 @@ const extractSummary = (aiResponse: string | null | undefined): string => {
 
 export default function DashboardPageNew() {
   const [selectedBotIds, setSelectedBotIds] = useState<string[]>([]);
+  const [selectedSingleBotId, setSelectedSingleBotId] = useState<string | null>(
+    null
+  );
 
   const {
     data: bots = [],
@@ -510,6 +513,14 @@ export default function DashboardPageNew() {
     });
   };
 
+  const handleSelectSingleBot = (botId: string) => {
+    setSelectedSingleBotId(botId);
+  };
+
+  const handleGoBack = () => {
+    setSelectedSingleBotId(null);
+  };
+
   const {
     data: tradesResponse = [],
     isLoading: tradesLoading,
@@ -533,38 +544,46 @@ export default function DashboardPageNew() {
   const completedTrades: CompletedTradeRow[] = useMemo(() => {
     if (!tradesResponse || tradesResponse.length === 0) return [];
 
-    const sorted = [...tradesResponse]
+    let filteredTrades = [...tradesResponse]
       .filter((trade) => trade.status === "CLOSED")
       .sort((a, b) => {
         const closedA = toDate(a.closedAt) ?? toDate(a.openedAt);
         const closedB = toDate(b.closedAt) ?? toDate(b.openedAt);
         return (closedB?.getTime() ?? 0) - (closedA?.getTime() ?? 0);
-      })
-      .slice(0, 10); // Take only the latest 10 closed trades
+      });
 
-    return sorted.map((trade) => {
-      const bot = botById.get(trade.botId);
-      const margin = trade.margin ?? 0;
-      const realizedPnl = trade.realizedPnl ?? 0;
+    // Filter by single bot selection if active
+    if (selectedSingleBotId) {
+      filteredTrades = filteredTrades.filter(
+        (trade) => trade.botId === selectedSingleBotId
+      );
+    }
 
-      return {
-        id: trade.id,
-        aiModel: bot?.name ?? "Unknown Bot",
-        modelColor: colorByBotId.get(trade.botId) ?? BOT_COLOR_PALETTE[0],
-        pair: formatTradingPair(trade.symbol),
-        side: mapTradeSide(trade.side),
-        leverage: trade.leverage ? `${trade.leverage}x` : "—",
-        entryPrice: trade.entryPrice ?? 0,
-        exitPrice: trade.exitPrice ?? null,
-        holdingTime: formatDuration(
-          trade.openedAt,
-          trade.closedAt ?? trade.openedAt
-        ),
-        pnl: realizedPnl,
-        pnlPercent: margin ? (realizedPnl / margin) * 100 : 0,
-      } satisfies CompletedTradeRow;
-    });
-  }, [tradesResponse, botById, colorByBotId]);
+    return filteredTrades
+      .slice(0, 10) // Take only the latest 10 closed trades
+      .map((trade) => {
+        const bot = botById.get(trade.botId);
+        const margin = trade.margin ?? 0;
+        const realizedPnl = trade.realizedPnl ?? 0;
+
+        return {
+          id: trade.id,
+          aiModel: bot?.name ?? "Unknown Bot",
+          modelColor: colorByBotId.get(trade.botId) ?? BOT_COLOR_PALETTE[0],
+          pair: formatTradingPair(trade.symbol),
+          side: mapTradeSide(trade.side),
+          leverage: trade.leverage ? `${trade.leverage}x` : "—",
+          entryPrice: trade.entryPrice ?? 0,
+          exitPrice: trade.exitPrice ?? null,
+          holdingTime: formatDuration(
+            trade.openedAt,
+            trade.closedAt ?? trade.openedAt
+          ),
+          pnl: realizedPnl,
+          pnlPercent: margin ? (realizedPnl / margin) * 100 : 0,
+        } satisfies CompletedTradeRow;
+      });
+  }, [tradesResponse, botById, colorByBotId, selectedSingleBotId]);
 
   const {
     data: positionsResponse = [],
@@ -689,15 +708,28 @@ export default function DashboardPageNew() {
   }, [executionsResponse, botById, colorByBotId]);
 
   const filteredTranscripts = useMemo(() => {
+    if (selectedSingleBotId) {
+      // When single bot is selected, show only that bot's transcripts
+      return transcripts.filter((entry) => entry.botId === selectedSingleBotId);
+    }
     if (selectedBotIds.length === 0) return transcripts;
     const selectedSet = new Set(selectedBotIds);
     return transcripts.filter((entry) => selectedSet.has(entry.botId));
-  }, [transcripts, selectedBotIds]);
+  }, [transcripts, selectedBotIds, selectedSingleBotId]);
 
   const positionsByBot: BotPositionGroup[] = useMemo(() => {
     if (!positionsResponse || positionsResponse.length === 0) return [];
 
-    return positionsResponse
+    let filteredPositions = positionsResponse;
+
+    // Filter by single bot selection if active
+    if (selectedSingleBotId) {
+      filteredPositions = positionsResponse.filter(
+        ({ botId }) => botId === selectedSingleBotId
+      );
+    }
+
+    return filteredPositions
       .map(({ botId, positions }) => {
         const bot = botById.get(botId);
         const mappedPositions = (positions ?? [])
@@ -730,20 +762,60 @@ export default function DashboardPageNew() {
       })
       .filter((group) => group.positions.length > 0)
       .sort((a, b) => a.botName.localeCompare(b.botName));
-  }, [positionsResponse, botById, colorByBotId]);
+  }, [positionsResponse, botById, colorByBotId, selectedSingleBotId]);
   return (
     <div className="min-h-screen">
       {/* Price Ticker */}
       <PriceTicker />
 
       <div className="max-w-[1920px] mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+        {/* Go Back Button - Only show when single bot is selected */}
+        {selectedSingleBotId && (
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleGoBack}
+              className="flex items-center gap-2 px-4 py-2 bg-accent-blue hover:bg-accent-blue/80 text-white rounded-lg transition-colors"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+              Back to All Bots
+            </button>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{
+                  backgroundColor:
+                    colorByBotId.get(selectedSingleBotId) ??
+                    BOT_COLOR_PALETTE[0],
+                }}
+              />
+              <span className="text-lg font-semibold text-light-text-primary dark:text-dark-text-primary">
+                {botById.get(selectedSingleBotId)?.name ?? "Unknown Bot"}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Bot Performance Chart Section */}
         <GlassCard className="p-4 sm:p-6">
-          <BotPerformanceChart />
+          <BotPerformanceChart selectedSingleBotId={selectedSingleBotId} />
         </GlassCard>
 
-        {/* Individual Bot Performance Section */}
-        <IndividualBotPerformance />
+        {/* Individual Bot Performance Section - Hide when single bot is selected */}
+        {!selectedSingleBotId && (
+          <IndividualBotPerformance onSelectBot={handleSelectSingleBot} />
+        )}
 
         {/* Two-Column Layout: Tables + Chat */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
@@ -1063,46 +1135,49 @@ export default function DashboardPageNew() {
                   </span>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={handleSelectAllBots}
-                    className="px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-white/10 hover:border-white/20 hover:bg-white/5 transition-colors text-light-text-primary dark:text-dark-text-primary"
-                  >
-                    All Bots
-                  </button>
-                  <button
-                    onClick={handleClearBots}
-                    className="px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-white/10 hover:border-white/20 hover:bg-white/5 transition-colors text-light-text-primary dark:text-dark-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
-                    disabled={selectedBotIds.length === 0}
-                  >
-                    Clear
-                  </button>
+                {/* Bot selection filters - Only show when not in single bot mode */}
+                {!selectedSingleBotId && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={handleSelectAllBots}
+                      className="px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-white/10 hover:border-white/20 hover:bg-white/5 transition-colors text-light-text-primary dark:text-dark-text-primary"
+                    >
+                      All Bots
+                    </button>
+                    <button
+                      onClick={handleClearBots}
+                      className="px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-white/10 hover:border-white/20 hover:bg-white/5 transition-colors text-light-text-primary dark:text-dark-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
+                      disabled={selectedBotIds.length === 0}
+                    >
+                      Clear
+                    </button>
 
-                  {safeBots.map((bot) => {
-                    const isActive = selectedBotIds.includes(bot.id);
-                    const color =
-                      colorByBotId.get(bot.id) ?? BOT_COLOR_PALETTE[0];
-                    return (
-                      <button
-                        key={bot.id}
-                        onClick={() => handleToggleBotSelection(bot.id)}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs sm:text-sm transition-colors ${
-                          isActive
-                            ? "border-white/40 bg-white/10"
-                            : "border-white/10 hover:border-white/20 hover:bg-white/5"
-                        }`}
-                      >
-                        <span
-                          className="inline-flex w-2.5 h-2.5 rounded-full"
-                          style={{ backgroundColor: color }}
-                        />
-                        <span className="text-light-text-primary dark:text-dark-text-primary">
-                          {bot.name}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                    {safeBots.map((bot) => {
+                      const isActive = selectedBotIds.includes(bot.id);
+                      const color =
+                        colorByBotId.get(bot.id) ?? BOT_COLOR_PALETTE[0];
+                      return (
+                        <button
+                          key={bot.id}
+                          onClick={() => handleToggleBotSelection(bot.id)}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs sm:text-sm transition-colors ${
+                            isActive
+                              ? "border-white/40 bg-white/10"
+                              : "border-white/10 hover:border-white/20 hover:bg-white/5"
+                          }`}
+                        >
+                          <span
+                            className="inline-flex w-2.5 h-2.5 rounded-full"
+                            style={{ backgroundColor: color }}
+                          />
+                          <span className="text-light-text-primary dark:text-dark-text-primary">
+                            {bot.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {executionErrors.length > 0 && (
                   <div className="text-xs text-accent-orange">
