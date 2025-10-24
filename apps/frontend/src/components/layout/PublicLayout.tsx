@@ -1,7 +1,8 @@
 import { Outlet, Link } from "react-router-dom";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, Mail } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { NavbarWalletAuth } from "@/components/auth/NavbarWalletAuth";
+import { FaXTwitter, FaGithub } from "react-icons/fa6";
 
 export default function PublicLayout() {
   const { theme, toggleTheme } = useTheme();
@@ -52,6 +53,35 @@ export default function PublicLayout() {
       <footer className="border-t border-light-border dark:border-dark-border backdrop-blur-2xl bg-white/50 dark:bg-black/50 py-4 sm:py-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
           <div className="flex flex-col items-center gap-3">
+            {/* Social Icons */}
+            <div className="flex items-center gap-4">
+              <a
+                href="https://x.com/RobozTrade"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-lg hover:bg-light-bg-tertiary dark:hover:bg-dark-bg-tertiary transition-colors duration-200"
+                aria-label="X (Twitter)"
+              >
+                <FaXTwitter className="w-5 h-5 text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary" />
+              </a>
+              <a
+                href="https://github.com/RobozTrade/RobozTrade"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-lg hover:bg-light-bg-tertiary dark:hover:bg-dark-bg-tertiary transition-colors duration-200"
+                aria-label="GitHub"
+              >
+                <FaGithub className="w-5 h-5 text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary" />
+              </a>
+              <a
+                href="mailto:trade@roboz.trade"
+                className="p-2 rounded-lg hover:bg-light-bg-tertiary dark:hover:bg-dark-bg-tertiary transition-colors duration-200"
+                aria-label="Email"
+              >
+                <Mail className="w-5 h-5 text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary" />
+              </a>
+            </div>
+
             <img
               src="/logo.png"
               alt="RobozTrade Logo"
