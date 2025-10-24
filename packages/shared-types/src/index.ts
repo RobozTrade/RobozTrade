@@ -21,19 +21,42 @@ export const SUPPORTED_TRADING_SYMBOLS: TradingSymbol[] = [
 ];
 
 export const SUPPORTED_AI_MODELS: { value: AIModel; label: string; description: string }[] = [
-  { value: 'openai/gpt-4o', label: 'GPT-4o', description: 'Latest OpenAI model, fast and capable' },
-  { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini', description: 'Faster, more affordable GPT-4o' },
-  { value: 'openai/gpt-4-turbo', label: 'GPT-4 Turbo', description: 'Previous generation flagship' },
-  { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet', description: 'Best for complex reasoning' },
-  { value: 'anthropic/claude-3-opus', label: 'Claude 3 Opus', description: 'Most capable Claude model' },
-  { value: 'anthropic/claude-3-haiku', label: 'Claude 3 Haiku', description: 'Fast and affordable' },
-  { value: 'google/gemini-pro-1.5', label: 'Gemini Pro 1.5', description: 'Google\'s advanced model' },
-  { value: 'google/gemini-flash-1.5', label: 'Gemini Flash 1.5', description: 'Fast Google model' },
-  { value: 'meta-llama/llama-3.1-405b', label: 'Llama 3.1 405B', description: 'Largest open-source model' },
-  { value: 'meta-llama/llama-3.1-70b', label: 'Llama 3.1 70B', description: 'Balanced open-source model' },
-  { value: 'x-ai/grok-beta', label: 'Grok Beta', description: 'xAI\'s conversational model' },
-  { value: 'deepseek/deepseek-chat', label: 'DeepSeek Chat', description: 'Efficient reasoning model' },
-  { value: 'qwen/qwen-2.5-72b', label: 'Qwen 2.5 72B', description: 'Alibaba\'s advanced model' },
+  // OpenAI Models (Latest - October 2025)
+  { value: 'openai/gpt-5', label: 'GPT-5', description: 'Latest flagship model with advanced reasoning' },
+  { value: 'openai/gpt-5-instant', label: 'GPT-5 Instant', description: 'Fast GPT-5 variant for quick responses' },
+  { value: 'openai/o3', label: 'OpenAI o3', description: 'Most advanced reasoning model' },
+
+  // Anthropic Models (Latest - October 2025)
+  { value: 'anthropic/claude-4.5-sonnet', label: 'Claude 4.5 Sonnet', description: 'Latest Claude with enhanced capabilities' },
+  { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet', description: 'Proven model for coding and analysis' },
+
+  // Google Models (Latest - October 2025)
+  { value: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Latest flagship with advanced reasoning' },
+  { value: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash', description: 'Fast and efficient latest model' },
+  { value: 'google/gemma-3-27b', label: 'Gemma 3 27B', description: 'Latest open-source model from Google' },
+
+  // Meta Llama Models (Latest Open Source - October 2025)
+  { value: 'meta-llama/llama-4-scout-17b', label: 'Llama 4 Scout 17B', description: 'Latest multimodal Llama model' },
+  { value: 'meta-llama/llama-4-maverick-17b', label: 'Llama 4 Maverick 17B', description: 'Latest multimodal Llama variant' },
+
+  // DeepSeek Models (Latest Open Source, Finance-focused)
+  { value: 'deepseek/deepseek-v3.1', label: 'DeepSeek V3.1', description: 'Latest DeepSeek model with enhanced capabilities' },
+  { value: 'deepseek/deepseek-r1', label: 'DeepSeek R1', description: 'Advanced reasoning model' },
+
+  // Qwen Models (Latest Open Source)
+  { value: 'qwen/qwen-2.5-72b-instruct', label: 'Qwen 2.5 72B', description: 'Alibaba\'s latest advanced model' },
+
+  // Mistral Models (Latest Open Source)
+  { value: 'mistralai/mistral-large', label: 'Mistral Large', description: 'Latest flagship Mistral model' },
+
+  // xAI Models (Latest - October 2025)
+  { value: 'x-ai/grok-4', label: 'Grok 4', description: 'Most intelligent model with real-time search' },
+
+  // Cohere Models (Latest)
+  { value: 'cohere/command-r-plus', label: 'Command R+', description: 'Enterprise-grade RAG and reasoning' },
+
+  // Perplexity Models (Latest with real-time web access)
+  { value: 'perplexity/llama-3.1-sonar-large-128k-online', label: 'Sonar Large Online', description: 'Real-time web search and reasoning' },
 ];
 
 export const DEFAULT_PROMPT_TEMPLATE = `You are an expert cryptocurrency futures trader overseeing a multi-asset USDT-margined portfolio.
@@ -234,19 +257,33 @@ export type TradingSymbol =
   | 'OPUSDT';
 
 export type AIModel =
-  | 'openai/gpt-4-turbo'
-  | 'openai/gpt-4o'
-  | 'openai/gpt-4o-mini'
+  // OpenAI (Latest - October 2025)
+  | 'openai/gpt-5'
+  | 'openai/gpt-5-instant'
+  | 'openai/o3'
+  // Anthropic (Latest - October 2025)
+  | 'anthropic/claude-4.5-sonnet'
   | 'anthropic/claude-3.5-sonnet'
-  | 'anthropic/claude-3-opus'
-  | 'anthropic/claude-3-haiku'
-  | 'google/gemini-pro-1.5'
-  | 'google/gemini-flash-1.5'
-  | 'meta-llama/llama-3.1-405b'
-  | 'meta-llama/llama-3.1-70b'
-  | 'x-ai/grok-beta'
-  | 'deepseek/deepseek-chat'
-  | 'qwen/qwen-2.5-72b';
+  // Google (Latest - October 2025)
+  | 'google/gemini-2.5-pro'
+  | 'google/gemini-2.5-flash'
+  | 'google/gemma-3-27b'
+  // Meta Llama (Latest Open Source - October 2025)
+  | 'meta-llama/llama-4-scout-17b'
+  | 'meta-llama/llama-4-maverick-17b'
+  // DeepSeek (Latest Open Source)
+  | 'deepseek/deepseek-v3.1'
+  | 'deepseek/deepseek-r1'
+  // Qwen (Latest Open Source)
+  | 'qwen/qwen-2.5-72b-instruct'
+  // Mistral (Latest Open Source)
+  | 'mistralai/mistral-large'
+  // xAI (Latest - October 2025)
+  | 'x-ai/grok-4'
+  // Cohere (Latest)
+  | 'cohere/command-r-plus'
+  // Perplexity (Latest)
+  | 'perplexity/llama-3.1-sonar-large-128k-online';
 
 export interface TradingBot {
   id: string;
@@ -254,10 +291,19 @@ export interface TradingBot {
   apiKeyId: string;
   name: string;
   status: BotStatus;
-  strategyType: StrategyType;
-  tradingPair: string;
-  config: StrategyConfig;
-  riskConfig: RiskConfig;
+  // New bot fields
+  tradingSymbols?: TradingSymbol[];
+  aiModel?: AIModel;
+  customPrompt?: string;
+  maxLeverage?: number;
+  minNotionalPerTrade?: number;
+  maxNotionalPerTrade?: number;
+  maxOpenTrades?: number;
+  // Legacy bot fields
+  strategyType?: StrategyType;
+  tradingPair?: string;
+  config?: StrategyConfig;
+  riskConfig?: RiskConfig;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -327,8 +373,19 @@ export interface CreateBotInputLegacy {
 export interface UpdateBotInput {
   name?: string;
   status?: BotStatus;
+
+  // Legacy bot fields
   config?: StrategyConfig;
   riskConfig?: RiskConfig;
+
+  // New AI-powered bot fields
+  tradingSymbols?: TradingSymbol[];
+  aiModel?: AIModel;
+  customPrompt?: string;
+  maxLeverage?: number;
+  minNotionalPerTrade?: number;
+  maxNotionalPerTrade?: number;
+  maxOpenTrades?: number;
 }
 
 // Trade Types

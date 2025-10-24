@@ -3,11 +3,15 @@
  * Runs trading bots every 2 minutes
  */
 
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { getDb } from './lib/db';
 import { tradingBots } from './db/schema';
 import { executeBot } from './services/bot-executor';
 import { asterRateLimiter } from './services/rate-limiter';
+
+const BOT_BATCH_SIZE = 100;
+const CRON_INTERVAL_MINUTES = 2;
+const CRON_INTERVAL_MS = CRON_INTERVAL_MINUTES * 60 * 1000;
 
 export interface Env {
   DB: D1Database;
@@ -23,17 +27,28 @@ export interface ScheduledExecutionDetail {
   errors: string[];
 }
 
+export interface ScheduledExecutionBatchInfo {
+  batchIndex: number;
+  totalBatches: number;
+  batchSize: number;
+}
+
 export interface ScheduledExecutionSummary {
   totalBots: number;
+  processedBots: number;
   successCount: number;
   failureCount: number;
   totalTrades: number;
   durationMs: number;
   details: ScheduledExecutionDetail[];
   rateLimit: ReturnType<typeof asterRateLimiter.getStatus>;
+  batch?: ScheduledExecutionBatchInfo;
 }
 
-export async function runScheduledExecution(env: Env): Promise<ScheduledExecutionSummary> {
+export async function runScheduledExecution(
+  env: Env,
+  options: { scheduledTime?: number } = {}
+): Promise<ScheduledExecutionSummary> {
   const startTime = Date.now();
   const db = getDb(env.DB);
   const iterations = parseInt(env.PBKDF2_ITERATIONS || '100000', 10);
@@ -42,6 +57,7 @@ export async function runScheduledExecution(env: Env): Promise<ScheduledExecutio
     .select()
     .from(tradingBots)
     .where(eq(tradingBots.status, 'active'))
+    .orderBy(asc(tradingBots.createdAt), asc(tradingBots.id))
     .all();
 
   if (activeBots.length === 0) {
@@ -49,6 +65,7 @@ export async function runScheduledExecution(env: Env): Promise<ScheduledExecutio
     const rateLimitStatus = asterRateLimiter.getStatus();
     return {
       totalBots: 0,
+      processedBots: 0,
       successCount: 0,
       failureCount: 0,
       totalTrades: 0,
@@ -58,8 +75,27 @@ export async function runScheduledExecution(env: Env): Promise<ScheduledExecutio
     };
   }
 
+  let botsToProcess = activeBots;
+  let batchInfo: ScheduledExecutionBatchInfo | undefined;
+
+  if (activeBots.length > BOT_BATCH_SIZE) {
+    const totalBatches = Math.ceil(activeBots.length / BOT_BATCH_SIZE);
+    const referenceTime = options.scheduledTime ?? Date.now();
+    const runIndex = Math.floor(referenceTime / CRON_INTERVAL_MS);
+    // Rotate through batches deterministically using the scheduled run index
+    const batchIndex = runIndex % totalBatches;
+    const start = batchIndex * BOT_BATCH_SIZE;
+    const end = Math.min(start + BOT_BATCH_SIZE, activeBots.length);
+    botsToProcess = activeBots.slice(start, end);
+    batchInfo = {
+      batchIndex,
+      totalBatches,
+      batchSize: BOT_BATCH_SIZE,
+    };
+  }
+
   const results = await Promise.allSettled(
-    activeBots.map(bot => executeBot(bot.id, db, env.ENCRYPTION_KEY, iterations))
+    botsToProcess.map(bot => executeBot(bot.id, db, env.ENCRYPTION_KEY, iterations))
   );
 
   let successCount = 0;
@@ -67,7 +103,7 @@ export async function runScheduledExecution(env: Env): Promise<ScheduledExecutio
   let totalTrades = 0;
 
   const details: ScheduledExecutionDetail[] = results.map((result, index) => {
-    const botId = activeBots[index].id;
+    const botId = botsToProcess[index].id;
 
     if (result.status === 'fulfilled') {
       const execution = result.value;
@@ -101,12 +137,14 @@ export async function runScheduledExecution(env: Env): Promise<ScheduledExecutio
 
   return {
     totalBots: activeBots.length,
+    processedBots: botsToProcess.length,
     successCount,
     failureCount,
     totalTrades,
     durationMs,
     details,
     rateLimit: rateLimitStatus,
+    batch: batchInfo,
   };
 }
 
@@ -123,9 +161,16 @@ export async function handleScheduled(
 ): Promise<void> {
   console.log('Starting scheduled trading bot execution...');
   try {
-    const summary = await runScheduledExecution(env);
+    const summary = await runScheduledExecution(env, { scheduledTime: event.scheduledTime });
 
     console.log(`Found ${summary.totalBots} active bots`);
+    if (summary.batch) {
+      console.log(
+        `Processing batch ${summary.batch.batchIndex + 1}/${summary.batch.totalBatches} (${summary.processedBots} bots this run)`
+      );
+    } else {
+      console.log(`Processing ${summary.processedBots} bots this run`);
+    }
     console.log(`Scheduled execution completed in ${summary.durationMs}ms`);
     console.log(
       `Results: ${summary.successCount} successful, ${summary.failureCount} failed, ${summary.totalTrades} total trades`

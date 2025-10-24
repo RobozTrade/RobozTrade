@@ -29,33 +29,47 @@ export default function BotsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {bots?.data?.map((bot) => (
-          <Link
-            key={bot.id}
-            to={`/bots/${bot.id}`}
-            className="card hover:shadow-glow transition-shadow"
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-text-primary">
-                  {bot.name}
-                </h3>
-                <p className="text-sm text-text-secondary">{bot.tradingPair}</p>
-              </div>
-              <span className={`badge badge-${getStatusColor(bot.status)}`}>
-                {bot.status}
-              </span>
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-text-secondary">Strategy:</span>
-                <span className="text-text-primary font-medium">
-                  {bot.strategyType.replace("_", " ").toUpperCase()}
+        {bots?.data?.map((bot) => {
+          const isNewBot = !!bot.tradingSymbols;
+          return (
+            <Link
+              key={bot.id}
+              to={`/app/bots/${bot.id}`}
+              className="card hover:shadow-glow transition-shadow"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-text-primary">
+                    {bot.name}
+                  </h3>
+                  <p className="text-sm text-text-secondary">
+                    {isNewBot
+                      ? `${
+                          (bot.tradingSymbols as string[])?.length || 0
+                        } Symbols`
+                      : bot.tradingPair}
+                  </p>
+                </div>
+                <span className={`badge badge-${getStatusColor(bot.status)}`}>
+                  {bot.status}
                 </span>
               </div>
-            </div>
-          </Link>
-        ))}
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-text-secondary">
+                    {isNewBot ? "AI Model:" : "Strategy:"}
+                  </span>
+                  <span className="text-text-primary font-medium">
+                    {isNewBot
+                      ? bot.aiModel?.split("/")[1] || "N/A"
+                      : bot.strategyType?.replace("_", " ").toUpperCase() ||
+                        "N/A"}
+                  </span>
+                </div>
+              </div>
+            </Link>
+          );
+        })}
       </div>
 
       {(!bots?.data || bots.data.length === 0) && (

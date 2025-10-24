@@ -5,6 +5,7 @@ import PublicLayout from "./components/layout/PublicLayout";
 import DashboardPage from "./features/dashboard/DashboardPage";
 import BotsPage from "./features/bots/BotsPage";
 import BotDetailPage from "./features/bots/BotDetailPage";
+import EditBotPage from "./features/bots/EditBotPage";
 import CreateBotPage from "./features/bots/CreateBotPage";
 import CreateBotPageNew from "./features/bots/CreateBotPageNew";
 import MarketPage from "./features/market/MarketPage";
@@ -45,6 +46,7 @@ function App() {
         <Route path="bots/new" element={<CreateBotPageNew />} />
         <Route path="bots/new-legacy" element={<CreateBotPage />} />
         <Route path="bots/:id" element={<BotDetailPage />} />
+        <Route path="bots/:id/edit" element={<EditBotPage />} />
         <Route path="market" element={<MarketPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="benchmarks" element={<BenchmarksPage />} />

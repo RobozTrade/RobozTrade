@@ -15,13 +15,28 @@ const SUPPORTED_SYMBOLS = [
   'ATOMUSDT', 'LTCUSDT', 'NEARUSDT', 'APTUSDT', 'ARBUSDT', 'OPUSDT'
 ] as const;
 
-// Supported AI models
+// Supported AI models (Latest - October 2025)
 const SUPPORTED_AI_MODELS = [
-  'openai/gpt-4-turbo', 'openai/gpt-4o', 'openai/gpt-4o-mini',
-  'anthropic/claude-3.5-sonnet', 'anthropic/claude-3-opus', 'anthropic/claude-3-haiku',
-  'google/gemini-pro-1.5', 'google/gemini-flash-1.5',
-  'meta-llama/llama-3.1-405b', 'meta-llama/llama-3.1-70b',
-  'x-ai/grok-beta', 'deepseek/deepseek-chat', 'qwen/qwen-2.5-72b'
+  // OpenAI (Latest - October 2025)
+  'openai/gpt-5', 'openai/gpt-5-instant', 'openai/o3',
+  // Anthropic (Latest - October 2025)
+  'anthropic/claude-4.5-sonnet', 'anthropic/claude-3.5-sonnet',
+  // Google (Latest - October 2025)
+  'google/gemini-2.5-pro', 'google/gemini-2.5-flash', 'google/gemma-3-27b',
+  // Meta Llama (Latest Open Source - October 2025)
+  'meta-llama/llama-4-scout-17b', 'meta-llama/llama-4-maverick-17b',
+  // DeepSeek (Latest Open Source)
+  'deepseek/deepseek-v3.1', 'deepseek/deepseek-r1',
+  // Qwen (Latest Open Source)
+  'qwen/qwen-2.5-72b-instruct',
+  // Mistral (Latest Open Source)
+  'mistralai/mistral-large',
+  // xAI (Latest - October 2025)
+  'x-ai/grok-4',
+  // Cohere (Latest)
+  'cohere/command-r-plus',
+  // Perplexity (Latest)
+  'perplexity/llama-3.1-sonar-large-128k-online'
 ] as const;
 
 // New bot creation schema with payment and direct API keys
@@ -81,8 +96,19 @@ const createBotSchemaLegacy = z.object({
 const updateBotSchema = z.object({
   name: z.string().optional(),
   status: z.enum(['draft', 'active', 'paused', 'stopped']).optional(),
+
+  // Legacy bot fields
   config: z.any().optional(),
   riskConfig: z.any().optional(),
+
+  // New AI-powered bot fields
+  tradingSymbols: z.array(z.string()).optional(),
+  aiModel: z.enum(SUPPORTED_AI_MODELS as unknown as [string, ...string[]]).optional(),
+  customPrompt: z.string().optional(),
+  maxLeverage: z.number().min(1).max(125).optional(),
+  minNotionalPerTrade: z.number().min(10).optional(),
+  maxNotionalPerTrade: z.number().min(10).optional(),
+  maxOpenTrades: z.number().min(1).max(10).optional(),
 });
 
 type BotBindings = {
