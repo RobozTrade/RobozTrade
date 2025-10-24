@@ -1,5 +1,5 @@
-import { Bot, TrendingUp, TrendingDown, Activity } from 'lucide-react';
-import { GlassCard } from '@/components/ui/GlassCard';
+import { Bot, TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { GlassCard } from "@/components/ui/GlassCard";
 
 export interface AIModel {
   id: string;
@@ -9,8 +9,9 @@ export interface AIModel {
   pnLPercentage: number;
   winRate: number;
   activePositions: number;
-  status: 'active' | 'paused';
+  status: "active" | "paused";
   color: string;
+  logo?: string;
 }
 
 interface AIModelCardProps {
@@ -30,12 +31,20 @@ export function AIModelCard({ model, onClick }: AIModelCardProps) {
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div
-            className="p-2 rounded-xl"
+            className="p-2 rounded-xl flex items-center justify-center"
             style={{
               background: `linear-gradient(135deg, ${model.color}20, ${model.color}40)`,
             }}
           >
-            <Bot className="w-5 h-5" style={{ color: model.color }} />
+            {model.logo ? (
+              <img
+                src={model.logo}
+                alt={model.name}
+                className="w-5 h-5 object-contain"
+              />
+            ) : (
+              <Bot className="w-5 h-5" style={{ color: model.color }} />
+            )}
           </div>
           <div>
             <h3 className="font-semibold text-light-text-primary dark:text-dark-text-primary">
@@ -44,9 +53,9 @@ export function AIModelCard({ model, onClick }: AIModelCardProps) {
             <div className="flex items-center gap-2 mt-1">
               <div
                 className={`w-2 h-2 rounded-full ${
-                  model.status === 'active'
-                    ? 'bg-accent-green animate-pulse'
-                    : 'bg-light-text-tertiary dark:bg-dark-text-tertiary'
+                  model.status === "active"
+                    ? "bg-accent-green animate-pulse"
+                    : "bg-light-text-tertiary dark:bg-dark-text-tertiary"
                 }`}
               />
               <span className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary capitalize">
@@ -63,7 +72,10 @@ export function AIModelCard({ model, onClick }: AIModelCardProps) {
           Portfolio Value
         </p>
         <p className="text-2xl font-bold text-light-text-primary dark:text-dark-text-primary">
-          ${model.portfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          $
+          {model.portfolioValue.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+          })}
         </p>
       </div>
 
@@ -80,17 +92,21 @@ export function AIModelCard({ model, onClick }: AIModelCardProps) {
           )}
           <span
             className={`text-lg font-semibold ${
-              isProfit ? 'text-accent-green' : 'text-accent-red'
+              isProfit ? "text-accent-green" : "text-accent-red"
             }`}
           >
-            {isProfit ? '+' : ''}${model.totalPnL.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {isProfit ? "+" : ""}$
+            {model.totalPnL.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+            })}
           </span>
           <span
             className={`text-sm ${
-              isProfit ? 'text-accent-green' : 'text-accent-red'
+              isProfit ? "text-accent-green" : "text-accent-red"
             }`}
           >
-            ({isProfit ? '+' : ''}{model.pnLPercentage.toFixed(2)}%)
+            ({isProfit ? "+" : ""}
+            {model.pnLPercentage.toFixed(2)}%)
           </span>
         </div>
       </div>
@@ -120,4 +136,3 @@ export function AIModelCard({ model, onClick }: AIModelCardProps) {
     </GlassCard>
   );
 }
-

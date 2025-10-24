@@ -204,13 +204,32 @@ export default function BotDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm text-text-secondary">AI Model</p>
-                  <p className="text-text-primary font-medium">
+                  <div className="flex items-center gap-2 mt-1">
                     {SUPPORTED_AI_MODELS.find(
                       (m) => m.value === botData.aiModel
-                    )?.label ||
-                      botData.aiModel ||
-                      "N/A"}
-                  </p>
+                    )?.logo && (
+                      <img
+                        src={
+                          SUPPORTED_AI_MODELS.find(
+                            (m) => m.value === botData.aiModel
+                          )?.logo
+                        }
+                        alt={
+                          SUPPORTED_AI_MODELS.find(
+                            (m) => m.value === botData.aiModel
+                          )?.provider
+                        }
+                        className="w-6 h-6 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
+                      />
+                    )}
+                    <p className="text-text-primary font-medium">
+                      {SUPPORTED_AI_MODELS.find(
+                        (m) => m.value === botData.aiModel
+                      )?.label ||
+                        botData.aiModel ||
+                        "N/A"}
+                    </p>
+                  </div>
                 </div>
                 <div>
                   <p className="text-sm text-text-secondary">Custom Prompt</p>

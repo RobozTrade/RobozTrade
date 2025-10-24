@@ -397,19 +397,40 @@ export default function CreateBotPageNew() {
 
             <div>
               <label className="label">AI Model *</label>
-              <select
-                value={aiModel}
-                onChange={(e) => setAiModel(e.target.value as AIModel)}
-                className="input"
-                required
-              >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {SUPPORTED_AI_MODELS.map((model) => (
-                  <option key={model.value} value={model.value}>
-                    {model.label} - {model.description}
-                  </option>
+                  <button
+                    key={model.value}
+                    type="button"
+                    onClick={() => setAiModel(model.value)}
+                    className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+                      aiModel === model.value
+                        ? "border-accent-blue bg-accent-blue/10"
+                        : "border-light-border dark:border-dark-border hover:border-accent-blue/50"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <img
+                        src={model.logo}
+                        alt={model.provider}
+                        className="w-10 h-10 rounded-lg object-contain bg-white dark:bg-gray-800 p-1.5"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm text-light-text-primary dark:text-dark-text-primary">
+                          {model.label}
+                        </div>
+                        <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-0.5">
+                          {model.provider}
+                        </div>
+                        <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1 line-clamp-2">
+                          {model.description}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
                 ))}
-              </select>
-              <p className="text-xs text-text-secondary mt-1">
+              </div>
+              <p className="text-xs text-text-secondary mt-2">
                 Choose the AI model to power your trading decisions
               </p>
             </div>
@@ -609,11 +630,26 @@ export default function CreateBotPageNew() {
                 <span className="text-text-secondary">Margin Asset:</span>
                 <span className="text-text-primary font-medium">USDT</span>
               </div>
-              <div className="flex justify-between py-2 border-b border-border">
+              <div className="flex justify-between items-center py-2 border-b border-border">
                 <span className="text-text-secondary">AI Model:</span>
-                <span className="text-text-primary font-medium">
-                  {SUPPORTED_AI_MODELS.find((m) => m.value === aiModel)?.label}
-                </span>
+                <div className="flex items-center gap-2">
+                  <img
+                    src={
+                      SUPPORTED_AI_MODELS.find((m) => m.value === aiModel)?.logo
+                    }
+                    alt={
+                      SUPPORTED_AI_MODELS.find((m) => m.value === aiModel)
+                        ?.provider
+                    }
+                    className="w-6 h-6 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
+                  />
+                  <span className="text-text-primary font-medium">
+                    {
+                      SUPPORTED_AI_MODELS.find((m) => m.value === aiModel)
+                        ?.label
+                    }
+                  </span>
+                </div>
               </div>
               <div className="flex justify-between py-2 border-b border-border">
                 <span className="text-text-secondary">Max Leverage:</span>

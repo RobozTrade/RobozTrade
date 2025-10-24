@@ -17,6 +17,7 @@ const AI_MODELS: AIModel[] = [
     activePositions: 5,
     status: "active",
     color: "#007aff",
+    logo: "/logos/openai.svg",
   },
   {
     id: "2",
@@ -28,6 +29,7 @@ const AI_MODELS: AIModel[] = [
     activePositions: 3,
     status: "active",
     color: "#af52de",
+    logo: "/logos/claude.svg",
   },
   {
     id: "3",
@@ -39,6 +41,7 @@ const AI_MODELS: AIModel[] = [
     activePositions: 7,
     status: "active",
     color: "#34c759",
+    logo: "/logos/gemini.svg",
   },
   {
     id: "4",
@@ -50,6 +53,7 @@ const AI_MODELS: AIModel[] = [
     activePositions: 2,
     status: "paused",
     color: "#ff9500",
+    logo: "/logos/deepseek.svg",
   },
   {
     id: "5",
@@ -61,6 +65,7 @@ const AI_MODELS: AIModel[] = [
     activePositions: 4,
     status: "active",
     color: "#ff2d55",
+    logo: "/logos/xai.svg",
   },
 ];
 
