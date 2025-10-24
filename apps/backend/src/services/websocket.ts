@@ -217,12 +217,21 @@ export class MarketDataWebSocket extends DurableObject {
     const symbols = [
       'BTCUSDT',
       'ETHUSDT',
-      'SOLUSDT',
       'BNBUSDT',
+      'SOLUSDT',
+      'XRPUSDT',
+      'DOGEUSDT',
       'ADAUSDT',
-      'AVAXUSDT',
       'DOTUSDT',
-      'MATICUSDT',
+      'AVAXUSDT',
+      'LINKUSDT',
+      'UNIUSDT',
+      'ATOMUSDT',
+      'LTCUSDT',
+      'NEARUSDT',
+      'APTUSDT',
+      'ARBUSDT',
+      'OPUSDT',
     ];
 
     try {

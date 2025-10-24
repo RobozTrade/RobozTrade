@@ -26,6 +26,12 @@ import {
 
 type Step = "wallet" | "payment" | "config" | "review";
 
+// Helper function to get crypto icon path
+const getCryptoIcon = (symbol: TradingSymbol): string => {
+  const coin = symbol.replace("USDT", "").toLowerCase();
+  return `/crypto/${coin}.svg`;
+};
+
 export default function CreateBotPageNew() {
   const navigate = useNavigate();
   const { isConnected } = useAccount();
@@ -382,6 +388,11 @@ export default function CreateBotPageNew() {
                         }}
                         className="w-4 h-4 accent-primary"
                       />
+                      <img
+                        src={getCryptoIcon(symbol)}
+                        alt={symbol}
+                        className="w-5 h-5"
+                      />
                       <span className="text-sm font-medium">
                         {symbol.replace("USDT", "")}
                       </span>
@@ -622,9 +633,20 @@ export default function CreateBotPageNew() {
               </div>
               <div className="flex justify-between py-2 border-b border-border">
                 <span className="text-text-secondary">Trading Symbols:</span>
-                <span className="text-text-primary font-medium">
-                  {tradingSymbols.map((s) => s.replace("USDT", "")).join(", ")}
-                </span>
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  {tradingSymbols.map((symbol) => (
+                    <div key={symbol} className="flex items-center gap-1">
+                      <img
+                        src={getCryptoIcon(symbol)}
+                        alt={symbol}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-text-primary font-medium">
+                        {symbol.replace("USDT", "")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="flex justify-between py-2 border-b border-border">
                 <span className="text-text-secondary">Margin Asset:</span>

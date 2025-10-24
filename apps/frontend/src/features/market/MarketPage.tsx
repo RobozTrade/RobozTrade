@@ -1,19 +1,19 @@
-import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
-import { useWebSocket } from '@/hooks/useWebSocket';
-import { useMarketStore } from '@/stores/marketStore';
-import TradingChart from '@/components/charts/TradingChart';
-import { formatCurrency, formatPercentage } from '@/lib/utils';
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { useWebSocket } from "@/hooks/useWebSocket";
+import { useMarketStore } from "@/stores/marketStore";
+import TradingChart from "@/components/charts/TradingChart";
+import { formatCurrency, formatPercentage } from "@/lib/utils";
 
 export default function MarketPage() {
-  const [symbol, setSymbol] = useState('BTCUSDT');
+  const [symbol, setSymbol] = useState("BTCUSDT");
   const { subscribe } = useWebSocket();
   const { tickers } = useMarketStore();
 
   const { data: klines } = useQuery({
-    queryKey: ['klines', symbol],
-    queryFn: () => api.getKlines(symbol, '1h', 100),
+    queryKey: ["klines", symbol],
+    queryFn: () => api.getKlines(symbol, "1h", 100),
   });
 
   useEffect(() => {
@@ -42,7 +42,7 @@ export default function MarketPage() {
                 </span>
                 <span
                   className={`text-lg font-medium ${
-                    ticker.change24h >= 0 ? 'text-success' : 'text-danger'
+                    ticker.change24h >= 0 ? "text-success" : "text-danger"
                   }`}
                 >
                   {formatPercentage(ticker.change24h)}
@@ -59,6 +59,19 @@ export default function MarketPage() {
             <option value="ETHUSDT">ETH/USDT</option>
             <option value="BNBUSDT">BNB/USDT</option>
             <option value="SOLUSDT">SOL/USDT</option>
+            <option value="XRPUSDT">XRP/USDT</option>
+            <option value="DOGEUSDT">DOGE/USDT</option>
+            <option value="ADAUSDT">ADA/USDT</option>
+            <option value="DOTUSDT">DOT/USDT</option>
+            <option value="AVAXUSDT">AVAX/USDT</option>
+            <option value="LINKUSDT">LINK/USDT</option>
+            <option value="UNIUSDT">UNI/USDT</option>
+            <option value="ATOMUSDT">ATOM/USDT</option>
+            <option value="LTCUSDT">LTC/USDT</option>
+            <option value="NEARUSDT">NEAR/USDT</option>
+            <option value="APTUSDT">APT/USDT</option>
+            <option value="ARBUSDT">ARB/USDT</option>
+            <option value="OPUSDT">OP/USDT</option>
           </select>
         </div>
 
@@ -92,10 +105,7 @@ export default function MarketPage() {
         )}
       </div>
 
-      {klines?.data && (
-        <TradingChart data={klines.data} symbol={symbol} />
-      )}
+      {klines?.data && <TradingChart data={klines.data} symbol={symbol} />}
     </div>
   );
 }
-

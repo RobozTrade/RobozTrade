@@ -10,6 +10,12 @@ import {
   PROMPT_TEMPLATE_VARIABLES,
 } from "@roboz-trade/shared-types";
 
+// Helper function to get crypto icon path
+const getCryptoIcon = (symbol: TradingSymbol): string => {
+  const coin = symbol.replace("USDT", "").toLowerCase();
+  return `/crypto/${coin}.svg`;
+};
+
 export default function EditBotPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -174,7 +180,14 @@ export default function EditBotPage() {
                     onChange={() => handleSymbolToggle(symbol)}
                     className="checkbox checkbox-primary checkbox-sm"
                   />
-                  <span className="text-sm font-medium">{symbol}</span>
+                  <img
+                    src={getCryptoIcon(symbol)}
+                    alt={symbol}
+                    className="w-5 h-5"
+                  />
+                  <span className="text-sm font-medium">
+                    {symbol.replace("USDT", "")}
+                  </span>
                 </label>
               ))}
             </div>

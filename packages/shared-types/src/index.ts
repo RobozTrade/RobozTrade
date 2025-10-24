@@ -7,7 +7,6 @@ export const SUPPORTED_TRADING_SYMBOLS: TradingSymbol[] = [
   'XRPUSDT',
   'DOGEUSDT',
   'ADAUSDT',
-  'MATICUSDT',
   'DOTUSDT',
   'AVAXUSDT',
   'LINKUSDT',
@@ -248,7 +247,6 @@ export type TradingSymbol =
   | 'XRPUSDT'
   | 'DOGEUSDT'
   | 'ADAUSDT'
-  | 'MATICUSDT'
   | 'DOTUSDT'
   | 'AVAXUSDT'
   | 'LINKUSDT'

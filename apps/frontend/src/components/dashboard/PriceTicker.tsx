@@ -10,17 +10,129 @@ interface CoinPrice {
   change24h: number;
   previousPrice?: number;
   flashColor?: "green" | "red" | null;
+  icon: string;
 }
 
 const INITIAL_PRICES: CoinPrice[] = [
-  { symbol: "BTCUSDT", name: "Bitcoin", price: 43250.5, change24h: 2.45 },
-  { symbol: "ETHUSDT", name: "Ethereum", price: 2280.75, change24h: -1.23 },
-  { symbol: "SOLUSDT", name: "Solana", price: 98.32, change24h: 5.67 },
-  { symbol: "BNBUSDT", name: "Binance Coin", price: 312.45, change24h: 1.89 },
-  { symbol: "ADAUSDT", name: "Cardano", price: 0.52, change24h: -0.45 },
-  { symbol: "AVAXUSDT", name: "Avalanche", price: 36.78, change24h: 3.21 },
-  { symbol: "DOTUSDT", name: "Polkadot", price: 7.23, change24h: -2.1 },
-  { symbol: "MATICUSDT", name: "Polygon", price: 0.89, change24h: 4.56 },
+  {
+    symbol: "BTCUSDT",
+    name: "Bitcoin",
+    price: 43250.5,
+    change24h: 2.45,
+    icon: "/crypto/btc.svg",
+  },
+  {
+    symbol: "ETHUSDT",
+    name: "Ethereum",
+    price: 2280.75,
+    change24h: -1.23,
+    icon: "/crypto/eth.svg",
+  },
+  {
+    symbol: "BNBUSDT",
+    name: "BNB",
+    price: 312.45,
+    change24h: 1.89,
+    icon: "/crypto/bnb.svg",
+  },
+  {
+    symbol: "SOLUSDT",
+    name: "Solana",
+    price: 98.32,
+    change24h: 5.67,
+    icon: "/crypto/sol.svg",
+  },
+  {
+    symbol: "XRPUSDT",
+    name: "XRP",
+    price: 0.54,
+    change24h: 1.23,
+    icon: "/crypto/xrp.svg",
+  },
+  {
+    symbol: "DOGEUSDT",
+    name: "Dogecoin",
+    price: 0.082,
+    change24h: -0.87,
+    icon: "/crypto/doge.svg",
+  },
+  {
+    symbol: "ADAUSDT",
+    name: "Cardano",
+    price: 0.52,
+    change24h: -0.45,
+    icon: "/crypto/ada.svg",
+  },
+  {
+    symbol: "DOTUSDT",
+    name: "Polkadot",
+    price: 7.23,
+    change24h: -2.1,
+    icon: "/crypto/dot.svg",
+  },
+  {
+    symbol: "AVAXUSDT",
+    name: "Avalanche",
+    price: 36.78,
+    change24h: 3.21,
+    icon: "/crypto/avax.svg",
+  },
+  {
+    symbol: "LINKUSDT",
+    name: "Chainlink",
+    price: 14.56,
+    change24h: 2.34,
+    icon: "/crypto/link.svg",
+  },
+  {
+    symbol: "UNIUSDT",
+    name: "Uniswap",
+    price: 6.78,
+    change24h: 1.89,
+    icon: "/crypto/uni.svg",
+  },
+  {
+    symbol: "ATOMUSDT",
+    name: "Cosmos",
+    price: 10.23,
+    change24h: -1.45,
+    icon: "/crypto/atom.svg",
+  },
+  {
+    symbol: "LTCUSDT",
+    name: "Litecoin",
+    price: 82.45,
+    change24h: 0.98,
+    icon: "/crypto/ltc.svg",
+  },
+  {
+    symbol: "NEARUSDT",
+    name: "NEAR",
+    price: 3.21,
+    change24h: 3.67,
+    icon: "/crypto/near.svg",
+  },
+  {
+    symbol: "APTUSDT",
+    name: "Aptos",
+    price: 8.91,
+    change24h: 5.23,
+    icon: "/crypto/apt.svg",
+  },
+  {
+    symbol: "ARBUSDT",
+    name: "Arbitrum",
+    price: 1.23,
+    change24h: 2.45,
+    icon: "/crypto/arb.svg",
+  },
+  {
+    symbol: "OPUSDT",
+    name: "Optimism",
+    price: 2.34,
+    change24h: 1.76,
+    icon: "/crypto/op.svg",
+  },
 ];
 
 export function PriceTicker() {
@@ -79,6 +191,7 @@ export function PriceTicker() {
             key={`${coin.symbol}-${index}`}
             className="flex items-center gap-3 px-6 py-3 whitespace-nowrap"
           >
+            <img src={coin.icon} alt={coin.name} className="w-6 h-6" />
             <span className="font-semibold text-light-text-primary dark:text-dark-text-primary">
               {coin.symbol.replace("USDT", "")}
             </span>
