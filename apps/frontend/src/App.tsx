@@ -3,6 +3,7 @@ import { useAuthStore } from "./stores/authStore";
 import Layout from "./components/layout/Layout";
 import PublicLayout from "./components/layout/PublicLayout";
 import DashboardPage from "./features/dashboard/DashboardPage";
+import PublicDashboard from "./features/dashboard/PublicDashboard";
 import BotsPage from "./features/bots/BotsPage";
 import BotDetailPage from "./features/bots/BotDetailPage";
 import EditBotPage from "./features/bots/EditBotPage";
@@ -13,6 +14,9 @@ import AnalyticsPage from "./features/analytics/AnalyticsPage";
 import TradeHistoryPage from "./features/analytics/TradeHistoryPage";
 import BenchmarksPage from "./features/benchmarks/BenchmarksPage";
 import SettingsPage from "./features/settings/SettingsPage";
+
+// Public wallet address to display on home page
+const PUBLIC_WALLET_ADDRESS = "0x94B65a92BA5A7422C48A6007fA22090aaddE4514";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore();
@@ -25,7 +29,10 @@ function App() {
     <Routes>
       {/* Public routes with auth buttons */}
       <Route path="/" element={<PublicLayout />}>
-        <Route index element={<DashboardPage />} />
+        <Route
+          index
+          element={<PublicDashboard walletAddress={PUBLIC_WALLET_ADDRESS} />}
+        />
       </Route>
 
       {/* Redirect old auth routes to home (wallet auth is in navbar) */}

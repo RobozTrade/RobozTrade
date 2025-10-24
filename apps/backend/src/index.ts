@@ -10,6 +10,7 @@ import { benchmarksRoutes } from './routes/benchmarks';
 import { paymentsRoutes } from './routes/payments';
 import { botExecutionRoutes } from './routes/bot-execution';
 import { botPerformanceRoutes } from './routes/bot-performance';
+import { publicRoutes } from './routes/public';
 import { MarketDataWebSocket } from './services/websocket';
 import { handleScheduled, runScheduledExecution, type Env as ScheduledEnv } from './scheduled';
 
@@ -102,6 +103,7 @@ app.route('/api/benchmarks', benchmarksRoutes);
 app.route('/api/payments', paymentsRoutes);
 app.route('/api/bot-execution', botExecutionRoutes);
 app.route('/api/bot-performance', botPerformanceRoutes);
+app.route('/api/public', publicRoutes);
 
 
 /**

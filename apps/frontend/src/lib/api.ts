@@ -276,6 +276,36 @@ class ApiClient {
   async getBotInitialBalance(botId: string): Promise<ApiResponse<any>> {
     return this.request(`/bot-performance/${botId}/initial-balance`, {}, true);
   }
+
+  // Public endpoints (no authentication required)
+  async getPublicBots(walletAddress: string): Promise<ApiResponse<TradingBot[]>> {
+    return this.request(`/public/bots/${walletAddress}`);
+  }
+
+  async getPublicTrades(walletAddress: string, limit = 50): Promise<ApiResponse<any[]>> {
+    return this.request(`/public/trades/${walletAddress}?limit=${limit}`);
+  }
+
+  async getPublicPositions(walletAddress: string): Promise<ApiResponse<any[]>> {
+    return this.request(`/public/positions/${walletAddress}`);
+  }
+
+  async getPublicExecutions(walletAddress: string, limit = 50): Promise<ApiResponse<any[]>> {
+    return this.request(`/public/executions/${walletAddress}?limit=${limit}`);
+  }
+
+  async getPublicBotPerformanceLatest(walletAddress: string): Promise<ApiResponse<any[]>> {
+    return this.request(`/public/bot-performance/${walletAddress}/latest`);
+  }
+
+  async getPublicBotPerformanceHistory(walletAddress: string, botId: string, limit?: number): Promise<ApiResponse<any[]>> {
+    const params = limit ? `?limit=${limit}` : '';
+    return this.request(`/public/bot-performance/${walletAddress}/${botId}/history${params}`);
+  }
+
+  async getPublicBotInitialBalance(walletAddress: string, botId: string): Promise<ApiResponse<{ initialBalance: number | null; firstExecutionTime: string | null }>> {
+    return this.request(`/public/bot-performance/${walletAddress}/${botId}/initial-balance`);
+  }
 }
 
 export const api = new ApiClient();

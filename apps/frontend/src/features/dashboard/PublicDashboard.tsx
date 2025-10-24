@@ -1,0 +1,1087 @@
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { PriceTicker } from "@/components/dashboard/PriceTicker";
+import { BotPerformanceChart } from "@/components/dashboard/BotPerformanceChart";
+import { IndividualBotPerformance } from "@/components/dashboard/IndividualBotPerformance";
+import { GlassCard } from "@/components/ui/GlassCard";
+import { api } from "@/lib/api";
+import type { TradingBot, AIModel } from "@roboz-trade/shared-types";
+import { SUPPORTED_AI_MODELS } from "@roboz-trade/shared-types";
+
+// Helper functions
+const toDate = (
+  value: string | number | Date | null | undefined
+): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatDuration = (
+  start: string | number | Date | null | undefined,
+  end: string | number | Date | null | undefined
+): string => {
+  const startDate = toDate(start);
+  const endDate = toDate(end);
+  if (!startDate || !endDate) return "—";
+  const diffMs = Math.max(endDate.getTime() - startDate.getTime(), 0);
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const totalHours = Math.floor(totalMinutes / 60);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+  if (totalHours > 0) {
+    return `${totalHours}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m`;
+  }
+  const seconds = Math.floor(diffMs / 1000);
+  return `${seconds}s`;
+};
+
+const formatTimeSinceEntry = (
+  entryTime: string | number | Date | null | undefined
+): string => {
+  const entryDate = toDate(entryTime);
+  if (!entryDate) return "—";
+  const now = new Date();
+  const diffMs = Math.max(now.getTime() - entryDate.getTime(), 0);
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const totalHours = Math.floor(totalMinutes / 60);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+  if (totalHours > 0) {
+    return `${totalHours}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes} min`;
+  }
+  const seconds = Math.floor(diffMs / 1000);
+  return `${seconds}s`;
+};
+
+const formatTradingPair = (symbol: string): string => {
+  if (!symbol) return "—";
+  const normalized = symbol.toUpperCase();
+  const knownQuotes = ["USDT", "USD", "USDC", "BTC", "ETH"];
+  const quote = knownQuotes.find((suffix) => normalized.endsWith(suffix));
+  if (!quote) return normalized;
+  const base = normalized.slice(0, -quote.length);
+  return `${base}/${quote}`;
+};
+
+const formatCurrency = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+};
+
+const formatSignedCurrency = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) return "—";
+  const prefix = value > 0 ? "+" : value < 0 ? "-" : "";
+  const absolute = Math.abs(value);
+  const formatted = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(absolute);
+  return `${prefix}${formatted}`;
+};
+
+const formatPercentage = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) return "—";
+  const rounded = Math.abs(value).toFixed(2);
+  const prefix = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${prefix}${rounded}%`;
+};
+
+const mapTradeSide = (side: string): "LONG" | "SHORT" => {
+  if (side === "BUY") return "LONG";
+  if (side === "SELL") return "SHORT";
+  return side.toUpperCase() === "SHORT" ? "SHORT" : "LONG";
+};
+
+const formatTimestamp = (
+  value: string | number | Date | null | undefined
+): string => {
+  const date = toDate(value ?? null);
+  if (!date) return "—";
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+};
+
+const formatRuntime = (runtimeMs: number | null | undefined): string => {
+  if (runtimeMs === null || runtimeMs === undefined) return "—";
+  if (runtimeMs < 1000) return `${runtimeMs}ms`;
+  if (runtimeMs < 60_000) return `${(runtimeMs / 1000).toFixed(1)}s`;
+  const minutes = runtimeMs / 60000;
+  return `${minutes.toFixed(1)}m`;
+};
+
+const extractSummary = (aiResponse: string | null | undefined): string => {
+  if (!aiResponse) return "No AI summary available.";
+
+  try {
+    const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.summary) return parsed.summary;
+        if (parsed.reasoning) return parsed.reasoning;
+      } catch {
+        // Continue to fallback
+      }
+    }
+  } catch {
+    // Continue to fallback
+  }
+
+  return aiResponse.slice(0, 300);
+};
+
+const BOT_COLOR_PALETTE = [
+  "#007aff",
+  "#af52de",
+  "#34c759",
+  "#ff9500",
+  "#ff2d55",
+  "#3b82f6",
+  "#8b5cf6",
+  "#22d3ee",
+];
+
+interface TradeHistoryEntry {
+  id: string;
+  botId: string;
+  symbol: string;
+  side: "BUY" | "SELL";
+  orderType: string;
+  quantity: number;
+  entryPrice: number;
+  exitPrice: number | null;
+  leverage: number;
+  margin: number;
+  realizedPnl: number | null;
+  fees?: number | null;
+  status: string;
+  openedAt: string | number | Date;
+  closedAt: string | number | Date | null;
+}
+
+interface PositionSnapshot {
+  id: string;
+  botId: string;
+  tradeId: string | null;
+  symbol: string;
+  quantity: number;
+  entryPrice: number;
+  currentPrice: number;
+  liquidationPrice?: number | null;
+  unrealizedPnl: number;
+  leverage: number;
+  margin: number;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  snapshotTime: string | number | Date | null;
+  entryTime?: string | number | Date | null;
+}
+
+interface CompletedTradeRow {
+  id: string;
+  aiModel: string;
+  aiModelValue: AIModel | null;
+  modelColor: string;
+  pair: string;
+  side: "LONG" | "SHORT";
+  leverage: string;
+  entryPrice: number;
+  exitPrice: number | null;
+  holdingTime: string;
+  pnl: number;
+  pnlPercent: number;
+}
+
+interface BotPositionRow {
+  id: string;
+  side: "LONG" | "SHORT";
+  pair: string;
+  entryPrice: number;
+  currentPrice: number;
+  takeProfit: number | null;
+  stopLoss: number | null;
+  unrealizedPnl: number;
+  unrealizedPnlPercent: number;
+  entryTime?: string | number | Date | null;
+}
+
+interface BotPositionGroup {
+  botId: string;
+  botName: string;
+  aiModelValue: AIModel | null;
+  color: string;
+  positions: BotPositionRow[];
+}
+
+interface BotExecutionEntry {
+  id: string;
+  botId: string;
+  executionTime: string | number | Date | null;
+  aiPrompt?: string | null;
+  aiResponse?: string | null;
+  aiThinking?: string | null;
+  aiDecisions?: any;
+  symbolsProcessed?: string[];
+  status?: string;
+  totalBalance?: number | null;
+  unrealizedPnl?: number | null;
+  accountBalance?: number | null;
+  runtimeMs?: number | null;
+  invocations?: number | null;
+}
+
+interface PublicDashboardProps {
+  walletAddress: string;
+}
+
+export default function PublicDashboard({
+  walletAddress,
+}: PublicDashboardProps) {
+  const [selectedBotIds, setSelectedBotIds] = useState<string[]>([]);
+  const [selectedSingleBotId, setSelectedSingleBotId] = useState<string | null>(
+    null
+  );
+
+  const {
+    data: bots = [],
+    isLoading: botsLoading,
+    isError: botsError,
+  } = useQuery<TradingBot[]>({
+    queryKey: ["public-bots", walletAddress],
+    queryFn: async () => {
+      const response = await api.getPublicBots(walletAddress);
+      return (response.data ?? []) as TradingBot[];
+    },
+    staleTime: 60_000,
+    gcTime: Infinity,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
+  });
+
+  // Ensure bots is always an array
+  const safeBots = Array.isArray(bots) ? bots : [];
+  const hasBots = safeBots.length > 0;
+
+  const colorByBotId = useMemo(() => {
+    const map = new Map<string, string>();
+    safeBots.forEach((bot, index) => {
+      map.set(bot.id, BOT_COLOR_PALETTE[index % BOT_COLOR_PALETTE.length]);
+    });
+    return map;
+  }, [safeBots]);
+
+  const botById = useMemo(() => {
+    const map = new Map<string, TradingBot>();
+    safeBots.forEach((bot) => {
+      map.set(bot.id, bot);
+    });
+    return map;
+  }, [safeBots]);
+
+  useEffect(() => {
+    const currentBotIds = safeBots.map((bot) => bot.id);
+
+    if (currentBotIds.length === 0) {
+      setSelectedBotIds((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+
+    setSelectedBotIds((prev) => {
+      if (
+        prev.length === currentBotIds.length &&
+        prev.every((id, index) => id === currentBotIds[index])
+      ) {
+        return prev;
+      }
+      return currentBotIds;
+    });
+  }, [safeBots]);
+
+  const handleSelectSingleBot = (botId: string) => {
+    setSelectedSingleBotId(botId);
+  };
+
+  const handleGoBack = () => {
+    setSelectedSingleBotId(null);
+  };
+
+  const {
+    data: tradesResponse = [],
+    isLoading: tradesLoading,
+    isError: tradesError,
+  } = useQuery<TradeHistoryEntry[]>({
+    queryKey: ["public-completed-trades", walletAddress],
+    enabled: safeBots.length > 0,
+    queryFn: async () => {
+      const response = await api.getPublicTrades(walletAddress, 50);
+      return (response.data ?? []) as TradeHistoryEntry[];
+    },
+    staleTime: 60_000,
+    gcTime: Infinity,
+    refetchInterval: 120_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
+    refetchIntervalInBackground: true,
+  });
+
+  const {
+    data: positionsResponse = [],
+    isLoading: positionsLoading,
+    isError: positionsError,
+  } = useQuery<PositionSnapshot[]>({
+    queryKey: ["public-positions", walletAddress],
+    enabled: safeBots.length > 0,
+    queryFn: async () => {
+      const response = await api.getPublicPositions(walletAddress);
+      return (response.data ?? []) as PositionSnapshot[];
+    },
+    staleTime: 60_000,
+    gcTime: Infinity,
+    refetchInterval: 120_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
+    refetchIntervalInBackground: true,
+  });
+
+  const getAIModelLogo = (aiModel: AIModel | null | undefined): string => {
+    if (!aiModel) return "/ai-icon.svg";
+    const modelInfo = SUPPORTED_AI_MODELS.find((m) => m.value === aiModel);
+    return modelInfo?.logo ?? "/ai-icon.svg";
+  };
+
+  const getAIModelName = (aiModel: AIModel | null | undefined): string => {
+    if (!aiModel) return "Unknown";
+    const modelInfo = SUPPORTED_AI_MODELS.find((m) => m.value === aiModel);
+    return modelInfo?.label ?? "Unknown";
+  };
+
+  // Process completed trades
+  const completedTrades = useMemo<CompletedTradeRow[]>(() => {
+    if (!tradesResponse || tradesResponse.length === 0) return [];
+
+    return tradesResponse
+      .filter((trade) => trade.status === "CLOSED" && trade.closedAt)
+      .slice(0, 10)
+      .map((trade) => {
+        const bot = botById.get(trade.botId);
+        const aiModel = bot?.aiModel ?? null;
+        const aiModelInfo = aiModel
+          ? SUPPORTED_AI_MODELS.find((m) => m.value === aiModel)
+          : null;
+        const modelColor = colorByBotId.get(trade.botId) ?? "#007aff";
+
+        const pnl = trade.realizedPnl ?? 0;
+        const entryValue = trade.entryPrice * trade.quantity;
+        const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
+
+        return {
+          id: trade.id,
+          aiModel: aiModelInfo?.label ?? "Unknown",
+          aiModelValue: aiModel,
+          modelColor,
+          pair: formatTradingPair(trade.symbol),
+          side: mapTradeSide(trade.side),
+          leverage: `${trade.leverage}x`,
+          entryPrice: trade.entryPrice,
+          exitPrice: trade.exitPrice,
+          holdingTime: formatDuration(trade.openedAt, trade.closedAt),
+          pnl,
+          pnlPercent,
+        };
+      });
+  }, [tradesResponse, botById, colorByBotId]);
+
+  // Process current positions
+  const positionsByBot = useMemo<BotPositionGroup[]>(() => {
+    if (!positionsResponse || positionsResponse.length === 0) return [];
+
+    const grouped = new Map<string, PositionSnapshot[]>();
+    positionsResponse.forEach((pos) => {
+      if (!grouped.has(pos.botId)) {
+        grouped.set(pos.botId, []);
+      }
+      grouped.get(pos.botId)!.push(pos);
+    });
+
+    return Array.from(grouped.entries()).map(([botId, positions]) => {
+      const bot = botById.get(botId);
+      const aiModel = bot?.aiModel ?? null;
+      const color = colorByBotId.get(botId) ?? "#007aff";
+
+      const positionRows: BotPositionRow[] = positions.map((pos) => {
+        const side = pos.quantity > 0 ? "LONG" : "SHORT";
+        const entryValue = Math.abs(pos.entryPrice * pos.quantity);
+        const unrealizedPnlPercent =
+          entryValue > 0 ? (pos.unrealizedPnl / entryValue) * 100 : 0;
+
+        return {
+          id: pos.id,
+          side,
+          pair: formatTradingPair(pos.symbol),
+          entryPrice: pos.entryPrice,
+          currentPrice: pos.currentPrice,
+          takeProfit: pos.takeProfit,
+          stopLoss: pos.stopLoss,
+          unrealizedPnl: pos.unrealizedPnl,
+          unrealizedPnlPercent,
+          entryTime: pos.snapshotTime,
+        };
+      });
+
+      return {
+        botId,
+        botName: bot?.name ?? "Unknown Bot",
+        aiModelValue: aiModel,
+        color,
+        positions: positionRows,
+      };
+    });
+  }, [positionsResponse, botById, colorByBotId]);
+
+  // Fetch bot executions for AI decision feed
+  const {
+    data: executionsResponse = [],
+    isLoading: executionsLoading,
+    isError: executionsError,
+  } = useQuery<BotExecutionEntry[]>({
+    queryKey: ["public-executions", walletAddress],
+    enabled: safeBots.length > 0,
+    queryFn: async () => {
+      const response = await api.getPublicExecutions(walletAddress, 50);
+      return (response.data ?? []) as BotExecutionEntry[];
+    },
+    staleTime: 60_000,
+    gcTime: Infinity,
+    refetchInterval: 120_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
+    refetchIntervalInBackground: true,
+  });
+
+  // Process AI decision feed
+  interface BotTranscriptEntry {
+    id: string;
+    botId: string;
+    botName: string;
+    aiModel: AIModel | null;
+    color: string;
+    timestamp: Date | null;
+    message: string;
+    runtimeMs: number | null | undefined;
+    invocations: number | null | undefined;
+    balance: number | null | undefined;
+    tradesExecuted: number | null | undefined;
+  }
+
+  const filteredTranscripts = useMemo<BotTranscriptEntry[]>(() => {
+    if (!executionsResponse || executionsResponse.length === 0) return [];
+
+    const filtered = selectedSingleBotId
+      ? executionsResponse.filter((exec) => exec.botId === selectedSingleBotId)
+      : executionsResponse.filter((exec) =>
+          selectedBotIds.includes(exec.botId)
+        );
+
+    return filtered.map((exec) => {
+      const bot = botById.get(exec.botId);
+      const aiModel = bot?.aiModel ?? null;
+      const color = colorByBotId.get(exec.botId) ?? "#007aff";
+
+      return {
+        id: exec.id,
+        botId: exec.botId,
+        botName: bot?.name ?? "Unknown Bot",
+        aiModel,
+        color,
+        timestamp: toDate(exec.executionTime),
+        message: extractSummary(exec.aiResponse),
+        runtimeMs: exec.runtimeMs,
+        invocations: exec.invocations,
+        balance: exec.totalBalance,
+        tradesExecuted: null,
+      };
+    });
+  }, [
+    executionsResponse,
+    selectedBotIds,
+    selectedSingleBotId,
+    botById,
+    colorByBotId,
+  ]);
+
+  const handleSelectAllBots = () => {
+    if (safeBots.length === 0) return;
+    const allIds = safeBots.map((bot) => bot.id);
+    setSelectedBotIds((prev) => {
+      const unchanged =
+        prev.length === allIds.length &&
+        prev.every((id, index) => id === allIds[index]);
+      return unchanged ? prev : allIds;
+    });
+  };
+
+  const handleClearBots = () => {
+    setSelectedBotIds([]);
+  };
+
+  const handleToggleBotSelection = (botId: string) => {
+    setSelectedBotIds((prev) => {
+      if (prev.includes(botId)) {
+        return prev.filter((id) => id !== botId);
+      }
+      return [...prev, botId];
+    });
+  };
+
+  if (botsLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="text-center py-12">
+          <p className="text-light-text-tertiary dark:text-dark-text-tertiary">
+            Loading dashboard...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (botsError || !hasBots) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="text-center py-12">
+          <p className="text-light-text-tertiary dark:text-dark-text-tertiary">
+            No trading bots found for this wallet address.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-4 sm:space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-accent-blue to-accent-purple bg-clip-text text-transparent">
+            Public Trading Dashboard
+          </h1>
+          <p className="text-sm text-light-text-tertiary dark:text-dark-text-tertiary mt-1">
+            Wallet: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+          </p>
+        </div>
+      </div>
+
+      {/* Price Ticker */}
+      <PriceTicker />
+
+      {/* Back Button - Show when single bot is selected */}
+      {selectedSingleBotId && (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleGoBack}
+            className="px-4 py-2 rounded-xl backdrop-blur-xl bg-white/10 dark:bg-black/10 border border-white/20 dark:border-white/10 hover:bg-white/20 dark:hover:bg-black/20 transition-all duration-200 text-sm font-medium text-light-text-primary dark:text-dark-text-primary"
+          >
+            ← Back to All Bots
+          </button>
+          <div className="flex items-center gap-2">
+            <img
+              src={getAIModelLogo(botById.get(selectedSingleBotId)?.aiModel)}
+              alt={getAIModelName(botById.get(selectedSingleBotId)?.aiModel)}
+              className="w-6 h-6 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
+            />
+            <span className="text-lg font-semibold text-light-text-primary dark:text-dark-text-primary">
+              {botById.get(selectedSingleBotId)?.name ?? "Unknown Bot"}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Bot Performance Chart Section */}
+      <GlassCard className="p-4 sm:p-6">
+        <BotPerformanceChart
+          selectedSingleBotId={selectedSingleBotId}
+          walletAddress={walletAddress}
+        />
+      </GlassCard>
+
+      {/* Individual Bot Performance Section - Hide when single bot is selected */}
+      {!selectedSingleBotId && (
+        <IndividualBotPerformance
+          onSelectBot={handleSelectSingleBot}
+          walletAddress={walletAddress}
+        />
+      )}
+
+      {/* Two-Column Layout: Tables + AI Decision Feed */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
+        {/* Left Column: Trading Tables (60%) */}
+        <div className="lg:col-span-3 space-y-4 sm:space-y-6">
+          {/* Completed Trades Table */}
+          <GlassCard className="p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-light-text-primary dark:text-dark-text-primary mb-3 sm:mb-4">
+              Completed Trades
+            </h3>
+            {botsLoading || tradesLoading ? (
+              <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
+                Loading completed trades...
+              </div>
+            ) : botsError ? (
+              <div className="py-6 text-center text-accent-red">
+                Failed to load bots. Please try again.
+              </div>
+            ) : tradesError ? (
+              <div className="py-6 text-center text-accent-red">
+                Failed to load completed trades.
+              </div>
+            ) : !hasBots ? (
+              <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
+                No trading bots found for this wallet.
+              </div>
+            ) : completedTrades.length === 0 ? (
+              <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
+                No completed trades yet.
+              </div>
+            ) : (
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <div className="inline-block min-w-full align-middle px-4 sm:px-0">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 dark:border-white/5">
+                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          AI Model
+                        </th>
+                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          Pair
+                        </th>
+                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          Side
+                        </th>
+                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          Leverage
+                        </th>
+                        <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          Entry
+                        </th>
+                        <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          Exit
+                        </th>
+                        <th className="text-left py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          Time
+                        </th>
+                        <th className="text-right py-3 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium">
+                          P&L
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {completedTrades.map((trade) => (
+                        <tr
+                          key={trade.id}
+                          className="border-b border-white/5 hover:bg-white/5 dark:hover:bg-black/5 transition-colors"
+                        >
+                          <td className="py-3 px-2">
+                            <div className="flex items-center gap-2">
+                              <img
+                                src={getAIModelLogo(trade.aiModelValue)}
+                                alt="AI Model"
+                                className="w-5 h-5 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
+                              />
+                              <span className="text-light-text-primary dark:text-dark-text-primary">
+                                {trade.aiModel}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-2 text-light-text-primary dark:text-dark-text-primary">
+                            {trade.pair}
+                          </td>
+                          <td className="py-3 px-2">
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-medium ${
+                                trade.side === "LONG"
+                                  ? "bg-accent-green/20 text-accent-green"
+                                  : "bg-accent-red/20 text-accent-red"
+                              }`}
+                            >
+                              {trade.side}
+                            </span>
+                          </td>
+                          <td className="py-3 px-2 text-light-text-secondary dark:text-dark-text-secondary">
+                            {trade.leverage}
+                          </td>
+                          <td className="py-3 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
+                            {formatCurrency(trade.entryPrice)}
+                          </td>
+                          <td className="py-3 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
+                            {trade.exitPrice !== null
+                              ? formatCurrency(trade.exitPrice)
+                              : "—"}
+                          </td>
+                          <td className="py-3 px-2 text-light-text-secondary dark:text-dark-text-secondary">
+                            {trade.holdingTime}
+                          </td>
+                          <td className="py-3 px-2 text-right">
+                            <div className="flex flex-col items-end">
+                              <span
+                                className={`font-semibold ${
+                                  trade.pnl >= 0
+                                    ? "text-accent-green"
+                                    : "text-accent-red"
+                                }`}
+                              >
+                                {formatSignedCurrency(trade.pnl)}
+                              </span>
+                              <span
+                                className={`text-xs ${
+                                  trade.pnl >= 0
+                                    ? "text-accent-green"
+                                    : "text-accent-red"
+                                }`}
+                              >
+                                ({formatPercentage(trade.pnlPercent)})
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </GlassCard>
+
+          {/* Current Positions Table - Grouped by Bot */}
+          <GlassCard className="p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-light-text-primary dark:text-dark-text-primary mb-3 sm:mb-4">
+              Current Positions
+            </h3>
+            {botsLoading || positionsLoading ? (
+              <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
+                Loading current positions...
+              </div>
+            ) : botsError ? (
+              <div className="py-6 text-center text-accent-red">
+                Failed to load bots. Please try again.
+              </div>
+            ) : positionsError ? (
+              <div className="py-6 text-center text-accent-red">
+                Failed to load current positions.
+              </div>
+            ) : !hasBots ? (
+              <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
+                No trading bots found for this wallet.
+              </div>
+            ) : positionsByBot.length === 0 ? (
+              <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
+                No open positions at the moment.
+              </div>
+            ) : (
+              <div className="space-y-3 sm:space-y-4">
+                {positionsByBot.map((group) => (
+                  <details key={group.botId} className="group" open>
+                    <summary className="cursor-pointer list-none flex items-center justify-between p-2 sm:p-3 rounded-xl hover:bg-white/5 dark:hover:bg-black/5 transition-colors">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <img
+                          src={getAIModelLogo(group.aiModelValue)}
+                          alt="AI Model"
+                          className="w-5 h-5 sm:w-6 sm:h-6 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
+                        />
+                        <span className="text-sm sm:text-base font-medium text-light-text-primary dark:text-dark-text-primary">
+                          {group.botName}
+                        </span>
+                        <span className="text-xs sm:text-sm text-light-text-tertiary dark:text-dark-text-tertiary">
+                          ({group.positions.length})
+                        </span>
+                      </div>
+                      <svg
+                        className="w-4 h-4 sm:w-5 sm:h-5 text-light-text-tertiary dark:text-dark-text-tertiary transition-transform group-open:rotate-180"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </summary>
+                    <div className="mt-2 overflow-x-auto -mx-4 sm:mx-0">
+                      <div className="inline-block min-w-full align-middle px-4 sm:px-0">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-white/10 dark:border-white/5">
+                              <th className="text-left py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                Side
+                              </th>
+                              <th className="text-left py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                Pair
+                              </th>
+                              <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                Entry
+                              </th>
+                              <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                Current
+                              </th>
+                              <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                Time
+                              </th>
+                              <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                TP
+                              </th>
+                              <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                SL
+                              </th>
+                              <th className="text-right py-2 px-2 text-light-text-tertiary dark:text-dark-text-tertiary font-medium text-xs">
+                                Unrealized P&L
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.positions.map((position) => (
+                              <tr
+                                key={position.id}
+                                className="border-b border-white/5 hover:bg-white/5 dark:hover:bg-black/5 transition-colors"
+                              >
+                                <td className="py-2 px-2">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                      position.side === "LONG"
+                                        ? "bg-accent-green/20 text-accent-green"
+                                        : "bg-accent-red/20 text-accent-red"
+                                    }`}
+                                  >
+                                    {position.side}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-2 text-light-text-primary dark:text-dark-text-primary">
+                                  {position.pair}
+                                </td>
+                                <td className="py-2 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
+                                  {formatCurrency(position.entryPrice)}
+                                </td>
+                                <td className="py-2 px-2 text-right text-light-text-primary dark:text-dark-text-primary">
+                                  {formatCurrency(position.currentPrice)}
+                                </td>
+                                <td className="py-2 px-2 text-right text-light-text-secondary dark:text-dark-text-secondary text-xs">
+                                  {formatTimeSinceEntry(position.entryTime)}
+                                </td>
+                                <td className="py-2 px-2 text-right text-accent-green">
+                                  {position.takeProfit !== null
+                                    ? formatCurrency(position.takeProfit)
+                                    : "—"}
+                                </td>
+                                <td className="py-2 px-2 text-right text-accent-red">
+                                  {position.stopLoss !== null
+                                    ? formatCurrency(position.stopLoss)
+                                    : "—"}
+                                </td>
+                                <td className="py-2 px-2 text-right">
+                                  <div className="flex flex-col items-end">
+                                    <span
+                                      className={`font-semibold ${
+                                        position.unrealizedPnl >= 0
+                                          ? "text-accent-green"
+                                          : "text-accent-red"
+                                      }`}
+                                    >
+                                      {formatSignedCurrency(
+                                        position.unrealizedPnl
+                                      )}
+                                    </span>
+                                    <span
+                                      className={`text-xs ${
+                                        position.unrealizedPnl >= 0
+                                          ? "text-accent-green"
+                                          : "text-accent-red"
+                                      }`}
+                                    >
+                                      (
+                                      {formatPercentage(
+                                        position.unrealizedPnlPercent
+                                      )}
+                                      )
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </details>
+                ))}
+              </div>
+            )}
+          </GlassCard>
+        </div>
+
+        {/* Right Column: AI Decision Feed (40%) */}
+        <div className="lg:col-span-2">
+          <GlassCard className="p-0 h-[600px] sm:h-[700px] lg:h-[800px] flex flex-col">
+            <div className="p-4 border-b border-white/10 dark:border-white/5 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-semibold text-light-text-primary dark:text-dark-text-primary">
+                  AI Decision Feed
+                </h3>
+                <span className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+                  {filteredTranscripts.length} updates
+                </span>
+              </div>
+
+              {/* Bot selection filters - Only show when not in single bot mode */}
+              {!selectedSingleBotId && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleSelectAllBots}
+                    className="px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-white/10 hover:border-white/20 hover:bg-white/5 transition-colors text-light-text-primary dark:text-dark-text-primary"
+                  >
+                    All Bots
+                  </button>
+                  <button
+                    onClick={handleClearBots}
+                    className="px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-white/10 hover:border-white/20 hover:bg-white/5 transition-colors text-light-text-primary dark:text-dark-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={selectedBotIds.length === 0}
+                  >
+                    Clear
+                  </button>
+
+                  {safeBots.map((bot) => {
+                    const isActive = selectedBotIds.includes(bot.id);
+                    return (
+                      <button
+                        key={bot.id}
+                        onClick={() => handleToggleBotSelection(bot.id)}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs sm:text-sm transition-colors ${
+                          isActive
+                            ? "border-white/40 bg-white/10"
+                            : "border-white/10 hover:border-white/20 hover:bg-white/5"
+                        }`}
+                      >
+                        <img
+                          src={getAIModelLogo(bot.aiModel)}
+                          alt="AI Model"
+                          className="w-4 h-4 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
+                        />
+                        <span className="text-light-text-primary dark:text-dark-text-primary">
+                          {bot.name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {executionsLoading ? (
+                <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
+                  Loading AI decisions...
+                </div>
+              ) : executionsError ? (
+                <div className="py-6 text-center text-accent-red">
+                  Failed to load AI decision history.
+                </div>
+              ) : !hasBots ? (
+                <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
+                  No trading bots found for this wallet.
+                </div>
+              ) : filteredTranscripts.length === 0 ? (
+                <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
+                  No AI updates for the selected bots yet.
+                </div>
+              ) : (
+                filteredTranscripts.map((entry) => {
+                  const aiModelInfo = entry.aiModel
+                    ? SUPPORTED_AI_MODELS.find((m) => m.value === entry.aiModel)
+                    : null;
+                  const aiModelLogo = aiModelInfo?.logo ?? "/ai-icon.svg";
+                  const aiModelProvider = aiModelInfo?.provider ?? "AI";
+
+                  return (
+                    <div
+                      key={`${entry.id}-${entry.timestamp?.getTime() ?? ""}`}
+                      className="p-4 rounded-2xl border border-white/10 bg-white/5 dark:bg-black/10 backdrop-blur-xl shadow-glass space-y-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0">
+                          <img
+                            src={aiModelLogo}
+                            alt={aiModelProvider}
+                            className="w-8 h-8 rounded-lg object-contain bg-white dark:bg-gray-800 p-1"
+                          />
+                        </div>
+
+                        <div className="flex-1 space-y-3">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <p className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
+                                {entry.botName}
+                              </p>
+                              <p className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+                                {formatTimestamp(entry.timestamp)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <p className="text-sm leading-relaxed whitespace-pre-line text-light-text-primary dark:text-dark-text-primary">
+                            {entry.message}
+                          </p>
+
+                          <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+                            <span>
+                              Runtime: {formatRuntime(entry.runtimeMs)}
+                            </span>
+                            <span>Invocations: {entry.invocations ?? "—"}</span>
+                            <span>
+                              Balance: {formatCurrency(entry.balance ?? null)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </GlassCard>
+        </div>
+      </div>
+    </div>
+  );
+}
