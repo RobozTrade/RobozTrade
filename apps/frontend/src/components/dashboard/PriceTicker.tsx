@@ -143,7 +143,7 @@ function AnimatedPrice({
       // Animate from previous to current price
       const startPrice = previousPrice;
       const endPrice = price;
-      const duration = 400; // ms
+      const duration = 2000; // ms
       const startTime = Date.now();
 
       const animate = () => {
