@@ -9,6 +9,8 @@ import {
 } from "lightweight-charts";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import type { TradingBot, AIModel } from "@roboz-trade/shared-types";
+import { SUPPORTED_AI_MODELS } from "@roboz-trade/shared-types";
 
 interface BotPerformanceData {
   botId: string;
@@ -52,6 +54,12 @@ const BOT_COLORS = [
   "#14b8a6", // teal
 ];
 
+const getAIModelLogo = (aiModel: AIModel | null | undefined): string => {
+  if (!aiModel) return "/ai-icon.svg";
+  const modelInfo = SUPPORTED_AI_MODELS.find((m) => m.value === aiModel);
+  return modelInfo?.logo ?? "/ai-icon.svg";
+};
+
 interface BotPerformanceChartProps {
   selectedSingleBotId?: string | null;
 }
@@ -74,6 +82,19 @@ export function BotPerformanceChart({
   const botDataMapRef = useRef<Map<string, Map<number, BotDataPoint>>>(
     new Map()
   );
+
+  // Fetch all bots to get AI model information
+  const { data: botsData = [] } = useQuery<TradingBot[]>({
+    queryKey: ["bots"],
+    queryFn: async () => {
+      const response = await api.getBots();
+      return (response.data ?? []) as TradingBot[];
+    },
+    staleTime: 60_000,
+  });
+
+  // Ensure bots is always an array
+  const bots = Array.isArray(botsData) ? botsData : [];
 
   // Fetch latest bot performance data
   const { data: latestData } = useQuery({
@@ -591,6 +612,7 @@ export function BotPerformanceChart({
                 {latestData?.map((bot, index) => {
                   const isSelected =
                     selectedBots === null || selectedBots.has(bot.botId);
+                  const botData = bots.find((b) => b.id === bot.botId);
                   return (
                     <div
                       key={bot.botId}
@@ -609,12 +631,9 @@ export function BotPerformanceChart({
                         }}
                       />
                       <img
-                        src="/ai-icon.svg"
-                        alt="AI"
-                        className="w-4 h-4"
-                        onError={(e) => {
-                          e.currentTarget.style.display = "none";
-                        }}
+                        src={getAIModelLogo(botData?.aiModel)}
+                        alt="AI Model"
+                        className="w-4 h-4 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
                       />
                       <span
                         className={`text-sm font-medium ${

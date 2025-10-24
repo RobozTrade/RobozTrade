@@ -5,7 +5,8 @@ import { BotPerformanceChart } from "@/components/dashboard/BotPerformanceChart"
 import { IndividualBotPerformance } from "@/components/dashboard/IndividualBotPerformance";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { api } from "@/lib/api";
-import type { TradingBot } from "@roboz-trade/shared-types";
+import type { TradingBot, AIModel } from "@roboz-trade/shared-types";
+import { SUPPORTED_AI_MODELS } from "@roboz-trade/shared-types";
 
 const BOT_COLOR_PALETTE = [
   "#007aff",
@@ -57,6 +58,7 @@ interface PositionSnapshot {
 interface CompletedTradeRow {
   id: string;
   aiModel: string;
+  aiModelValue: AIModel | null;
   modelColor: string;
   pair: string;
   side: "LONG" | "SHORT";
@@ -84,6 +86,7 @@ interface BotPositionRow {
 interface BotPositionGroup {
   botId: string;
   botName: string;
+  aiModelValue: AIModel | null;
   color: string;
   positions: BotPositionRow[];
 }
@@ -119,6 +122,7 @@ interface BotTranscriptEntry {
   id: string;
   botId: string;
   botName: string;
+  aiModel: AIModel | null;
   color: string;
   timestamp: Date | null;
   message: string;
@@ -392,19 +396,36 @@ const extractSummary = (aiResponse: string | null | undefined): string => {
     // Try to parse as JSON (same as backend does)
     const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
 
-      // Extract summary field from JSON
-      if (typeof parsed.summary === "string" && parsed.summary.trim()) {
-        return parsed.summary.trim();
-      }
-
-      // Fallback: extract text before JSON
-      if (jsonMatch.index !== undefined && jsonMatch.index > 0) {
-        const leadingText = aiResponse.slice(0, jsonMatch.index).trim();
-        if (leadingText) {
-          return leadingText;
+        // Extract summary field from JSON
+        if (typeof parsed.summary === "string" && parsed.summary.trim()) {
+          return parsed.summary.trim();
         }
+
+        // Fallback: extract text before JSON
+        if (jsonMatch.index !== undefined && jsonMatch.index > 0) {
+          const leadingText = aiResponse.slice(0, jsonMatch.index).trim();
+          if (leadingText) {
+            return leadingText;
+          }
+        }
+      } catch (jsonError) {
+        // JSON parsing failed, try to extract text before the JSON attempt
+        if (jsonMatch.index !== undefined && jsonMatch.index > 0) {
+          const leadingText = aiResponse.slice(0, jsonMatch.index).trim();
+          if (leadingText) {
+            const firstSentenceMatch = leadingText.match(/^[^.!?]*[.!?]/);
+            if (firstSentenceMatch) {
+              return firstSentenceMatch[0].trim();
+            }
+            return leadingText.length > 150
+              ? leadingText.substring(0, 150) + "..."
+              : leadingText;
+          }
+        }
+        // If no leading text, fall through to plain text extraction
       }
     }
 
@@ -422,9 +443,16 @@ const extractSummary = (aiResponse: string | null | undefined): string => {
 
     return trimmed;
   } catch (error) {
-    console.error("Error parsing AI response:", error);
-    return aiResponse.trim().substring(0, 150) + "...";
+    // Silently handle errors and return truncated text
+    const trimmed = aiResponse.trim();
+    return trimmed.length > 150 ? trimmed.substring(0, 150) + "..." : trimmed;
   }
+};
+
+const getAIModelLogo = (aiModel: AIModel | null | undefined): string => {
+  if (!aiModel) return "/ai-icon.svg";
+  const modelInfo = SUPPORTED_AI_MODELS.find((m) => m.value === aiModel);
+  return modelInfo?.logo ?? "/ai-icon.svg";
 };
 
 export default function DashboardPageNew() {
@@ -569,6 +597,7 @@ export default function DashboardPageNew() {
         return {
           id: trade.id,
           aiModel: bot?.name ?? "Unknown Bot",
+          aiModelValue: bot?.aiModel ?? null,
           modelColor: colorByBotId.get(trade.botId) ?? BOT_COLOR_PALETTE[0],
           pair: formatTradingPair(trade.symbol),
           side: mapTradeSide(trade.side),
@@ -686,6 +715,7 @@ export default function DashboardPageNew() {
           id: execution.id,
           botId,
           botName: bot?.name ?? "Unknown Bot",
+          aiModel: bot?.aiModel ?? null,
           color,
           timestamp,
           message: summary,
@@ -756,6 +786,7 @@ export default function DashboardPageNew() {
         return {
           botId,
           botName: bot?.name ?? "Unknown Bot",
+          aiModelValue: bot?.aiModel ?? null,
           color: colorByBotId.get(botId) ?? BOT_COLOR_PALETTE[0],
           positions: mappedPositions,
         } satisfies BotPositionGroup;
@@ -792,13 +823,10 @@ export default function DashboardPageNew() {
               Back to All Bots
             </button>
             <div className="flex items-center gap-2">
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{
-                  backgroundColor:
-                    colorByBotId.get(selectedSingleBotId) ??
-                    BOT_COLOR_PALETTE[0],
-                }}
+              <img
+                src={getAIModelLogo(botById.get(selectedSingleBotId)?.aiModel)}
+                alt="AI Model"
+                className="w-6 h-6 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
               />
               <span className="text-lg font-semibold text-light-text-primary dark:text-dark-text-primary">
                 {botById.get(selectedSingleBotId)?.name ?? "Unknown Bot"}
@@ -887,9 +915,10 @@ export default function DashboardPageNew() {
                           >
                             <td className="py-3 px-2">
                               <div className="flex items-center gap-2">
-                                <div
-                                  className="w-2 h-2 rounded-full"
-                                  style={{ backgroundColor: trade.modelColor }}
+                                <img
+                                  src={getAIModelLogo(trade.aiModelValue)}
+                                  alt="AI Model"
+                                  className="w-5 h-5 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
                                 />
                                 <span className="text-light-text-primary dark:text-dark-text-primary">
                                   {trade.aiModel}
@@ -986,9 +1015,10 @@ export default function DashboardPageNew() {
                     <details key={group.botId} className="group" open>
                       <summary className="cursor-pointer list-none flex items-center justify-between p-2 sm:p-3 rounded-xl hover:bg-white/5 dark:hover:bg-black/5 transition-colors">
                         <div className="flex items-center gap-2 sm:gap-3">
-                          <div
-                            className="w-2 h-2 sm:w-3 sm:h-3 rounded-full"
-                            style={{ backgroundColor: group.color }}
+                          <img
+                            src={getAIModelLogo(group.aiModelValue)}
+                            alt="AI Model"
+                            className="w-5 h-5 sm:w-6 sm:h-6 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
                           />
                           <span className="text-sm sm:text-base font-medium text-light-text-primary dark:text-dark-text-primary">
                             {group.botName}
@@ -1154,8 +1184,6 @@ export default function DashboardPageNew() {
 
                     {safeBots.map((bot) => {
                       const isActive = selectedBotIds.includes(bot.id);
-                      const color =
-                        colorByBotId.get(bot.id) ?? BOT_COLOR_PALETTE[0];
                       return (
                         <button
                           key={bot.id}
@@ -1166,9 +1194,10 @@ export default function DashboardPageNew() {
                               : "border-white/10 hover:border-white/20 hover:bg-white/5"
                           }`}
                         >
-                          <span
-                            className="inline-flex w-2.5 h-2.5 rounded-full"
-                            style={{ backgroundColor: color }}
+                          <img
+                            src={getAIModelLogo(bot.aiModel)}
+                            alt="AI Model"
+                            className="w-4 h-4 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
                           />
                           <span className="text-light-text-primary dark:text-dark-text-primary">
                             {bot.name}
@@ -1205,165 +1234,180 @@ export default function DashboardPageNew() {
                     No AI updates for the selected bots yet.
                   </div>
                 ) : (
-                  filteredTranscripts.map((entry) => (
-                    <div
-                      key={`${entry.id}-${entry.timestamp?.getTime() ?? ""}`}
-                      className="p-4 rounded-2xl border border-white/10 bg-white/5 dark:bg-black/10 backdrop-blur-xl shadow-glass space-y-3"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0">
-                          <img
-                            src="/ai-icon.svg"
-                            alt="AI"
-                            className="w-8 h-8 rounded-lg"
-                            onError={(e) => {
-                              // Fallback to Bot icon if AI icon not found
-                              const target = e.currentTarget;
-                              const parent = target.parentElement;
-                              if (parent) {
-                                parent.innerHTML = `<div class="w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-lg" style="background-color: ${entry.color}"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg></div>`;
-                              }
-                            }}
-                          />
-                        </div>
+                  filteredTranscripts.map((entry) => {
+                    const aiModelInfo = entry.aiModel
+                      ? SUPPORTED_AI_MODELS.find(
+                          (m) => m.value === entry.aiModel
+                        )
+                      : null;
+                    const aiModelLogo = aiModelInfo?.logo ?? "/ai-icon.svg";
+                    const aiModelProvider = aiModelInfo?.provider ?? "AI";
 
-                        <div className="flex-1 space-y-3">
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <p className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
-                                {entry.botName}
-                              </p>
-                              <p className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
-                                {formatTimestamp(entry.timestamp)}
-                              </p>
-                            </div>
-                            {entry.tradesExecuted !== null &&
-                              entry.tradesExecuted !== undefined && (
-                                <div className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary text-right">
-                                  Trades: {entry.tradesExecuted}
-                                </div>
-                              )}
+                    return (
+                      <div
+                        key={`${entry.id}-${entry.timestamp?.getTime() ?? ""}`}
+                        className="p-4 rounded-2xl border border-white/10 bg-white/5 dark:bg-black/10 backdrop-blur-xl shadow-glass space-y-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0">
+                            <img
+                              src={aiModelLogo}
+                              alt={aiModelProvider}
+                              className="w-8 h-8 rounded-lg object-contain bg-white dark:bg-gray-800 p-1"
+                              onError={(e) => {
+                                // Fallback to Bot icon if AI model logo not found
+                                const target = e.currentTarget;
+                                const parent = target.parentElement;
+                                if (parent) {
+                                  parent.innerHTML = `<div class="w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-lg" style="background-color: ${entry.color}"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg></div>`;
+                                }
+                              }}
+                            />
                           </div>
 
-                          <p className="text-sm leading-relaxed whitespace-pre-line text-light-text-primary dark:text-dark-text-primary">
-                            {entry.message}
-                          </p>
-
-                          <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
-                            <span>
-                              Runtime: {formatRuntime(entry.runtimeMs)}
-                            </span>
-                            <span>Invocations: {entry.invocations ?? "—"}</span>
-                            <span>
-                              Balance: {formatCurrency(entry.balance ?? null)}
-                            </span>
-                            <span>
-                              Exposure: {formatCurrency(entry.exposure ?? null)}
-                            </span>
-                          </div>
-
-                          {entry.decisions.length > 0 && (
-                            <details className="group mt-2 border border-white/10 rounded-xl bg-white/5 dark:bg-black/5">
-                              <summary className="cursor-pointer list-none flex items-center justify-between px-3 py-2 text-xs font-semibold text-accent-blue">
-                                <span className="group-open:hidden">
-                                  Show individual decisions
-                                </span>
-                                <span className="hidden group-open:inline">
-                                  Hide individual decisions
-                                </span>
-                                <svg
-                                  className="w-3.5 h-3.5 transition-transform group-open:rotate-180"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M19 9l-7 7-7-7"
-                                  />
-                                </svg>
-                              </summary>
-                              <div className="px-3 pb-3 space-y-3">
-                                {entry.decisions.map((decision, index) => (
-                                  <div
-                                    key={`${entry.id}-decision-${index}`}
-                                    className="rounded-lg border border-white/10 bg-white/5 dark:bg-black/10 p-3 space-y-2"
-                                  >
-                                    <div className="flex items-center justify-between gap-3">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
-                                          {decision.symbol}
-                                        </span>
-                                        <span
-                                          className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getActionBadgeClasses(
-                                            decision.action
-                                          )}`}
-                                        >
-                                          {decision.action}
-                                        </span>
-                                      </div>
-                                      <div className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
-                                        CONF{" "}
-                                        {formatConfidence(decision.confidence)}
-                                      </div>
-                                    </div>
-
-                                    {decision.reasoning && (
-                                      <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line">
-                                        {decision.reasoning}
-                                      </p>
-                                    )}
-
-                                    {decision.exitStrategy && (
-                                      <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
-                                        <span className="font-medium text-light-text-primary dark:text-dark-text-primary">
-                                          Exit Strategy:
-                                        </span>{" "}
-                                        {decision.exitStrategy}
-                                      </div>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </details>
-                          )}
-
-                          {entry.thinking && (
-                            <details className="group mt-2 border border-white/10 rounded-xl bg-white/5 dark:bg-black/5">
-                              <summary className="cursor-pointer list-none flex items-center justify-between px-3 py-2 text-xs font-semibold text-accent-purple">
-                                <span className="group-open:hidden">
-                                  Show analysis
-                                </span>
-                                <span className="hidden group-open:inline">
-                                  Hide analysis
-                                </span>
-                                <svg
-                                  className="w-3.5 h-3.5 transition-transform group-open:rotate-180"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M19 9l-7 7-7-7"
-                                  />
-                                </svg>
-                              </summary>
-                              <div className="px-3 pb-3 pt-2">
-                                <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line leading-relaxed">
-                                  {entry.thinking}
+                          <div className="flex-1 space-y-3">
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <p className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
+                                  {entry.botName}
+                                </p>
+                                <p className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+                                  {formatTimestamp(entry.timestamp)}
                                 </p>
                               </div>
-                            </details>
-                          )}
+                              {entry.tradesExecuted !== null &&
+                                entry.tradesExecuted !== undefined && (
+                                  <div className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary text-right">
+                                    Trades: {entry.tradesExecuted}
+                                  </div>
+                                )}
+                            </div>
+
+                            <p className="text-sm leading-relaxed whitespace-pre-line text-light-text-primary dark:text-dark-text-primary">
+                              {entry.message}
+                            </p>
+
+                            <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+                              <span>
+                                Runtime: {formatRuntime(entry.runtimeMs)}
+                              </span>
+                              <span>
+                                Invocations: {entry.invocations ?? "—"}
+                              </span>
+                              <span>
+                                Balance: {formatCurrency(entry.balance ?? null)}
+                              </span>
+                              <span>
+                                Exposure:{" "}
+                                {formatCurrency(entry.exposure ?? null)}
+                              </span>
+                            </div>
+
+                            {entry.decisions.length > 0 && (
+                              <details className="group mt-2 border border-white/10 rounded-xl bg-white/5 dark:bg-black/5">
+                                <summary className="cursor-pointer list-none flex items-center justify-between px-3 py-2 text-xs font-semibold text-accent-blue">
+                                  <span className="group-open:hidden">
+                                    Show individual decisions
+                                  </span>
+                                  <span className="hidden group-open:inline">
+                                    Hide individual decisions
+                                  </span>
+                                  <svg
+                                    className="w-3.5 h-3.5 transition-transform group-open:rotate-180"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M19 9l-7 7-7-7"
+                                    />
+                                  </svg>
+                                </summary>
+                                <div className="px-3 pb-3 space-y-3">
+                                  {entry.decisions.map((decision, index) => (
+                                    <div
+                                      key={`${entry.id}-decision-${index}`}
+                                      className="rounded-lg border border-white/10 bg-white/5 dark:bg-black/10 p-3 space-y-2"
+                                    >
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
+                                            {decision.symbol}
+                                          </span>
+                                          <span
+                                            className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getActionBadgeClasses(
+                                              decision.action
+                                            )}`}
+                                          >
+                                            {decision.action}
+                                          </span>
+                                        </div>
+                                        <div className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+                                          CONF{" "}
+                                          {formatConfidence(
+                                            decision.confidence
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {decision.reasoning && (
+                                        <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line">
+                                          {decision.reasoning}
+                                        </p>
+                                      )}
+
+                                      {decision.exitStrategy && (
+                                        <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
+                                          <span className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                                            Exit Strategy:
+                                          </span>{" "}
+                                          {decision.exitStrategy}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            )}
+
+                            {entry.thinking && (
+                              <details className="group mt-2 border border-white/10 rounded-xl bg-white/5 dark:bg-black/5">
+                                <summary className="cursor-pointer list-none flex items-center justify-between px-3 py-2 text-xs font-semibold text-accent-purple">
+                                  <span className="group-open:hidden">
+                                    Show analysis
+                                  </span>
+                                  <span className="hidden group-open:inline">
+                                    Hide analysis
+                                  </span>
+                                  <svg
+                                    className="w-3.5 h-3.5 transition-transform group-open:rotate-180"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M19 9l-7 7-7-7"
+                                    />
+                                  </svg>
+                                </summary>
+                                <div className="px-3 pb-3 pt-2">
+                                  <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line leading-relaxed">
+                                    {entry.thinking}
+                                  </p>
+                                </div>
+                              </details>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </GlassCard>

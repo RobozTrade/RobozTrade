@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
+import type { TradingBot, AIModel } from "@roboz-trade/shared-types";
+import { SUPPORTED_AI_MODELS } from "@roboz-trade/shared-types";
 
 interface BotPerformanceData {
   botId: string;
@@ -18,11 +20,30 @@ interface IndividualBotPerformanceProps {
   onSelectBot?: (botId: string) => void;
 }
 
+const getAIModelLogo = (aiModel: AIModel | null | undefined): string => {
+  if (!aiModel) return "/ai-icon.svg";
+  const modelInfo = SUPPORTED_AI_MODELS.find((m) => m.value === aiModel);
+  return modelInfo?.logo ?? "/ai-icon.svg";
+};
+
 export function IndividualBotPerformance({
   onSelectBot,
 }: IndividualBotPerformanceProps) {
   const [scrollPosition, setScrollPosition] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Fetch all bots to get AI model information
+  const { data: botsData = [] } = useQuery<TradingBot[]>({
+    queryKey: ["bots"],
+    queryFn: async () => {
+      const response = await api.getBots();
+      return (response.data ?? []) as TradingBot[];
+    },
+    staleTime: 60_000,
+  });
+
+  // Ensure bots is always an array
+  const bots = Array.isArray(botsData) ? botsData : [];
 
   // Fetch latest bot performance data
   const { data: latestData } = useQuery({
@@ -149,6 +170,7 @@ export function IndividualBotPerformance({
                     ? (bot.unrealizedPnl / initialBalance) * 100
                     : 0;
                 const isProfit = (bot.unrealizedPnl ?? 0) >= 0;
+                const botData = bots.find((b) => b.id === bot.botId);
 
                 return (
                   <GlassCard
@@ -159,12 +181,9 @@ export function IndividualBotPerformance({
                     {/* Bot Header */}
                     <div className="flex items-center gap-2">
                       <img
-                        src="/ai-icon.svg"
-                        alt="AI"
-                        className="w-6 h-6"
-                        onError={(e) => {
-                          e.currentTarget.style.display = "none";
-                        }}
+                        src={getAIModelLogo(botData?.aiModel)}
+                        alt="AI Model"
+                        className="w-6 h-6 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
                       />
                       <div className="flex-1">
                         <h4 className="font-semibold text-light-text-primary dark:text-dark-text-primary">
