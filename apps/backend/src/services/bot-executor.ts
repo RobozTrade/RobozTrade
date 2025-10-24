@@ -21,6 +21,11 @@ export interface BotExecutionResult {
   tradesExecuted: number;
   errors: string[];
   decisions: TradingDecision[];
+  aiPrompt?: string | null;
+  aiRawResponse?: string | null;
+  aiThinking?: string | null;
+  aiRuntimeMs?: number | null;
+  aiInvocations?: number | null;
 }
 
 /**
@@ -356,6 +361,11 @@ export async function executeBot(
       tradesExecuted,
       errors,
       decisions,
+      aiPrompt,
+      aiRawResponse,
+      aiThinking,
+      aiRuntimeMs,
+      aiInvocations,
     };
 
   } catch (error: any) {
@@ -393,6 +403,11 @@ export async function executeBot(
       tradesExecuted: 0,
       errors,
       decisions: [],
+      aiPrompt,
+      aiRawResponse,
+      aiThinking,
+      aiRuntimeMs,
+      aiInvocations,
     };
   }
 }

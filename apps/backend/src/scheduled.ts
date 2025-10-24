@@ -25,6 +25,12 @@ export interface ScheduledExecutionDetail {
   success: boolean;
   tradesExecuted: number;
   errors: string[];
+  aiDecisions?: any[];
+  aiPrompt?: string | null;
+  aiRawResponse?: string | null;
+  aiThinking?: string | null;
+  aiRuntimeMs?: number | null;
+  aiInvocations?: number | null;
 }
 
 export interface ScheduledExecutionBatchInfo {
@@ -120,6 +126,12 @@ export async function runScheduledExecution(
         success: execution.success,
         tradesExecuted: execution.tradesExecuted,
         errors: execution.errors,
+        aiDecisions: execution.decisions,
+        aiPrompt: execution.aiPrompt,
+        aiRawResponse: execution.aiRawResponse,
+        aiThinking: execution.aiThinking,
+        aiRuntimeMs: execution.aiRuntimeMs,
+        aiInvocations: execution.aiInvocations,
       };
     }
 
