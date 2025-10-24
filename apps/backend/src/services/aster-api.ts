@@ -12,6 +12,9 @@ import { createHmac } from 'crypto';
 import type { Candle } from './indicators';
 import { withRateLimit } from './rate-limiter';
 
+// Re-export Candle type for convenience
+export type { Candle } from './indicators';
+
 const ASTER_API_BASE_URL = 'https://fapi.asterdex.com';
 const SYMBOL_METADATA_TTL_MS = 1000 * 60 * 5; // 5 minutes
 

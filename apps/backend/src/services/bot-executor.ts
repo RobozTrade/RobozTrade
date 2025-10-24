@@ -29,13 +29,24 @@ export interface BotExecutionResult {
 }
 
 /**
+ * Shared market data cache to reduce API calls across multiple bot executions
+ */
+export interface SharedMarketDataCache {
+  symbolMetadata: Map<string, AsterAPI.SymbolMetadata>;
+  marketData: Map<string, AsterAPI.MarketData>;
+  intradayCandles: Map<string, AsterAPI.Candle[]>;
+  higherTimeframeCandles: Map<string, AsterAPI.Candle[]>;
+}
+
+/**
  * Execute trading logic for a single bot
  */
 export async function executeBot(
   botId: string,
   db: DbClient,
   encryptionKey: string,
-  pbkdf2Iterations = 100000
+  pbkdf2Iterations = 100000,
+  sharedCache?: SharedMarketDataCache
 ): Promise<BotExecutionResult> {
   const startTime = Date.now();
   const errors: string[] = [];
@@ -181,25 +192,48 @@ export async function executeBot(
     const contexts: TradingContext[] = [];
     const marketDataSnapshot: Record<string, any> = {};
 
-    let symbolMetadataMap = new Map<string, AsterAPI.SymbolMetadata>();
-    try {
-      symbolMetadataMap = await AsterAPI.getSymbolMetadata(credentials);
-    } catch (metadataError: any) {
-      errors.push(`Failed to load exchange metadata: ${metadataError.message}`);
-      console.error('Error fetching symbol metadata:', metadataError);
+    // Use shared cache if available, otherwise fetch fresh data
+    let symbolMetadataMap: Map<string, AsterAPI.SymbolMetadata>;
+    if (sharedCache?.symbolMetadata) {
+      symbolMetadataMap = sharedCache.symbolMetadata;
+    } else {
+      try {
+        symbolMetadataMap = await AsterAPI.getSymbolMetadata(credentials);
+      } catch (metadataError: any) {
+        errors.push(`Failed to load exchange metadata: ${metadataError.message}`);
+        console.error('Error fetching symbol metadata:', metadataError);
+        symbolMetadataMap = new Map();
+      }
     }
 
     for (const symbol of tradingSymbols) {
       try {
-        // Fetch market data
-        const marketData = await AsterAPI.getMarketData(symbol, credentials);
+        // Fetch market data - use cache if available
+        let marketData: AsterAPI.MarketData;
+        let intradayCandles: AsterAPI.Candle[];
+        let higherTimeframeCandles: AsterAPI.Candle[];
 
-        // Fetch candlestick data for technical analysis (last 50 candles, 15m interval)
+        if (sharedCache) {
+          // Use cached data
+          const cachedMarketData = sharedCache.marketData.get(symbol);
+          const cachedIntradayCandles = sharedCache.intradayCandles.get(symbol);
+          const cachedHigherTimeframeCandles = sharedCache.higherTimeframeCandles.get(symbol);
+
+          if (!cachedMarketData || !cachedIntradayCandles || !cachedHigherTimeframeCandles) {
+            throw new Error('Market data not available in cache');
+          }
+
+          marketData = cachedMarketData;
+          intradayCandles = cachedIntradayCandles;
+          higherTimeframeCandles = cachedHigherTimeframeCandles;
+        } else {
+          // Fetch fresh data
+          marketData = await AsterAPI.getMarketData(symbol, credentials);
+          intradayCandles = await AsterAPI.getCandles(symbol, '15m', 120, credentials);
+          higherTimeframeCandles = await AsterAPI.getCandles(symbol, '4h', 120, credentials);
+        }
+
         const instrument = symbolMetadataMap.get(symbol);
-
-        // Fetch candlestick data for technical analysis
-        const intradayCandles = await AsterAPI.getCandles(symbol, '15m', 120, credentials);
-        const higherTimeframeCandles = await AsterAPI.getCandles(symbol, '4h', 120, credentials);
 
         if (intradayCandles.length === 0) {
           throw new Error('Insufficient intraday candle data');

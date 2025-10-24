@@ -5,13 +5,124 @@
 
 import { asc, eq } from 'drizzle-orm';
 import { getDb } from './lib/db';
-import { tradingBots } from './db/schema';
-import { executeBot } from './services/bot-executor';
+import { tradingBots, apiKeys } from './db/schema';
+import { executeBot, type SharedMarketDataCache } from './services/bot-executor';
 import { asterRateLimiter } from './services/rate-limiter';
+import { decrypt } from './lib/crypto';
+import * as AsterAPI from './services/aster-api';
 
 const BOT_BATCH_SIZE = 100;
 const CRON_INTERVAL_MINUTES = 2;
 const CRON_INTERVAL_MS = CRON_INTERVAL_MINUTES * 60 * 1000;
+
+/**
+ * Build shared market data cache for all unique symbols across bots
+ * This dramatically reduces API calls by fetching each symbol's data only once
+ */
+async function buildSharedMarketDataCache(
+  bots: any[],
+  env: Env
+): Promise<SharedMarketDataCache | null> {
+  try {
+    // Collect all unique symbols from all bots
+    const allSymbols = new Set<string>();
+    for (const bot of bots) {
+      const symbols = (bot.tradingSymbols as string[]) || [];
+      symbols.forEach(symbol => allSymbols.add(symbol));
+    }
+
+    if (allSymbols.size === 0) {
+      return null;
+    }
+
+    console.log(`Building shared cache for ${allSymbols.size} unique symbols: ${Array.from(allSymbols).join(', ')}`);
+
+    // Get credentials from the first bot (we need any valid credentials to fetch public market data)
+    // Note: Market data endpoints don't require authentication, but we use credentials for consistency
+    const firstBot = bots[0];
+    if (!firstBot) {
+      return null;
+    }
+
+    const db = getDb(env.DB);
+    const iterations = parseInt(env.PBKDF2_ITERATIONS || '100000', 10);
+
+    // Resolve credentials from first bot
+    let asterApiKey: string | null = null;
+    let asterApiSecret: string | null = null;
+
+    if (firstBot.asterApiKey && firstBot.asterApiSecret) {
+      asterApiKey = await decrypt(firstBot.asterApiKey, env.ENCRYPTION_KEY, iterations);
+      asterApiSecret = await decrypt(firstBot.asterApiSecret, env.ENCRYPTION_KEY, iterations);
+    }
+
+    if ((!asterApiKey || !asterApiSecret) && firstBot.apiKeyId) {
+      const apiKeyRecord = await db
+        .select()
+        .from(apiKeys)
+        .where(eq(apiKeys.id, firstBot.apiKeyId))
+        .get();
+
+      if (apiKeyRecord) {
+        asterApiKey = await decrypt(apiKeyRecord.apiKey, env.ENCRYPTION_KEY, iterations);
+        asterApiSecret = await decrypt(apiKeyRecord.apiSecret, env.ENCRYPTION_KEY, iterations);
+      }
+    }
+
+    if (!asterApiKey || !asterApiSecret) {
+      console.warn('No valid credentials found for building shared cache');
+      return null;
+    }
+
+    const credentials: AsterAPI.AsterCredentials = {
+      apiKey: asterApiKey,
+      apiSecret: asterApiSecret,
+    };
+
+    // Fetch symbol metadata once
+    const symbolMetadata = await AsterAPI.getSymbolMetadata(credentials);
+
+    // Fetch market data for all symbols in parallel
+    const marketDataPromises = Array.from(allSymbols).map(async (symbol) => {
+      try {
+        const marketData = await AsterAPI.getMarketData(symbol, credentials);
+        const intradayCandles = await AsterAPI.getCandles(symbol, '15m', 120, credentials);
+        const higherTimeframeCandles = await AsterAPI.getCandles(symbol, '4h', 120, credentials);
+        return { symbol, marketData, intradayCandles, higherTimeframeCandles };
+      } catch (error: any) {
+        console.error(`Error fetching data for ${symbol}:`, error.message);
+        return null;
+      }
+    });
+
+    const results = await Promise.all(marketDataPromises);
+
+    // Build cache maps
+    const marketDataMap = new Map<string, AsterAPI.MarketData>();
+    const intradayCandlesMap = new Map<string, AsterAPI.Candle[]>();
+    const higherTimeframeCandlesMap = new Map<string, AsterAPI.Candle[]>();
+
+    for (const result of results) {
+      if (result) {
+        marketDataMap.set(result.symbol, result.marketData);
+        intradayCandlesMap.set(result.symbol, result.intradayCandles);
+        higherTimeframeCandlesMap.set(result.symbol, result.higherTimeframeCandles);
+      }
+    }
+
+    console.log(`Shared cache built successfully: ${marketDataMap.size}/${allSymbols.size} symbols cached`);
+
+    return {
+      symbolMetadata,
+      marketData: marketDataMap,
+      intradayCandles: intradayCandlesMap,
+      higherTimeframeCandles: higherTimeframeCandlesMap,
+    };
+  } catch (error: any) {
+    console.error('Error building shared market data cache:', error.message);
+    return null;
+  }
+}
 
 export interface Env {
   DB: D1Database;
@@ -100,8 +211,18 @@ export async function runScheduledExecution(
     };
   }
 
+  // Build shared market data cache to reduce API calls
+  // This fetches each unique symbol's data only once, shared across all bots
+  const sharedCache = await buildSharedMarketDataCache(botsToProcess, env);
+
+  if (sharedCache) {
+    console.log(`Using shared cache - saved ${(botsToProcess.length - 1) * sharedCache.marketData.size * 3} API calls`);
+  } else {
+    console.log('Shared cache not available - bots will fetch data individually');
+  }
+
   const results = await Promise.allSettled(
-    botsToProcess.map(bot => executeBot(bot.id, db, env.ENCRYPTION_KEY, iterations))
+    botsToProcess.map(bot => executeBot(bot.id, db, env.ENCRYPTION_KEY, iterations, sharedCache || undefined))
   );
 
   let successCount = 0;
