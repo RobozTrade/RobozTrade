@@ -500,6 +500,7 @@ export default function PublicDashboard({
     color: string;
     timestamp: Date | null;
     message: string;
+    thinking: string | null;
     runtimeMs: number | null | undefined;
     invocations: number | null | undefined;
     balance: number | null | undefined;
@@ -565,6 +566,7 @@ export default function PublicDashboard({
         color,
         timestamp: toDate(exec.executionTime),
         message: extractSummary(exec.aiResponse),
+        thinking: exec.aiThinking?.toString().trim() || null,
         runtimeMs: exec.aiRuntimeMs,
         invocations: exec.aiInvocations,
         balance: exec.totalBalance,
@@ -1068,6 +1070,37 @@ export default function PublicDashboard({
                                     )}
                                   </div>
                                 ))}
+                              </div>
+                            </details>
+                          )}
+
+                          {entry.thinking && (
+                            <details className="group mt-2 border border-white/10 rounded-xl bg-white/5 dark:bg-black/5">
+                              <summary className="cursor-pointer list-none flex items-center justify-between px-3 py-2 text-xs font-semibold text-accent-purple">
+                                <span className="group-open:hidden">
+                                  Show analysis
+                                </span>
+                                <span className="hidden group-open:inline">
+                                  Hide analysis
+                                </span>
+                                <svg
+                                  className="w-3.5 h-3.5 transition-transform group-open:rotate-180"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 9l-7 7-7-7"
+                                  />
+                                </svg>
+                              </summary>
+                              <div className="px-3 pb-3 pt-2">
+                                <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line leading-relaxed">
+                                  {entry.thinking}
+                                </p>
                               </div>
                             </details>
                           )}
