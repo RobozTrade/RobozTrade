@@ -79,7 +79,7 @@ export function determineAggregationInterval(
 
   // Verify the selected interval will produce a reasonable number of points
   const estimatedPoints = timeSpanSeconds / selectedInterval.seconds;
-  
+
   // If still too many points, move to next larger interval
   if (estimatedPoints > TARGET_MAX_POINTS * 2) {
     if (selectedInterval === INTERVALS.HOUR_1) return INTERVALS.HOUR_6;
@@ -125,10 +125,10 @@ export function calculateMetadata(
   lastExecutionTime: number | null,
   interval: AggregationInterval
 ): AggregationMetadata {
-  const timeSpanSeconds = firstExecutionTime && lastExecutionTime 
-    ? lastExecutionTime - firstExecutionTime 
+  const timeSpanSeconds = firstExecutionTime && lastExecutionTime
+    ? lastExecutionTime - firstExecutionTime
     : 0;
-  
+
   const timeSpanDays = timeSpanSeconds / 86400;
 
   return {
@@ -137,11 +137,11 @@ export function calculateMetadata(
     totalRecords,
     aggregatedPoints,
     timeSpanDays: Math.round(timeSpanDays * 100) / 100,
-    firstExecutionTime: firstExecutionTime 
-      ? new Date(firstExecutionTime * 1000).toISOString() 
+    firstExecutionTime: firstExecutionTime
+      ? new Date(firstExecutionTime * 1000).toISOString()
       : null,
-    lastExecutionTime: lastExecutionTime 
-      ? new Date(lastExecutionTime * 1000).toISOString() 
+    lastExecutionTime: lastExecutionTime
+      ? new Date(lastExecutionTime * 1000).toISOString()
       : null,
   };
 }
@@ -162,9 +162,10 @@ export function aggregateRecordsInMemory(
   const buckets = new Map<number, any[]>();
 
   records.forEach((record) => {
-    const timestamp = record.executionTime;
+    // Normalize timestamp to seconds
+    const timestamp = normalizeTimestamp(record.executionTime);
     const bucketKey = Math.floor(timestamp / interval.seconds) * interval.seconds;
-    
+
     if (!buckets.has(bucketKey)) {
       buckets.set(bucketKey, []);
     }
@@ -176,17 +177,17 @@ export function aggregateRecordsInMemory(
 
   buckets.forEach((bucketRecords, bucketTimestamp) => {
     const count = bucketRecords.length;
-    
+
     // Calculate averages
     const totalBalance = bucketRecords.reduce((sum, r) => sum + (r.totalBalance || 0), 0) / count;
     const unrealizedPnl = bucketRecords.reduce((sum, r) => sum + (r.unrealizedPnl || 0), 0) / count;
     const accountBalance = bucketRecords.reduce((sum, r) => sum + (r.accountBalance || 0), 0) / count;
     const accountExposure = bucketRecords.reduce((sum, r) => sum + (r.accountExposure || 0), 0) / count;
     const tradesExecuted = bucketRecords.reduce((sum, r) => sum + (r.tradesExecuted || 0), 0);
-    
+
     // Get most recent status
     const mostRecentRecord = bucketRecords[bucketRecords.length - 1];
-    
+
     aggregated.push({
       id: `agg_${bucketTimestamp}`,
       executionTime: bucketTimestamp,
@@ -210,6 +211,37 @@ export function aggregateRecordsInMemory(
 }
 
 /**
+ * Convert executionTime to Unix timestamp in seconds
+ * Handles Date objects, millisecond timestamps, and second timestamps
+ */
+function normalizeTimestamp(executionTime: any): number {
+  if (executionTime == null) return 0;
+
+  // If it's a Date object, convert to seconds
+  if (executionTime instanceof Date) {
+    return Math.floor(executionTime.getTime() / 1000);
+  }
+
+  // If it's a number
+  if (typeof executionTime === 'number') {
+    // Check if it's in milliseconds (> year 2100 in seconds would be > 4102444800)
+    // Timestamps > 10000000000 are likely in milliseconds
+    if (executionTime > 10000000000) {
+      return Math.floor(executionTime / 1000);
+    }
+    return executionTime;
+  }
+
+  // If it's a string, try to parse it
+  if (typeof executionTime === 'string') {
+    const parsed = new Date(executionTime).getTime();
+    return Math.floor(parsed / 1000);
+  }
+
+  return 0;
+}
+
+/**
  * Get time range from execution records
  */
 export function getTimeRange(records: any[]): { first: number | null; last: number | null } {
@@ -217,8 +249,10 @@ export function getTimeRange(records: any[]): { first: number | null; last: numb
     return { first: null, last: null };
   }
 
-  const timestamps = records.map(r => r.executionTime).filter(t => t != null);
-  
+  const timestamps = records
+    .map(r => normalizeTimestamp(r.executionTime))
+    .filter(t => t > 0);
+
   if (timestamps.length === 0) {
     return { first: null, last: null };
   }
