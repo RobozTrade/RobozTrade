@@ -19,6 +19,7 @@ export interface TradingContext {
   accountValue: number;
   totalReturn: number;
   sharpeRatio: number;
+  winRate: number;
   cycleCount: number;
   minutesTrading: number;
   totalInvocations?: number;
@@ -101,6 +102,7 @@ function populatePromptTemplate(
     account_value: formatNumber(firstContext.accountValue, 2),
     total_return: formatNumber(firstContext.totalReturn, 2),
     sharpe_ratio: formatNumber(firstContext.sharpeRatio, 3),
+    win_rate: formatNumber(firstContext.winRate * 100, 1),
     max_leverage: firstContext.maxLeverage,
     min_notional_per_trade: formatNumber(firstContext.minNotionalPerTrade, 2),
     max_notional_per_trade: formatNumber(firstContext.maxNotionalPerTrade, 2),

@@ -161,6 +161,12 @@ export async function executeBot(
         losingTrades: 0,
         totalReturn: 0,
         totalPnl: 0,
+        sharpeRatio: 0,
+        maxDrawdown: 0,
+        winRate: 0,
+        averageWin: 0,
+        averageLoss: 0,
+        profitFactor: 0,
         lastUpdated: new Date(),
       });
       metrics = await db.select().from(botMetrics).where(eq(botMetrics.botId, botId)).get();
@@ -281,6 +287,7 @@ export async function executeBot(
           accountValue: accountInfo.totalBalance,
           totalReturn: metrics?.totalReturn || 0,
           sharpeRatio: metrics?.sharpeRatio || 0,
+          winRate: metrics?.winRate || 0,
           cycleCount: metrics?.totalTrades || 0,
           minutesTrading,
           totalInvocations,
