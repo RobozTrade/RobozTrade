@@ -110,14 +110,26 @@ Position Status
 {{/if}}
 {{/each}}
 
+POSITION MANAGEMENT GUIDELINES
+- MINIMUM HOLD: Positions should be held for at least 30 minutes unless stop loss is hit
+- For positions <30 minutes old: Strongly prefer HOLD over CLOSE unless facing >3% adverse move
+- TRADING COSTS: Each trade costs ~0.05% in fees. Factor this into close decisions.
+- WIN RATE CONTEXT: Your current win rate is {{win_rate}}% - focus on quality setups, not quantity
+- PERFORMANCE: Total return {{total_return}}%, Sharpe {{sharpe_ratio}}
+
 TASK
 For each symbol, provide:
 - action: BUY, SELL, HOLD, or CLOSE
+  * Use CLOSE sparingly - only when position thesis is invalidated or targets reached
+  * Prefer HOLD for positions still developing (especially if <30 min old)
+  * Consider position age before closing - premature exits waste setup opportunities
 - target_notional: desired notional exposure within limits (USDT)
 - leverage: up to {{max_leverage}}x (justify higher leverage)
 - stop_loss & take_profit levels (USDT)
 - confidence (0-1)
-- reasoning summarizing intraday + higher timeframe drivers
+- reasoning: Must explain why closing (if CLOSE action) including position age consideration
+  * Summarize intraday + higher timeframe drivers
+  * For CLOSE actions, explicitly state why the position thesis is invalidated
 
 Ensure notional sizing respects portfolio limits and exchange minimums, preserves diversification, and avoids conflicting positions.`;
 

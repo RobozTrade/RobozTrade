@@ -50,6 +50,8 @@ export const tradingBots = sqliteTable('trading_bots', {
   minNotionalPerTrade: real('min_notional_per_trade'),
   maxNotionalPerTrade: real('max_notional_per_trade'),
   maxOpenTrades: integer('max_open_trades'),
+  minHoldMinutes: integer('min_hold_minutes').default(30), // Minimum position hold time in minutes
+  maxTradesPerHour: integer('max_trades_per_hour').default(6), // Maximum trades per hour per symbol
   // Legacy fields (kept for backward compatibility)
   strategyType: text('strategy_type'),
   tradingPair: text('trading_pair'),

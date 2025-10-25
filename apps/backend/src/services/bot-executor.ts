@@ -669,6 +669,34 @@ async function executeCloseOrder(
     throw new Error(`No position to close for ${context.symbol}`);
   }
 
+  // Get bot configuration for minimum hold time
+  const bot = await db.select().from(tradingBots).where(eq(tradingBots.id, botId)).get();
+  const MIN_HOLD_MINUTES = bot?.minHoldMinutes ?? 30;
+  const EMERGENCY_LOSS_THRESHOLD = -5; // Allow early close if losing >5%
+
+  // Enforce minimum hold time
+  const minutesHeld = context.position.entryTime
+    ? Math.floor((Date.now() - new Date(context.position.entryTime).getTime()) / 60000)
+    : 0;
+
+  if (minutesHeld < MIN_HOLD_MINUTES) {
+    const pnlPercent = (context.position.unrealizedPnl / context.position.margin) * 100;
+
+    if (pnlPercent > EMERGENCY_LOSS_THRESHOLD) {
+      console.log(
+        `⚠️ Rejecting premature close for ${context.symbol}: ` +
+        `position only ${minutesHeld} minutes old (min: ${MIN_HOLD_MINUTES}), ` +
+        `PnL: ${pnlPercent.toFixed(2)}% (not emergency loss)`
+      );
+      return; // Skip this close action
+    } else {
+      console.log(
+        `⚠️ Allowing emergency close for ${context.symbol}: ` +
+        `${minutesHeld} min old with ${pnlPercent.toFixed(2)}% loss`
+      );
+    }
+  }
+
   // Close the position
   const closeOrder = await AsterAPI.closePosition(context.symbol, credentials);
 
@@ -719,6 +747,83 @@ async function updateBotMetrics(
     const totalPnl = metrics.totalPnl + realizedPnl;
     const winRate = totalTrades > 0 ? winningTrades / totalTrades : 0;
 
+    // Calculate average win/loss
+    const totalWinAmount = (metrics.averageWin || 0) * metrics.winningTrades + (realizedPnl > 0 ? realizedPnl : 0);
+    const totalLossAmount = (metrics.averageLoss || 0) * metrics.losingTrades + (realizedPnl < 0 ? Math.abs(realizedPnl) : 0);
+    const averageWin = winningTrades > 0 ? totalWinAmount / winningTrades : 0;
+    const averageLoss = losingTrades > 0 ? totalLossAmount / losingTrades : 0;
+
+    // Calculate profit factor
+    const totalWins = averageWin * winningTrades;
+    const totalLosses = averageLoss * losingTrades;
+    const profitFactor = totalLosses > 0 ? totalWins / totalLosses : 0;
+
+    // Get initial balance to calculate total return
+    const firstExecution = await db
+      .select({ totalBalance: botExecutions.totalBalance })
+      .from(botExecutions)
+      .where(eq(botExecutions.botId, botId))
+      .orderBy(botExecutions.executionTime)
+      .limit(1)
+      .get();
+
+    const initialBalance = firstExecution?.totalBalance || 1000; // Default to 1000 if not found
+    const totalReturn = initialBalance > 0 ? (totalPnl / initialBalance) * 100 : 0;
+
+    // Calculate Sharpe Ratio from trade history
+    const closedTrades = await db
+      .select({ realizedPnl: tradeHistory.realizedPnl, margin: tradeHistory.margin })
+      .from(tradeHistory)
+      .where(and(eq(tradeHistory.botId, botId), eq(tradeHistory.status, 'CLOSED')))
+      .all();
+
+    let sharpeRatio = 0;
+    if (closedTrades.length > 0) {
+      // Calculate returns as percentage of margin for each trade
+      const returns = closedTrades
+        .filter(t => t.realizedPnl !== null && t.margin > 0)
+        .map(t => (t.realizedPnl! / t.margin));
+
+      if (returns.length > 1) {
+        const avgReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length;
+        const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
+        const stdDev = Math.sqrt(variance);
+
+        if (stdDev > 0) {
+          // Annualize assuming trades happen every 2 hours on average
+          const tradesPerYear = 365 * 12; // ~12 trades per day
+          const annualizedReturn = avgReturn * tradesPerYear;
+          const annualizedStdDev = stdDev * Math.sqrt(tradesPerYear);
+          const riskFreeRate = 0.02; // 2% annual risk-free rate
+          sharpeRatio = (annualizedReturn - riskFreeRate) / annualizedStdDev;
+        }
+      }
+    }
+
+    // Calculate max drawdown from execution history
+    const executions = await db
+      .select({ totalBalance: botExecutions.totalBalance })
+      .from(botExecutions)
+      .where(eq(botExecutions.botId, botId))
+      .orderBy(botExecutions.executionTime)
+      .all();
+
+    let maxDrawdown = 0;
+    if (executions.length > 1) {
+      let peak = executions[0]?.totalBalance || initialBalance;
+      for (const exec of executions) {
+        if (exec.totalBalance && exec.totalBalance > peak) {
+          peak = exec.totalBalance;
+        }
+        if (exec.totalBalance && peak > 0) {
+          const drawdown = ((peak - exec.totalBalance) / peak) * 100;
+          if (drawdown > maxDrawdown) {
+            maxDrawdown = drawdown;
+          }
+        }
+      }
+    }
+
     await db
       .update(botMetrics)
       .set({
@@ -726,7 +831,13 @@ async function updateBotMetrics(
         winningTrades,
         losingTrades,
         totalPnl,
+        totalReturn,
+        sharpeRatio,
+        maxDrawdown,
         winRate,
+        averageWin,
+        averageLoss,
+        profitFactor,
         lastUpdated: new Date(),
       })
       .where(eq(botMetrics.botId, botId));
