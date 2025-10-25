@@ -194,6 +194,7 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
       'position.unrealized_pnl': '0',
       'position.leverage': '0',
       'position.margin': '0',
+      'position.notional': '0',
       'position.liquidation_price': '0',
       'position.stop_loss': 'N/A',
       'position.profit_target': 'N/A',
@@ -242,6 +243,8 @@ function getPositionReplacements(position: Position): Record<string, string> {
         : `${Math.floor(minutesSinceEntry / 1440)}d ${Math.floor((minutesSinceEntry % 1440) / 60)}h`
     : 'N/A';
 
+  const notional = position.quantity * position.entryPrice;
+
   return {
     'position.side': position.side,
     'position.quantity': formatNumber(position.quantity, 4),
@@ -250,10 +253,11 @@ function getPositionReplacements(position: Position): Record<string, string> {
     'position.unrealized_pnl': formatNumber(position.unrealizedPnl, 2),
     'position.leverage': String(position.leverage),
     'position.margin': formatNumber(position.margin, 2),
+    'position.notional': formatNumber(notional, 2),
     'position.liquidation_price': formatNumber(position.liquidationPrice, 2),
     'position.stop_loss': 'N/A',
     'position.profit_target': 'N/A',
-    'position.exposure': formatNumber(position.quantity * position.entryPrice, 2),
+    'position.exposure': formatNumber(notional, 2),
     'position.entry_time': entryTimeFormatted,
     'position.minutes_held': minutesSinceEntry !== null ? String(minutesSinceEntry) : 'N/A',
   };

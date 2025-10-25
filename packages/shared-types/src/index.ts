@@ -105,7 +105,7 @@ Higher-Timeframe Context (4h)
 Position Status
 - Side: {{position.side}} | Quantity: {{position.quantity}} | Entry: {{position.entry_price}}
 - Unrealized PnL: {{position.unrealized_pnl}} USDT
-- Leverage: {{position.leverage}}x | Margin: {{position.margin}} USDT | Liquidation: {{position.liquidation_price}}
+- Leverage: {{position.leverage}}x | Notional: {{position.notional}} USDT | Liquidation: {{position.liquidation_price}}
 - Time in Position: {{position.entry_time}} ({{position.minutes_held}} minutes)
 {{/if}}
 {{/each}}
@@ -177,6 +177,7 @@ export const PROMPT_TEMPLATE_VARIABLES = [
   { name: '{{position.unrealized_pnl}}', description: 'Unrealized profit/loss' },
   { name: '{{position.leverage}}', description: 'Position leverage' },
   { name: '{{position.margin}}', description: 'Margin allocated to the position' },
+  { name: '{{position.notional}}', description: 'Notional value of the position (quantity × entry price)' },
   { name: '{{position.liquidation_price}}', description: 'Liquidation price for the position' },
   { name: '{{position.stop_loss}}', description: 'Position stop loss price' },
   { name: '{{position.profit_target}}', description: 'Position take profit price' },
