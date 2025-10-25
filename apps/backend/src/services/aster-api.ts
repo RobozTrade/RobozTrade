@@ -255,21 +255,38 @@ export async function getMarketData(
   credentials: AsterCredentials
 ): Promise<MarketData> {
   return withRateLimit(async () => {
-    const data = await makeRequest(
-      '/fapi/v1/ticker/24hr',
-      'GET',
-      credentials,
-      { symbol },
-      { requiresSignature: false }
-    );
+    // Fetch ticker data, open interest, and funding rate in parallel
+    const [tickerData, openInterestData, premiumIndexData] = await Promise.all([
+      makeRequest(
+        '/fapi/v1/ticker/24hr',
+        'GET',
+        credentials,
+        { symbol },
+        { requiresSignature: false }
+      ),
+      makeRequest(
+        '/fapi/v1/openInterest',
+        'GET',
+        credentials,
+        { symbol },
+        { requiresSignature: false }
+      ).catch(() => ({ openInterest: '0' })), // Fallback to 0 if endpoint fails
+      makeRequest(
+        '/fapi/v1/premiumIndex',
+        'GET',
+        credentials,
+        { symbol },
+        { requiresSignature: false }
+      ).catch(() => ({ lastFundingRate: '0' })), // Fallback to 0 if endpoint fails
+    ]);
 
     return {
-      symbol: data.symbol,
-      price: parseFloat(data.lastPrice),
-      openInterest: parseFloat(data.openInterest || '0'),
-      fundingRate: parseFloat(data.fundingRate || '0'),
-      volume24h: parseFloat(data.volume),
-      priceChange24h: parseFloat(data.priceChangePercent),
+      symbol: tickerData.symbol,
+      price: parseFloat(tickerData.lastPrice),
+      openInterest: parseFloat(openInterestData.openInterest || '0'),
+      fundingRate: parseFloat(premiumIndexData.lastFundingRate || '0') * 100, // Convert to percentage
+      volume24h: parseFloat(tickerData.volume),
+      priceChange24h: parseFloat(tickerData.priceChangePercent),
     };
   }, false);
 }
