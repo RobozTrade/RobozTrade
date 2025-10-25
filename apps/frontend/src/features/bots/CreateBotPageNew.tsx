@@ -8,6 +8,8 @@ import {
   CheckCircle,
   Loader2,
   Info,
+  AlertTriangle,
+  DollarSign,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { WalletConnect } from "@/components/web3/WalletConnect";
@@ -57,6 +59,8 @@ export default function CreateBotPageNew() {
   const [maxNotionalPerTrade, setMaxNotionalPerTrade] = useState(500);
   const [maxOpenTrades, setMaxOpenTrades] = useState(3);
   const [showPromptVariables, setShowPromptVariables] = useState(false);
+  const [asterWalletWarningAccepted, setAsterWalletWarningAccepted] =
+    useState(false);
 
   const validatePaymentMutation = useMutation({
     mutationFn: async (txHash: string) => {
@@ -198,16 +202,140 @@ export default function CreateBotPageNew() {
       {/* Step Content */}
       {currentStep === "wallet" && (
         <div className="space-y-6">
+          {/* Important Information Cards */}
+          <div className="space-y-4">
+            {/* Pricing Information */}
+            <div className="card bg-primary/10 border-primary/30">
+              <div className="flex items-start gap-3">
+                <DollarSign className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="text-text-primary font-semibold mb-2">
+                    Bot Creation Fee
+                  </h4>
+                  <ul className="space-y-1.5 text-sm text-text-secondary">
+                    <li className="flex items-start gap-2">
+                      <span className="text-primary mt-0.5">•</span>
+                      <span>
+                        <strong className="text-text-primary">$10 USDT</strong>{" "}
+                        one-time fee to create your AI trading bot
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-primary mt-0.5">•</span>
+                      <span>
+                        <strong className="text-text-primary">$5 USDT</strong>{" "}
+                        (50% of the fee) will be collected and distributed to
+                        the top-performing Als on the leader board on monthly
+                        basis.
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* API Keys Required */}
+            <div className="card bg-accent-blue/10 border-accent-blue/30">
+              <div className="flex items-start gap-3">
+                <Info className="w-5 h-5 text-accent-blue flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="text-text-primary font-semibold mb-2">
+                    Required API Keys
+                  </h4>
+                  <p className="text-sm text-text-secondary mb-2">
+                    You will need to provide the following API keys after
+                    payment:
+                  </p>
+                  <ul className="space-y-1.5 text-sm text-text-secondary">
+                    <li className="flex items-start gap-2">
+                      <span className="text-accent-blue mt-0.5">•</span>
+                      <span>
+                        <strong className="text-text-primary">
+                          Aster DEX API Key & Secret
+                        </strong>{" "}
+                        - for executing trades on Aster DEX. You need to add
+                        funds to the Aster DEX wallet for the trading.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-accent-blue mt-0.5">•</span>
+                      <span>
+                        <strong className="text-text-primary">
+                          OpenRouter API Key
+                        </strong>{" "}
+                        - for AI model access (get it from{" "}
+                        <a
+                          href="https://openrouter.ai/keys"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline"
+                        >
+                          openrouter.ai
+                        </a>
+                        ). You need to add funds to the OpenRouter account for
+                        the API calls.
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Critical Warning */}
+            <div className="card bg-warning/10 border-warning/30">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="text-text-primary font-semibold mb-2">
+                    ⚠️ Important: Separate Aster Account Required
+                  </h4>
+                  <p className="text-sm text-text-secondary mb-3">
+                    <strong className="text-warning">
+                      Each AI bot MUST use a different Aster DEX
+                      portfolio/wallet.
+                    </strong>{" "}
+                    Using the same wallet for multiple bots will cause conflicts
+                    and malfunctions. Create separate Aster DEX accounts for
+                    each bot you want to run.
+                  </p>
+                  <label className="flex items-start gap-2 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={asterWalletWarningAccepted}
+                      onChange={(e) =>
+                        setAsterWalletWarningAccepted(e.target.checked)
+                      }
+                      className="w-4 h-4 mt-0.5 accent-warning cursor-pointer"
+                    />
+                    <span className="text-sm text-text-primary font-medium group-hover:text-warning transition-colors">
+                      I understand that each bot requires a separate Aster DEX
+                      account
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <WalletConnect />
           {isConnected && (
-            <div className="flex justify-end">
-              <button
-                onClick={() => setCurrentStep("payment")}
-                className="btn btn-primary flex items-center gap-2"
-              >
-                Continue to Payment
-                <ArrowRight className="w-4 h-4" />
-              </button>
+            <div className="space-y-3">
+              {!asterWalletWarningAccepted && (
+                <div className="text-sm text-warning text-right">
+                  Please acknowledge the Aster account requirement above to
+                  continue
+                </div>
+              )}
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setCurrentStep("payment")}
+                  disabled={!asterWalletWarningAccepted}
+                  className="btn btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Continue to Payment
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           )}
         </div>
