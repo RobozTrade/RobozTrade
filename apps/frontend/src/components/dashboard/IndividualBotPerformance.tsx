@@ -193,11 +193,16 @@ export function IndividualBotPerformance({
                   bot.totalBalance,
                   initialBalance
                 );
-                const pnlPercentage =
-                  initialBalance && bot.unrealizedPnl !== null
-                    ? (bot.unrealizedPnl / initialBalance) * 100
+                // Calculate total P&L (realized + unrealized)
+                const totalPnl =
+                  bot.totalBalance !== null && initialBalance !== null
+                    ? bot.totalBalance - initialBalance
+                    : null;
+                const totalPnlPercentage =
+                  initialBalance && totalPnl !== null
+                    ? (totalPnl / initialBalance) * 100
                     : 0;
-                const isProfit = (bot.unrealizedPnl ?? 0) >= 0;
+                const isProfit = (totalPnl ?? 0) >= 0;
                 const botData = bots.find((b) => b.id === bot.botId);
 
                 return (
@@ -260,10 +265,10 @@ export function IndividualBotPerformance({
                       </div>
                     </div>
 
-                    {/* Unrealized P&L */}
+                    {/* Total P&L */}
                     <div className="pt-3 border-t border-white/10 dark:border-white/5">
                       <p className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary mb-1">
-                        Unrealized P&L
+                        Total P&L
                       </p>
                       <div className="flex items-baseline gap-2">
                         <p
@@ -271,14 +276,14 @@ export function IndividualBotPerformance({
                             isProfit ? "text-accent-green" : "text-accent-red"
                           }`}
                         >
-                          {formatCurrency(bot.unrealizedPnl)}
+                          {formatCurrency(totalPnl)}
                         </p>
                         <span
                           className={`text-sm ${
                             isProfit ? "text-accent-green" : "text-accent-red"
                           }`}
                         >
-                          {formatPercentage(pnlPercentage)}
+                          {formatPercentage(totalPnlPercentage)}
                         </span>
                       </div>
                     </div>

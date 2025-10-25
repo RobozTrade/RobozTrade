@@ -38,10 +38,11 @@ interface BotDataPoint {
   botName: string;
   totalBalance: number;
   unrealizedPnl: number;
+  initialBalance: number;
   color: string;
 }
 
-type ChartMode = "unrealized_pnl" | "account_balance";
+type ChartMode = "total_pnl" | "unrealized_pnl" | "account_balance";
 
 const BOT_COLORS = [
   "#22c55e", // green
@@ -77,7 +78,7 @@ export function BotPerformanceChart({
   const priceLineRef = useRef<{ series: ISeriesApi<"Line">; line: any } | null>(
     null
   ); // Store reference to the price line and its series
-  const [chartMode, setChartMode] = useState<ChartMode>("unrealized_pnl");
+  const [chartMode, setChartMode] = useState<ChartMode>("total_pnl");
   const [legendScrollPosition, setLegendScrollPosition] = useState(0);
   const legendContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -384,7 +385,15 @@ export function BotPerformanceChart({
           const timestamp = new Date(entry.executionTime).getTime() / 1000;
           let value: number;
 
-          if (chartMode === "unrealized_pnl") {
+          if (chartMode === "total_pnl") {
+            // Show total P&L as percentage (current balance - initial balance)
+            const totalBalance =
+              entry.totalBalance ?? entry.accountBalance ?? 0;
+            value =
+              totalBalance !== null && initialBalance > 0
+                ? ((totalBalance - initialBalance) / initialBalance) * 100
+                : 0;
+          } else if (chartMode === "unrealized_pnl") {
             // Show unrealized P&L as percentage
             value =
               entry.unrealizedPnl !== null && initialBalance > 0
@@ -401,6 +410,7 @@ export function BotPerformanceChart({
             botName: bot.botName,
             totalBalance: entry.totalBalance ?? entry.accountBalance ?? 0,
             unrealizedPnl: entry.unrealizedPnl ?? 0,
+            initialBalance,
             color,
           });
 
@@ -435,7 +445,7 @@ export function BotPerformanceChart({
         },
       });
     } else {
-      // Show percentage values on Y-axis
+      // Show percentage values on Y-axis (for both total_pnl and unrealized_pnl)
       chartRef.current.applyOptions({
         localization: {
           priceFormatter: (price: number) => {
@@ -458,8 +468,8 @@ export function BotPerformanceChart({
         let middleValue: number;
         let middleLabel: string;
 
-        if (chartMode === "unrealized_pnl") {
-          // For P&L mode, middle point is 0 (break-even)
+        if (chartMode === "total_pnl" || chartMode === "unrealized_pnl") {
+          // For P&L modes, middle point is 0 (break-even)
           middleValue = 0;
           middleLabel = "Break Even (0%)";
         } else {
@@ -536,14 +546,14 @@ export function BotPerformanceChart({
         {/* Mode Toggle */}
         <div className="flex items-center gap-2 bg-white/5 dark:bg-white/5 rounded-lg p-1">
           <button
-            onClick={() => setChartMode("unrealized_pnl")}
+            onClick={() => setChartMode("total_pnl")}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              chartMode === "unrealized_pnl"
+              chartMode === "total_pnl"
                 ? "bg-accent-green text-white"
                 : "text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary"
             }`}
           >
-            Unrealized P&L
+            Total P&L
           </button>
           <button
             onClick={() => setChartMode("account_balance")}
@@ -595,6 +605,20 @@ export function BotPerformanceChart({
                   <span className="text-xs text-gray-400">Total Balance:</span>
                   <span className="text-sm font-medium text-white">
                     {formatCurrency(tooltipData.totalBalance)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-gray-400">Total P&L:</span>
+                  <span
+                    className={`text-sm font-medium ${
+                      tooltipData.totalBalance - tooltipData.initialBalance >= 0
+                        ? "text-green-400"
+                        : "text-red-400"
+                    }`}
+                  >
+                    {formatCurrency(
+                      tooltipData.totalBalance - tooltipData.initialBalance
+                    )}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
