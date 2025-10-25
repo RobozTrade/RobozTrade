@@ -193,6 +193,17 @@ export async function executeBot(
       Math.floor((executionTimestamp.getTime() - botCreationDate.getTime()) / 60000)
     );
 
+    // Get initial balance from first execution
+    const firstExecution = await db
+      .select({ totalBalance: botExecutions.totalBalance })
+      .from(botExecutions)
+      .where(eq(botExecutions.botId, botId))
+      .orderBy(botExecutions.executionTime)
+      .limit(1)
+      .get();
+
+    const initialBalance = firstExecution?.totalBalance || accountInfo.totalBalance;
+
     // Prepare trading contexts for each symbol
     const tradingSymbols = (bot.tradingSymbols as string[]) || [];
     const contexts: TradingContext[] = [];
@@ -285,6 +296,7 @@ export async function executeBot(
           currentTimeIso: executionTimeIso,
           accountBalance: accountInfo.availableBalance,
           accountValue: accountInfo.totalBalance,
+          initialBalance,
           totalReturn: metrics?.totalReturn || 0,
           sharpeRatio: metrics?.sharpeRatio || 0,
           winRate: metrics?.winRate || 0,

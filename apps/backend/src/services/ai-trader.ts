@@ -17,6 +17,7 @@ export interface TradingContext {
   currentTimeIso?: string;
   accountBalance: number;
   accountValue: number;
+  initialBalance: number;
   totalReturn: number;
   sharpeRatio: number;
   winRate: number;
@@ -100,6 +101,7 @@ function populatePromptTemplate(
     account_balance: formatNumber(firstContext.accountBalance, 2),
     balance: formatNumber(firstContext.accountBalance, 2),
     account_value: formatNumber(firstContext.accountValue, 2),
+    initial_balance: formatNumber(firstContext.initialBalance, 2),
     total_return: formatNumber(firstContext.totalReturn, 2),
     sharpe_ratio: formatNumber(firstContext.sharpeRatio, 3),
     win_rate: formatNumber(firstContext.winRate * 100, 1),

@@ -74,8 +74,8 @@ Timeframes note: Unless stated otherwise in a section title, intraday series use
 
 PORTFOLIO OVERVIEW
 - Current Time: {{current_time}}
-- Available Cash: {{available_cash}} USDT | Account Value: {{account_value}} USDT
-- Total Return: {{total_return}}% | Sharpe Ratio: {{sharpe_ratio}}
+- Initial Balance: {{initial_balance}} USDT | Current Value: {{account_value}} USDT | Available Cash: {{available_cash}} USDT
+- Total Return: {{total_return}}% | Sharpe Ratio: {{sharpe_ratio}} | Win Rate: {{win_rate}}%
 - Current Exposure: {{account_exposure}} USDT
 - Risk Limits: Max Leverage {{max_leverage}}x • Min Notional/Trade {{min_notional_per_trade}} USDT • Max Notional/Trade {{max_notional_per_trade}} USDT • Max Open Trades {{max_open_trades}}
 
