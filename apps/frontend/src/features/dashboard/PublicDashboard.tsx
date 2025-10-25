@@ -328,8 +328,9 @@ export default function PublicDashboard({
     activeTab === "public" ? allBotsLoading : robozBotsLoading;
   const botsError = activeTab === "public" ? allBotsError : robozBotsError;
 
-  // Ensure bots is always an array
-  const safeBots = Array.isArray(bots) ? bots : [];
+  // Ensure bots is always an array and filter to only active bots
+  const allBotsArray = Array.isArray(bots) ? bots : [];
+  const safeBots = allBotsArray.filter((bot) => bot.status === "active");
   const hasBots = safeBots.length > 0;
 
   const colorByBotId = useMemo(() => {
@@ -486,48 +487,61 @@ export default function PublicDashboard({
   const completedTrades = useMemo<CompletedTradeRow[]>(() => {
     if (!tradesResponse || tradesResponse.length === 0) return [];
 
-    return tradesResponse
-      .filter((trade) => trade.status === "CLOSED" && trade.closedAt)
-      .slice(0, 10)
-      .map((trade) => {
-        const bot = botById.get(trade.botId);
-        const aiModel = bot?.aiModel ?? null;
-        const aiModelInfo = aiModel
-          ? SUPPORTED_AI_MODELS.find((m) => m.value === aiModel)
-          : null;
-        const modelColor = colorByBotId.get(trade.botId) ?? "#007aff";
+    // Get active bot IDs
+    const activeBotIds = new Set(safeBots.map((bot) => bot.id));
 
-        const pnl = trade.realizedPnl ?? 0;
-        const entryValue = trade.entryPrice * trade.quantity;
-        const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
+    return (
+      tradesResponse
+        .filter((trade) => trade.status === "CLOSED" && trade.closedAt)
+        // Filter to only include trades from active bots
+        .filter((trade) => activeBotIds.has(trade.botId))
+        .slice(0, 10)
+        .map((trade) => {
+          const bot = botById.get(trade.botId);
+          const aiModel = bot?.aiModel ?? null;
+          const aiModelInfo = aiModel
+            ? SUPPORTED_AI_MODELS.find((m) => m.value === aiModel)
+            : null;
+          const modelColor = colorByBotId.get(trade.botId) ?? "#007aff";
 
-        return {
-          id: trade.id,
-          aiModel: aiModelInfo?.label ?? "Unknown",
-          aiModelValue: aiModel,
-          modelColor,
-          pair: formatTradingPair(trade.symbol),
-          side: mapTradeSide(trade.side),
-          leverage: `${trade.leverage}x`,
-          entryPrice: trade.entryPrice,
-          exitPrice: trade.exitPrice,
-          holdingTime: formatDuration(trade.openedAt, trade.closedAt),
-          pnl,
-          pnlPercent,
-        };
-      });
-  }, [tradesResponse, botById, colorByBotId]);
+          const pnl = trade.realizedPnl ?? 0;
+          const entryValue = trade.entryPrice * trade.quantity;
+          const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
+
+          return {
+            id: trade.id,
+            aiModel: aiModelInfo?.label ?? "Unknown",
+            aiModelValue: aiModel,
+            modelColor,
+            pair: formatTradingPair(trade.symbol),
+            side: mapTradeSide(trade.side),
+            leverage: `${trade.leverage}x`,
+            entryPrice: trade.entryPrice,
+            exitPrice: trade.exitPrice,
+            holdingTime: formatDuration(trade.openedAt, trade.closedAt),
+            pnl,
+            pnlPercent,
+          };
+        })
+    );
+  }, [tradesResponse, botById, colorByBotId, safeBots]);
 
   // Process current positions
   const positionsByBot = useMemo<BotPositionGroup[]>(() => {
     if (!positionsResponse || positionsResponse.length === 0) return [];
 
+    // Get active bot IDs
+    const activeBotIds = new Set(safeBots.map((bot) => bot.id));
+
     const grouped = new Map<string, PositionSnapshot[]>();
+    // Only group positions from active bots
     positionsResponse.forEach((pos) => {
-      if (!grouped.has(pos.botId)) {
-        grouped.set(pos.botId, []);
+      if (activeBotIds.has(pos.botId)) {
+        if (!grouped.has(pos.botId)) {
+          grouped.set(pos.botId, []);
+        }
+        grouped.get(pos.botId)!.push(pos);
       }
-      grouped.get(pos.botId)!.push(pos);
     });
 
     return Array.from(grouped.entries()).map(([botId, positions]) => {
@@ -563,7 +577,7 @@ export default function PublicDashboard({
         positions: positionRows,
       };
     });
-  }, [positionsResponse, botById, colorByBotId]);
+  }, [positionsResponse, botById, colorByBotId, safeBots]);
 
   // Fetch bot executions for AI decision feed based on active tab
   const {
@@ -640,11 +654,17 @@ export default function PublicDashboard({
   const filteredTranscripts = useMemo<BotTranscriptEntry[]>(() => {
     if (!executionsResponse || executionsResponse.length === 0) return [];
 
+    // Get active bot IDs
+    const activeBotIds = new Set(safeBots.map((bot) => bot.id));
+
+    // First filter to only include executions from active bots
+    const activeExecutions = executionsResponse.filter((exec) =>
+      activeBotIds.has(exec.botId)
+    );
+
     const filtered = selectedSingleBotId
-      ? executionsResponse.filter((exec) => exec.botId === selectedSingleBotId)
-      : executionsResponse.filter((exec) =>
-          selectedBotIds.includes(exec.botId)
-        );
+      ? activeExecutions.filter((exec) => exec.botId === selectedSingleBotId)
+      : activeExecutions.filter((exec) => selectedBotIds.includes(exec.botId));
 
     return filtered.map((exec) => {
       const bot = botById.get(exec.botId);
@@ -703,6 +723,7 @@ export default function PublicDashboard({
     selectedSingleBotId,
     botById,
     colorByBotId,
+    safeBots,
   ]);
 
   const handleSelectAllBots = () => {

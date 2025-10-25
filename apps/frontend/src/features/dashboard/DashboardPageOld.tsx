@@ -37,8 +37,15 @@ export default function DashboardPage() {
   });
 
   const activeBots = bots?.data?.filter((b) => b.status === "active") || [];
-  const totalTrades = trades?.data?.length || 0;
-  const totalPnl = trades?.data?.reduce((sum, t) => sum + (t.pnl || 0), 0) || 0;
+  const activeBotIds = new Set(activeBots.map((b) => b.id));
+
+  // Filter trades to only include those from active bots
+  const activeTradesOnly =
+    trades?.data?.filter((t) => activeBotIds.has(t.botId)) || [];
+
+  const totalTrades = activeTradesOnly.length || 0;
+  const totalPnl =
+    activeTradesOnly.reduce((sum, t) => sum + (t.pnl || 0), 0) || 0;
   const accountValue = 10000 + totalPnl; // Starting with $10,000
 
   const handleSendMessage = () => {
@@ -279,7 +286,7 @@ export default function DashboardPage() {
                 <h3 className="text-green-500 font-bold mb-3 text-sm">
                   OPEN POSITIONS
                 </h3>
-                {trades?.data?.slice(0, 10).map((trade) => (
+                {activeTradesOnly.slice(0, 10).map((trade) => (
                   <div
                     key={trade.id}
                     className="border border-green-500/30 p-3 bg-black/30"
@@ -325,7 +332,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 ))}
-                {(!trades?.data || trades.data.length === 0) && (
+                {activeTradesOnly.length === 0 && (
                   <div className="text-green-500/50 text-xs text-center py-8">
                     NO OPEN POSITIONS
                   </div>

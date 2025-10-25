@@ -478,8 +478,9 @@ export default function DashboardPageNew() {
     refetchOnReconnect: "always",
   });
 
-  // Ensure bots is always an array
-  const safeBots = Array.isArray(bots) ? bots : [];
+  // Ensure bots is always an array and filter to only active bots
+  const allBots = Array.isArray(bots) ? bots : [];
+  const safeBots = allBots.filter((bot) => bot.status === "active");
   const hasBots = safeBots.length > 0;
 
   const colorByBotId = useMemo(() => {
@@ -572,8 +573,13 @@ export default function DashboardPageNew() {
   const completedTrades: CompletedTradeRow[] = useMemo(() => {
     if (!tradesResponse || tradesResponse.length === 0) return [];
 
+    // Get active bot IDs
+    const activeBotIds = new Set(safeBots.map((bot) => bot.id));
+
     let filteredTrades = [...tradesResponse]
       .filter((trade) => trade.status === "CLOSED")
+      // Filter to only include trades from active bots
+      .filter((trade) => activeBotIds.has(trade.botId))
       .sort((a, b) => {
         const closedA = toDate(a.closedAt) ?? toDate(a.openedAt);
         const closedB = toDate(b.closedAt) ?? toDate(b.openedAt);
@@ -612,7 +618,7 @@ export default function DashboardPageNew() {
           pnlPercent: margin ? (realizedPnl / margin) * 100 : 0,
         } satisfies CompletedTradeRow;
       });
-  }, [tradesResponse, botById, colorByBotId, selectedSingleBotId]);
+  }, [tradesResponse, botById, colorByBotId, selectedSingleBotId, safeBots]);
 
   const {
     data: positionsResponse = [],
@@ -738,14 +744,24 @@ export default function DashboardPageNew() {
   }, [executionsResponse, botById, colorByBotId]);
 
   const filteredTranscripts = useMemo(() => {
+    // Get active bot IDs
+    const activeBotIds = new Set(safeBots.map((bot) => bot.id));
+
+    // First filter to only include transcripts from active bots
+    const activeTranscripts = transcripts.filter((entry) =>
+      activeBotIds.has(entry.botId)
+    );
+
     if (selectedSingleBotId) {
       // When single bot is selected, show only that bot's transcripts
-      return transcripts.filter((entry) => entry.botId === selectedSingleBotId);
+      return activeTranscripts.filter(
+        (entry) => entry.botId === selectedSingleBotId
+      );
     }
-    if (selectedBotIds.length === 0) return transcripts;
+    if (selectedBotIds.length === 0) return activeTranscripts;
     const selectedSet = new Set(selectedBotIds);
-    return transcripts.filter((entry) => selectedSet.has(entry.botId));
-  }, [transcripts, selectedBotIds, selectedSingleBotId]);
+    return activeTranscripts.filter((entry) => selectedSet.has(entry.botId));
+  }, [transcripts, selectedBotIds, selectedSingleBotId, safeBots]);
 
   const positionsByBot: BotPositionGroup[] = useMemo(() => {
     if (!positionsResponse || positionsResponse.length === 0) return [];
