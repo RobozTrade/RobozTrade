@@ -8,7 +8,11 @@ import {
   MouseEventParams,
 } from "lightweight-charts";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import {
+  api,
+  type AggregationMetadata,
+  type AggregatedHistoryResponse,
+} from "@/lib/api";
 import type { TradingBot, AIModel } from "@roboz-trade/shared-types";
 import { SUPPORTED_AI_MODELS } from "@roboz-trade/shared-types";
 
@@ -24,13 +28,18 @@ interface BotPerformanceData {
 
 interface BotPerformanceHistory {
   id: string;
-  executionTime: string;
+  executionTime: string | number; // Can be string (raw) or number (aggregated timestamp)
   totalBalance: number | null;
   unrealizedPnl: number | null;
   accountBalance: number | null;
   accountExposure: number | null;
   tradesExecuted: number;
   status: string;
+  recordCount?: number; // Optional: number of records aggregated
+  minTotalBalance?: number; // Optional: min value in aggregated bucket
+  maxTotalBalance?: number; // Optional: max value in aggregated bucket
+  minUnrealizedPnl?: number; // Optional: min value in aggregated bucket
+  maxUnrealizedPnl?: number; // Optional: max value in aggregated bucket
 }
 
 interface BotDataPoint {
@@ -131,6 +140,7 @@ export function BotPerformanceChart({
   });
 
   // Fetch performance history for all bots
+  // Using limit=0 to fetch complete trading history from inception with intelligent aggregation
   const { data: historyData } = useQuery({
     queryKey: showAllPublicBots
       ? ["all-public-bot-performance-history", latestData]
@@ -142,26 +152,49 @@ export function BotPerformanceChart({
 
       const historyPromises = latestData.map(async (bot) => {
         const response = showAllPublicBots
-          ? await api.getAllPublicBotPerformanceHistory(bot.botId, 100)
+          ? await api.getAllPublicBotPerformanceHistory(bot.botId, 0)
           : walletAddress
           ? await api.getPublicBotPerformanceHistory(
               walletAddress,
               bot.botId,
-              100
+              0
             )
-          : await api.getBotPerformanceHistory(bot.botId, 100);
+          : await api.getBotPerformanceHistory(bot.botId, 0);
+
+        // Handle both aggregated and raw data formats
+        const responseData = response.data as
+          | AggregatedHistoryResponse
+          | BotPerformanceHistory[];
+
+        let history: BotPerformanceHistory[];
+        let metadata: AggregationMetadata | null = null;
+
+        if (Array.isArray(responseData)) {
+          // Raw data format (backward compatibility)
+          history = responseData;
+        } else {
+          // Aggregated data format
+          history = responseData.history as BotPerformanceHistory[];
+          metadata = responseData.metadata;
+        }
+
         return {
           botId: bot.botId,
-          history: response.data as BotPerformanceHistory[],
+          history,
+          metadata,
         };
       });
 
       const results = await Promise.all(historyPromises);
       const historyMap: Record<string, BotPerformanceHistory[]> = {};
-      results.forEach(({ botId, history }) => {
+      const metadataMap: Record<string, AggregationMetadata | null> = {};
+
+      results.forEach(({ botId, history, metadata }) => {
         historyMap[botId] = history;
+        metadataMap[botId] = metadata;
       });
-      return historyMap;
+
+      return { historyMap, metadataMap };
     },
     enabled: !!latestData && latestData.length > 0,
   });
@@ -355,9 +388,12 @@ export function BotPerformanceChart({
     const filteredData = getFilteredData();
     if (!filteredData) return;
 
+    // Extract historyMap from the new structure
+    const historyMap = historyData.historyMap || {};
+
     // Create a line series for each bot
     filteredData.forEach((bot, index) => {
-      const history = historyData[bot.botId];
+      const history = historyMap[bot.botId];
       if (!history || history.length === 0) return;
 
       const initialBalance = initialBalances[bot.botId];
@@ -382,7 +418,11 @@ export function BotPerformanceChart({
       // Transform history data based on chart mode
       const data: LineData[] = history
         .map((entry) => {
-          const timestamp = new Date(entry.executionTime).getTime() / 1000;
+          // Handle both string (ISO date) and number (Unix timestamp) formats
+          const timestamp =
+            typeof entry.executionTime === "number"
+              ? entry.executionTime
+              : new Date(entry.executionTime).getTime() / 1000;
           let value: number;
 
           if (chartMode === "total_pnl") {
@@ -567,6 +607,56 @@ export function BotPerformanceChart({
           </button>
         </div>
       </div>
+
+      {/* Aggregation Info */}
+      {historyData?.metadataMap &&
+        Object.keys(historyData.metadataMap).length > 0 && (
+          <div className="flex items-center justify-center gap-2 text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+            {(() => {
+              // Get metadata from the first bot (they should all have similar intervals)
+              const firstBotId = Object.keys(historyData.metadataMap)[0];
+              const metadata = historyData.metadataMap[firstBotId];
+
+              if (!metadata || metadata.interval === "raw") return null;
+
+              const intervalLabels: Record<string, string> = {
+                "1h": "1-hour",
+                "6h": "6-hour",
+                "1d": "daily",
+                "1w": "weekly",
+                "1M": "monthly",
+              };
+
+              const intervalLabel =
+                intervalLabels[metadata.interval] || metadata.interval;
+
+              return (
+                <>
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <span>
+                    Showing {intervalLabel} aggregated data (
+                    {metadata.aggregatedPoints} points from{" "}
+                    {metadata.totalRecords} records)
+                    {metadata.timeSpanDays > 0 &&
+                      ` • ${Math.round(metadata.timeSpanDays)} days of history`}
+                  </span>
+                </>
+              );
+            })()}
+          </div>
+        )}
 
       {/* Chart Container with Tooltip */}
       <div className="relative">

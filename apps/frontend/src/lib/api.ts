@@ -21,6 +21,38 @@ import type {
   WalletAuthResponse,
 } from '@roboz-trade/shared-types';
 
+// Types for aggregated performance data
+export interface AggregationMetadata {
+  interval: string;
+  intervalSeconds: number;
+  totalRecords: number;
+  aggregatedPoints: number;
+  timeSpanDays: number;
+  firstExecutionTime: string | null;
+  lastExecutionTime: string | null;
+}
+
+export interface AggregatedPerformanceHistory {
+  id: string;
+  executionTime: number;
+  totalBalance: number;
+  unrealizedPnl: number;
+  accountBalance: number;
+  accountExposure: number;
+  tradesExecuted: number;
+  status: string;
+  recordCount?: number;
+  minTotalBalance?: number;
+  maxTotalBalance?: number;
+  minUnrealizedPnl?: number;
+  maxUnrealizedPnl?: number;
+}
+
+export interface AggregatedHistoryResponse {
+  history: AggregatedPerformanceHistory[];
+  metadata: AggregationMetadata | null;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 class ApiClient {
@@ -268,8 +300,11 @@ class ApiClient {
     return this.request('/bot-performance/latest', {}, true);
   }
 
-  async getBotPerformanceHistory(botId: string, limit?: number): Promise<ApiResponse<any[]>> {
-    const params = limit ? `?limit=${limit}` : '';
+  async getBotPerformanceHistory(
+    botId: string,
+    limit?: number
+  ): Promise<ApiResponse<AggregatedHistoryResponse | any[]>> {
+    const params = limit !== undefined ? `?limit=${limit}` : '';
     return this.request(`/bot-performance/${botId}/history${params}`, {}, true);
   }
 
@@ -298,8 +333,12 @@ class ApiClient {
     return this.request(`/public/bot-performance/${walletAddress}/latest`);
   }
 
-  async getPublicBotPerformanceHistory(walletAddress: string, botId: string, limit?: number): Promise<ApiResponse<any[]>> {
-    const params = limit ? `?limit=${limit}` : '';
+  async getPublicBotPerformanceHistory(
+    walletAddress: string,
+    botId: string,
+    limit?: number
+  ): Promise<ApiResponse<AggregatedHistoryResponse | any[]>> {
+    const params = limit !== undefined ? `?limit=${limit}` : '';
     return this.request(`/public/bot-performance/${walletAddress}/${botId}/history${params}`);
   }
 
@@ -358,9 +397,10 @@ class ApiClient {
 
   async getAllPublicBotPerformanceHistory(
     botId: string,
-    limit = 100
-  ): Promise<ApiResponse<any[]>> {
-    return this.request(`/public/all-bot-performance/${botId}/history?limit=${limit}`);
+    limit?: number
+  ): Promise<ApiResponse<AggregatedHistoryResponse | any[]>> {
+    const params = limit !== undefined ? `?limit=${limit}` : '';
+    return this.request(`/public/all-bot-performance/${botId}/history${params}`);
   }
 
   async getAllPublicBotInitialBalance(botId: string): Promise<ApiResponse<{ initialBalance: number }>> {

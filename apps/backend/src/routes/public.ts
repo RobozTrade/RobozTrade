@@ -2,6 +2,12 @@ import { Hono } from 'hono';
 import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { getDb } from '../lib/db';
 import { users, tradingBots, tradeHistory, positionSnapshots, botExecutions } from '../db/schema';
+import {
+  determineAggregationInterval,
+  aggregateRecordsInMemory,
+  getTimeRange,
+  calculateMetadata,
+} from '../lib/performance-aggregation';
 
 type PublicBindings = {
   DB: D1Database;
@@ -307,13 +313,17 @@ publicRoutes.get('/bot-performance/:walletAddress/latest', async (c) => {
 });
 
 /**
- * Get performance history for a specific bot (public endpoint)
- * GET /api/public/bot-performance/:walletAddress/:botId/history
+ * Get performance history for a specific bot (public endpoint) with intelligent aggregation
+ * GET /api/public/bot-performance/:walletAddress/:botId/history?limit=100
+ * Use limit=0 to fetch all records with automatic aggregation
+ * Use aggregate=false to disable aggregation and get raw data
  */
 publicRoutes.get('/bot-performance/:walletAddress/:botId/history', async (c) => {
   const walletAddress = c.req.param('walletAddress');
   const botId = c.req.param('botId');
-  const limit = parseInt(c.req.query('limit') || '100');
+  const limitParam = c.req.query('limit') || '100';
+  const limit = parseInt(limitParam);
+  const disableAggregation = c.req.query('aggregate') === 'false';
   const db = getDb(c.env.DB);
 
   try {
@@ -326,7 +336,7 @@ publicRoutes.get('/bot-performance/:walletAddress/:botId/history', async (c) => 
     });
 
     if (!user) {
-      return c.json({ success: true, data: [] });
+      return c.json({ success: true, data: { history: [], metadata: null } });
     }
 
     // Verify bot belongs to this user
@@ -340,8 +350,8 @@ publicRoutes.get('/bot-performance/:walletAddress/:botId/history', async (c) => 
       return c.json({ success: false, error: 'Bot not found' }, 404);
     }
 
-    // Get performance history
-    const history = await db
+    // Fetch all execution records for this bot (ordered by time ascending for aggregation)
+    const allRecords = await db
       .select({
         id: botExecutions.id,
         botId: botExecutions.botId,
@@ -349,15 +359,57 @@ publicRoutes.get('/bot-performance/:walletAddress/:botId/history', async (c) => 
         totalBalance: botExecutions.totalBalance,
         unrealizedPnl: botExecutions.unrealizedPnl,
         accountBalance: botExecutions.accountBalance,
+        accountExposure: botExecutions.accountExposure,
+        tradesExecuted: botExecutions.tradesExecuted,
         status: botExecutions.status,
       })
       .from(botExecutions)
       .where(eq(botExecutions.botId, botId))
-      .orderBy(desc(botExecutions.executionTime))
-      .limit(limit)
+      .orderBy(botExecutions.executionTime) // Ascending for proper aggregation
       .all();
 
-    return c.json({ success: true, data: history });
+    // If aggregation is disabled or limit is specified (not 0), return raw data
+    if (disableAggregation || (limit > 0 && limit < allRecords.length)) {
+      const limitedRecords = limit > 0 ? allRecords.slice(-limit).reverse() : allRecords.reverse();
+      return c.json({
+        success: true,
+        data: limitedRecords,
+      });
+    }
+
+    // Determine if aggregation is needed
+    const totalRecords = allRecords.length;
+    const timeRange = getTimeRange(allRecords);
+
+    if (!timeRange.first || !timeRange.last) {
+      return c.json({
+        success: true,
+        data: { history: [], metadata: null },
+      });
+    }
+
+    const timeSpanSeconds = timeRange.last - timeRange.first;
+    const interval = determineAggregationInterval(totalRecords, timeSpanSeconds);
+
+    // Aggregate the data
+    const aggregatedHistory = aggregateRecordsInMemory(allRecords, interval);
+
+    // Calculate metadata
+    const metadata = calculateMetadata(
+      totalRecords,
+      aggregatedHistory.length,
+      timeRange.first,
+      timeRange.last,
+      interval
+    );
+
+    return c.json({
+      success: true,
+      data: {
+        history: aggregatedHistory,
+        metadata,
+      },
+    });
   } catch (error: any) {
     console.error('Get public bot performance history error:', error);
     return c.json(
@@ -704,22 +756,79 @@ publicRoutes.get('/all-bot-performance/latest', async (c) => {
 });
 
 /**
- * Get performance history for a specific bot (all public bots, no wallet filter)
- * GET /api/public/all-bot-performance/:botId/history
+ * Get performance history for a specific bot (all public bots, no wallet filter) with intelligent aggregation
+ * GET /api/public/all-bot-performance/:botId/history?limit=100
+ * Use limit=0 to fetch all records with automatic aggregation
+ * Use aggregate=false to disable aggregation and get raw data
  */
 publicRoutes.get('/all-bot-performance/:botId/history', async (c) => {
   const botId = c.req.param('botId');
-  const limit = parseInt(c.req.query('limit') || '100');
+  const limitParam = c.req.query('limit') || '100';
+  const limit = parseInt(limitParam);
+  const disableAggregation = c.req.query('aggregate') === 'false';
   const db = getDb(c.env.DB);
 
   try {
-    const history = await db.query.botExecutions.findMany({
-      where: eq(botExecutions.botId, botId),
-      orderBy: desc(botExecutions.executionTime),
-      limit: Math.min(limit, 500),
-    });
+    // Fetch all execution records for this bot (ordered by time ascending for aggregation)
+    const allRecords = await db
+      .select({
+        id: botExecutions.id,
+        botId: botExecutions.botId,
+        executionTime: botExecutions.executionTime,
+        totalBalance: botExecutions.totalBalance,
+        unrealizedPnl: botExecutions.unrealizedPnl,
+        accountBalance: botExecutions.accountBalance,
+        accountExposure: botExecutions.accountExposure,
+        tradesExecuted: botExecutions.tradesExecuted,
+        status: botExecutions.status,
+      })
+      .from(botExecutions)
+      .where(eq(botExecutions.botId, botId))
+      .orderBy(botExecutions.executionTime) // Ascending for proper aggregation
+      .all();
 
-    return c.json({ success: true, data: history });
+    // If aggregation is disabled or limit is specified (not 0), return raw data
+    if (disableAggregation || (limit > 0 && limit < allRecords.length)) {
+      const limitedRecords = limit > 0 ? allRecords.slice(-limit).reverse() : allRecords.reverse();
+      return c.json({
+        success: true,
+        data: limitedRecords,
+      });
+    }
+
+    // Determine if aggregation is needed
+    const totalRecords = allRecords.length;
+    const timeRange = getTimeRange(allRecords);
+
+    if (!timeRange.first || !timeRange.last) {
+      return c.json({
+        success: true,
+        data: { history: [], metadata: null },
+      });
+    }
+
+    const timeSpanSeconds = timeRange.last - timeRange.first;
+    const interval = determineAggregationInterval(totalRecords, timeSpanSeconds);
+
+    // Aggregate the data
+    const aggregatedHistory = aggregateRecordsInMemory(allRecords, interval);
+
+    // Calculate metadata
+    const metadata = calculateMetadata(
+      totalRecords,
+      aggregatedHistory.length,
+      timeRange.first,
+      timeRange.last,
+      interval
+    );
+
+    return c.json({
+      success: true,
+      data: {
+        history: aggregatedHistory,
+        metadata,
+      },
+    });
   } catch (error) {
     console.error('Get bot performance history error:', error);
     return c.json({ success: false, error: 'Failed to get bot performance history' }, 500);
