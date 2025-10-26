@@ -14,7 +14,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isDashboard = location.pathname.startsWith("/app/dashboard");
+  const isDashboard =
+    location.pathname.startsWith("/app/dashboard") ||
+    location.pathname.startsWith("/app/bots") ||
+    location.pathname.startsWith("/app/analytics") ||
+    location.pathname.startsWith("/app/trade-history");
 
   const handleLogout = () => {
     logout();

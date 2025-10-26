@@ -275,9 +275,7 @@ export default function TradeHistoryPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                     Side
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                    Type
-                  </th>
+
                   <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">
                     Quantity
                   </th>
@@ -362,9 +360,7 @@ export default function TradeHistoryPage() {
                             {trade.side}
                           </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-text-secondary">
-                          {trade.orderType}
-                        </td>
+
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-text-primary text-right">
                           {trade.quantity.toFixed(6)}
                         </td>

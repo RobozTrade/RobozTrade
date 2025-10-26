@@ -70,10 +70,11 @@ export function calculatePerformanceScore(
   const confidenceScore = Math.log(totalTrades - MIN_TRADES_TO_QUALIFY + 1);
 
   // Final performance score
+  // Allow negative scores for bots with losses
   const score = calmarRatio * confidenceScore;
 
   return {
-    score: Math.max(0, score), // Ensure non-negative
+    score, // Can be negative for losing bots
     totalPnlPercent,
     maxDrawdownPercent,
     calmarRatio,
