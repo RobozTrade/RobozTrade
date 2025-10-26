@@ -14,9 +14,13 @@ import AnalyticsPage from "./features/analytics/AnalyticsPage";
 import TradeHistoryPage from "./features/analytics/TradeHistoryPage";
 import BenchmarksPage from "./features/benchmarks/BenchmarksPage";
 import SettingsPage from "./features/settings/SettingsPage";
+import MaintenancePage from "./pages/MaintenancePage";
 
 // Public wallet address to display on home page
 const PUBLIC_WALLET_ADDRESS = "0x94B65a92BA5A7422C48A6007fA22090aaddE4514";
+
+// Maintenance mode flag - set to true to enable maintenance mode
+const MAINTENANCE_MODE = false;
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore();
@@ -25,6 +29,11 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  // If maintenance mode is enabled, show maintenance page for all routes
+  if (MAINTENANCE_MODE) {
+    return <MaintenancePage />;
+  }
+
   return (
     <Routes>
       {/* Public routes with auth buttons */}
