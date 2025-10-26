@@ -17,6 +17,8 @@ export type { Candle } from './indicators';
 
 const ASTER_API_BASE_URL = 'https://fapi.asterdex.com';
 const SYMBOL_METADATA_TTL_MS = 1000 * 60 * 5; // 5 minutes
+const ORDER_STATUS_MAX_ATTEMPTS = 5;
+const ORDER_STATUS_RETRY_DELAY_MS = 150;
 
 let symbolMetadataCache: {
   timestamp: number;
@@ -89,6 +91,24 @@ export interface OrderResponse {
   status: string;
   executedQty: number;
   avgPrice: number;
+}
+
+interface TradeFill {
+  id: number;
+  orderId: string;
+  symbol: string;
+  price: number;
+  qty: number;
+  commission: number;
+  commissionAsset: string;
+  realizedPnl?: number;
+  time: number;
+  isBuyer: boolean;
+  isMaker: boolean;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -182,6 +202,97 @@ async function makeRequest(
 function parseNumber(value: any, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+async function getOrderFills(
+  symbol: string,
+  orderId: string,
+  credentials: AsterCredentials
+): Promise<TradeFill[]> {
+  return withRateLimit(async () => {
+    const data = await makeRequest(
+      '/fapi/v1/userTrades',
+      'GET',
+      credentials,
+      {
+        symbol,
+        orderId,
+        limit: 100,
+      }
+    );
+
+    if (!Array.isArray(data)) {
+      return [];
+    }
+
+    return data.map((fill: any): TradeFill => ({
+      id: Number(fill.id ?? fill.tradeId ?? 0),
+      orderId: String(fill.orderId ?? orderId),
+      symbol: String(fill.symbol ?? symbol),
+      price: parseNumber(fill.price, 0),
+      qty: parseNumber(fill.qty ?? fill.quantity ?? 0, 0),
+      commission: parseNumber(fill.commission ?? 0, 0),
+      commissionAsset: String(fill.commissionAsset ?? ''),
+      realizedPnl: fill.realizedPnl !== undefined ? parseNumber(fill.realizedPnl, 0) : undefined,
+      time: Number(fill.time ?? Date.now()),
+      isBuyer: Boolean(fill.isBuyer ?? false),
+      isMaker: Boolean(fill.isMaker ?? false),
+    }));
+  }, false);
+}
+
+function computeAverageFromFills(fills: TradeFill[]): { avgPrice: number; executedQty: number } | null {
+  if (!fills.length) {
+    return null;
+  }
+
+  const totals = fills.reduce(
+    (acc, fill) => {
+      const qty = fill.qty;
+      if (qty <= 0) {
+        return acc;
+      }
+
+      acc.notional += fill.price * qty;
+      acc.quantity += qty;
+      return acc;
+    },
+    { notional: 0, quantity: 0 }
+  );
+
+  if (totals.quantity <= 0) {
+    return null;
+  }
+
+  return {
+    avgPrice: totals.notional / totals.quantity,
+    executedQty: totals.quantity,
+  };
+}
+
+async function resolveFilledOrder(
+  symbol: string,
+  orderId: string,
+  credentials: AsterCredentials
+): Promise<{ avgPrice: number; executedQty: number } | null> {
+  for (let attempt = 0; attempt < ORDER_STATUS_MAX_ATTEMPTS; attempt++) {
+    try {
+      const order = await getOrder(symbol, orderId, credentials);
+      if (order.executedQty > 0 && order.avgPrice > 0) {
+        return {
+          avgPrice: order.avgPrice,
+          executedQty: order.executedQty,
+        };
+      }
+    } catch (error) {
+      console.warn(`Error fetching order ${orderId} (attempt ${attempt + 1}):`, error);
+    }
+
+    await sleep(ORDER_STATUS_RETRY_DELAY_MS * (attempt + 1));
+  }
+
+  const fills = await getOrderFills(symbol, orderId, credentials);
+  return computeAverageFromFills(fills);
 }
 
 function parseSymbolMetadata(symbolInfo: any): SymbolMetadata | null {
@@ -396,16 +507,34 @@ export async function placeOrder(
 
     const data = await makeRequest('/fapi/v1/order', 'POST', credentials, params);
 
+    if (!data.orderId) {
+      throw new Error('Aster API did not return an orderId for the placed order');
+    }
+
+    const orderId = data.orderId.toString();
+    const symbol = data.symbol ?? order.symbol;
+
+    let avgPrice = parseFloat(data.avgPrice ?? '0');
+    let executedQty = parseFloat(data.executedQty ?? data.cumQty ?? data.origQty ?? '0');
+
+    if (order.type === 'MARKET' && (!avgPrice || avgPrice === 0 || !executedQty || executedQty === 0)) {
+      const resolved = await resolveFilledOrder(symbol, orderId, credentials);
+      if (resolved) {
+        avgPrice = resolved.avgPrice;
+        executedQty = resolved.executedQty;
+      }
+    }
+
     return {
-      orderId: data.orderId.toString(),
-      symbol: data.symbol,
+      orderId,
+      symbol,
       side: data.side,
       type: data.type,
-      quantity: parseFloat(data.origQty),
+      quantity: parseFloat(data.origQty ?? params.quantity),
       price: parseFloat(data.price || data.avgPrice || '0'),
       status: data.status,
-      executedQty: parseFloat(data.executedQty),
-      avgPrice: parseFloat(data.avgPrice || '0'),
+      executedQty,
+      avgPrice,
     };
   }, true); // true = ORDER request
 }
@@ -424,7 +553,7 @@ export async function getOrder(
       orderId,
     });
 
-    return {
+    const response: OrderResponse = {
       orderId: data.orderId.toString(),
       symbol: data.symbol,
       side: data.side,
@@ -432,9 +561,23 @@ export async function getOrder(
       quantity: parseFloat(data.origQty),
       price: parseFloat(data.price || data.avgPrice || '0'),
       status: data.status,
-      executedQty: parseFloat(data.executedQty),
+      executedQty: parseFloat(data.executedQty ?? data.cumQty ?? data.origQty ?? '0'),
       avgPrice: parseFloat(data.avgPrice || '0'),
     };
+
+    if (
+      response.status === 'FILLED' &&
+      (!response.avgPrice || response.avgPrice === 0 || !Number.isFinite(response.avgPrice))
+    ) {
+      const fills = await getOrderFills(symbol, orderId, credentials);
+      const computed = computeAverageFromFills(fills);
+      if (computed) {
+        response.avgPrice = computed.avgPrice;
+        response.executedQty = computed.executedQty;
+      }
+    }
+
+    return response;
   }, false); // false = not an ORDER request, just a query
 }
 
@@ -483,35 +626,26 @@ export async function closePosition(
   );
 
   // For MARKET orders, the initial response may have avgPrice as 0
-  // Wait a moment and query the order to get the filled price
+  // Attempt to resolve fills if the price is still missing
   if (orderResponse.type === 'MARKET' && (!orderResponse.avgPrice || orderResponse.avgPrice === 0)) {
-    console.log(`⏳ Waiting for market order ${orderResponse.orderId} to fill...`);
+    console.log(`⏳ Resolving fill price for market order ${orderResponse.orderId}...`);
 
-    // Wait 500ms for the order to fill
-    await new Promise(resolve => setTimeout(resolve, 100));
+    const resolved = await resolveFilledOrder(symbol, orderResponse.orderId, credentials);
 
-    // Query the order to get the filled price
-    try {
-      const filledOrder = await getOrder(symbol, orderResponse.orderId, credentials);
-
-      if (filledOrder.avgPrice && filledOrder.avgPrice > 0) {
-        console.log(`✅ Order filled at avgPrice: ${filledOrder.avgPrice}`);
-        return filledOrder;
-      } else {
-        console.warn(`⚠️ Order query returned avgPrice: ${filledOrder.avgPrice}, using position current price`);
-        return {
-          ...orderResponse,
-          avgPrice: position.currentPrice,
-        };
-      }
-    } catch (error) {
-      console.error(`Error querying order ${orderResponse.orderId}:`, error);
-      // Fallback to current position price
+    if (resolved) {
+      console.log(`✅ Order filled at avgPrice: ${resolved.avgPrice}`);
       return {
         ...orderResponse,
-        avgPrice: position.currentPrice,
+        avgPrice: resolved.avgPrice,
+        executedQty: resolved.executedQty,
       };
     }
+
+    console.warn(`⚠️ Unable to resolve fill price, using current position price ${position.currentPrice}`);
+    return {
+      ...orderResponse,
+      avgPrice: position.currentPrice,
+    };
   }
 
   return orderResponse;
