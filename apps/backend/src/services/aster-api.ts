@@ -411,6 +411,34 @@ export async function placeOrder(
 }
 
 /**
+ * Query order status by orderId
+ */
+export async function getOrder(
+  symbol: string,
+  orderId: string,
+  credentials: AsterCredentials
+): Promise<OrderResponse> {
+  return withRateLimit(async () => {
+    const data = await makeRequest('/fapi/v1/order', 'GET', credentials, {
+      symbol,
+      orderId,
+    });
+
+    return {
+      orderId: data.orderId.toString(),
+      symbol: data.symbol,
+      side: data.side,
+      type: data.type,
+      quantity: parseFloat(data.origQty),
+      price: parseFloat(data.price || data.avgPrice || '0'),
+      status: data.status,
+      executedQty: parseFloat(data.executedQty),
+      avgPrice: parseFloat(data.avgPrice || '0'),
+    };
+  }, false); // false = not an ORDER request, just a query
+}
+
+/**
  * Cancel an order (ORDER request - stricter rate limiting)
  */
 export async function cancelOrder(
@@ -428,6 +456,7 @@ export async function cancelOrder(
 
 /**
  * Close a position (market order in opposite direction)
+ * Returns the order response with filled avgPrice
  */
 export async function closePosition(
   symbol: string,
@@ -442,7 +471,8 @@ export async function closePosition(
 
   const closeSide = position.side === 'LONG' ? 'SELL' : 'BUY';
 
-  return placeOrder(
+  // Place the close order
+  const orderResponse = await placeOrder(
     {
       symbol,
       side: closeSide,
@@ -451,5 +481,39 @@ export async function closePosition(
     },
     credentials
   );
+
+  // For MARKET orders, the initial response may have avgPrice as 0
+  // Wait a moment and query the order to get the filled price
+  if (orderResponse.type === 'MARKET' && (!orderResponse.avgPrice || orderResponse.avgPrice === 0)) {
+    console.log(`⏳ Waiting for market order ${orderResponse.orderId} to fill...`);
+
+    // Wait 500ms for the order to fill
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Query the order to get the filled price
+    try {
+      const filledOrder = await getOrder(symbol, orderResponse.orderId, credentials);
+
+      if (filledOrder.avgPrice && filledOrder.avgPrice > 0) {
+        console.log(`✅ Order filled at avgPrice: ${filledOrder.avgPrice}`);
+        return filledOrder;
+      } else {
+        console.warn(`⚠️ Order query returned avgPrice: ${filledOrder.avgPrice}, using position current price`);
+        return {
+          ...orderResponse,
+          avgPrice: position.currentPrice,
+        };
+      }
+    } catch (error) {
+      console.error(`Error querying order ${orderResponse.orderId}:`, error);
+      // Fallback to current position price
+      return {
+        ...orderResponse,
+        avgPrice: position.currentPrice,
+      };
+    }
+  }
+
+  return orderResponse;
 }
 
