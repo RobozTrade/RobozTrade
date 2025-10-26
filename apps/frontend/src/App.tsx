@@ -20,7 +20,7 @@ import MaintenancePage from "./pages/MaintenancePage";
 const PUBLIC_WALLET_ADDRESS = "0x94B65a92BA5A7422C48A6007fA22090aaddE4514";
 
 // Maintenance mode flag - set to true to enable maintenance mode
-const MAINTENANCE_MODE = false;
+const MAINTENANCE_MODE = true;
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore();
