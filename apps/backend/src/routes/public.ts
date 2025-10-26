@@ -8,6 +8,12 @@ import {
   getTimeRange,
   calculateMetadata,
 } from '../lib/performance-aggregation';
+import {
+  calculatePerformanceScore,
+  calculateMaxDrawdown,
+  MIN_TRADES_TO_QUALIFY,
+  getPerformanceScoreFormula,
+} from '../lib/performance-score';
 
 type PublicBindings = {
   DB: D1Database;
@@ -83,10 +89,32 @@ publicRoutes.get('/trades/:walletAddress', async (c) => {
 
     const botIds = userBots.map((bot) => bot.id);
 
-    // Get trade history for all user's bots
+    // Get trade history for all user's bots with bot name
     const trades = await db
-      .select()
+      .select({
+        id: tradeHistory.id,
+        botId: tradeHistory.botId,
+        botName: tradingBots.name,
+        symbol: tradeHistory.symbol,
+        side: tradeHistory.side,
+        orderType: tradeHistory.orderType,
+        quantity: tradeHistory.quantity,
+        entryPrice: tradeHistory.entryPrice,
+        exitPrice: tradeHistory.exitPrice,
+        leverage: tradeHistory.leverage,
+        margin: tradeHistory.margin,
+        realizedPnl: tradeHistory.realizedPnl,
+        fees: tradeHistory.fees,
+        orderId: tradeHistory.orderId,
+        stopLossOrderId: tradeHistory.stopLossOrderId,
+        takeProfitOrderId: tradeHistory.takeProfitOrderId,
+        aiReasoning: tradeHistory.aiReasoning,
+        status: tradeHistory.status,
+        openedAt: tradeHistory.openedAt,
+        closedAt: tradeHistory.closedAt,
+      })
       .from(tradeHistory)
+      .leftJoin(tradingBots, eq(tradeHistory.botId, tradingBots.id))
       .where(inArray(tradeHistory.botId, botIds))
       .orderBy(desc(tradeHistory.openedAt))
       .limit(limit)
@@ -483,8 +511,11 @@ publicRoutes.get('/bot-performance/:walletAddress/:botId/initial-balance', async
 });
 
 /**
- * Get top performing bots ranked by total P&L (leaderboard)
+ * Get top performing bots ranked by performance score (leaderboard)
  * GET /api/public/leaderboard/top-bots?limit=50
+ *
+ * Performance Score = (Total P&L % / Max Drawdown %) × ln(N - 50)
+ * Minimum 50 trades required to qualify
  */
 publicRoutes.get('/leaderboard/top-bots', async (c) => {
   const limitParam = c.req.query('limit') || '50';
@@ -507,8 +538,6 @@ publicRoutes.get('/leaderboard/top-bots', async (c) => {
       .from(tradingBots)
       .leftJoin(tradeHistory, eq(tradingBots.id, tradeHistory.botId))
       .groupBy(tradingBots.id, tradingBots.name, tradingBots.aiModel, tradingBots.userId)
-      .orderBy(desc(sql`COALESCE(SUM(CASE WHEN ${tradeHistory.status} = 'CLOSED' THEN ${tradeHistory.realizedPnl} ELSE 0 END), 0)`))
-      .limit(limit)
       .all();
 
     // Get user wallet addresses for these bots
@@ -524,18 +553,76 @@ publicRoutes.get('/leaderboard/top-bots', async (c) => {
 
     const userMap = new Map(usersData.map(u => [u.id, u.walletAddress]));
 
-    // Format response
-    const bots = botsWithStats.map(bot => ({
-      botId: bot.botId,
-      botName: bot.botName,
-      aiModel: bot.aiModel,
-      walletAddress: userMap.get(bot.userId) || '',
-      totalPnl: bot.totalPnl,
-      winRate: bot.totalTrades > 0 ? (bot.winningTrades / bot.totalTrades) * 100 : 0,
-      totalTrades: bot.totalTrades,
-    }));
+    // Get initial balance and max drawdown for each bot
+    const botsWithScores = await Promise.all(
+      botsWithStats.map(async (bot) => {
+        // Get first execution for initial balance
+        const firstExecution = await db
+          .select({
+            totalBalance: botExecutions.totalBalance,
+            accountBalance: botExecutions.accountBalance,
+          })
+          .from(botExecutions)
+          .where(eq(botExecutions.botId, bot.botId))
+          .orderBy(botExecutions.executionTime)
+          .limit(1)
+          .get();
 
-    return c.json({ success: true, data: { bots } });
+        const initialBalance = firstExecution?.totalBalance ?? firstExecution?.accountBalance ?? 10000;
+
+        // Get all closed trades for max drawdown calculation
+        const closedTrades = await db
+          .select({
+            realizedPnl: tradeHistory.realizedPnl,
+          })
+          .from(tradeHistory)
+          .where(and(eq(tradeHistory.botId, bot.botId), eq(tradeHistory.status, 'CLOSED')))
+          .orderBy(tradeHistory.closedAt)
+          .all();
+
+        const maxDrawdown = calculateMaxDrawdown(closedTrades);
+
+        // Calculate performance score
+        const scoreResult = calculatePerformanceScore({
+          totalPnl: bot.totalPnl,
+          initialBalance,
+          maxDrawdown,
+          totalTrades: bot.totalTrades,
+        });
+
+        return {
+          botId: bot.botId,
+          botName: bot.botName,
+          aiModel: bot.aiModel,
+          walletAddress: userMap.get(bot.userId) || '',
+          totalPnl: bot.totalPnl,
+          totalPnlPercent: scoreResult.totalPnlPercent,
+          maxDrawdown,
+          maxDrawdownPercent: scoreResult.maxDrawdownPercent,
+          winRate: bot.totalTrades > 0 ? (bot.winningTrades / bot.totalTrades) * 100 : 0,
+          totalTrades: bot.totalTrades,
+          performanceScore: scoreResult.score,
+          calmarRatio: scoreResult.calmarRatio,
+          confidenceScore: scoreResult.confidenceScore,
+          qualifies: scoreResult.qualifies,
+        };
+      })
+    );
+
+    // Filter only qualifying bots and sort by performance score
+    const qualifiedBots = botsWithScores
+      .filter(bot => bot.qualifies)
+      .sort((a, b) => b.performanceScore - a.performanceScore)
+      .slice(0, limit);
+
+    return c.json({
+      success: true,
+      data: {
+        bots: qualifiedBots,
+        formula: getPerformanceScoreFormula(),
+        minTradesToQualify: MIN_TRADES_TO_QUALIFY,
+      },
+    });
   } catch (error) {
     console.error('Get leaderboard top bots error:', error);
     return c.json({ success: false, error: 'Failed to get leaderboard' }, 500);
@@ -543,7 +630,7 @@ publicRoutes.get('/leaderboard/top-bots', async (c) => {
 });
 
 /**
- * Get top performing bot for each AI model
+ * Get top performing bot for each AI model (ranked by performance score)
  * GET /api/public/leaderboard/top-by-model
  */
 publicRoutes.get('/leaderboard/top-by-model', async (c) => {
@@ -564,7 +651,6 @@ publicRoutes.get('/leaderboard/top-by-model', async (c) => {
       .from(tradingBots)
       .leftJoin(tradeHistory, eq(tradingBots.id, tradeHistory.botId))
       .groupBy(tradingBots.id, tradingBots.name, tradingBots.aiModel, tradingBots.userId)
-      .orderBy(desc(sql`COALESCE(SUM(CASE WHEN ${tradeHistory.status} = 'CLOSED' THEN ${tradeHistory.realizedPnl} ELSE 0 END), 0)`))
       .all();
 
     // Get user wallet addresses
@@ -580,25 +666,81 @@ publicRoutes.get('/leaderboard/top-by-model', async (c) => {
 
     const userMap = new Map(usersData.map(u => [u.id, u.walletAddress]));
 
-    // Group by AI model and get top bot for each
-    const byModel: Record<string, any> = {};
+    // Calculate performance scores for all bots
+    const botsWithScores = await Promise.all(
+      botsWithStats.map(async (bot) => {
+        // Get first execution for initial balance
+        const firstExecution = await db
+          .select({
+            totalBalance: botExecutions.totalBalance,
+            accountBalance: botExecutions.accountBalance,
+          })
+          .from(botExecutions)
+          .where(eq(botExecutions.botId, bot.botId))
+          .orderBy(botExecutions.executionTime)
+          .limit(1)
+          .get();
 
-    for (const bot of botsWithStats) {
-      const aiModel = bot.aiModel || 'Unknown';
+        const initialBalance = firstExecution?.totalBalance ?? firstExecution?.accountBalance ?? 10000;
 
-      if (!byModel[aiModel] || bot.totalPnl > byModel[aiModel].totalPnl) {
-        byModel[aiModel] = {
+        // Get all closed trades for max drawdown calculation
+        const closedTrades = await db
+          .select({
+            realizedPnl: tradeHistory.realizedPnl,
+          })
+          .from(tradeHistory)
+          .where(and(eq(tradeHistory.botId, bot.botId), eq(tradeHistory.status, 'CLOSED')))
+          .orderBy(tradeHistory.closedAt)
+          .all();
+
+        const maxDrawdown = calculateMaxDrawdown(closedTrades);
+
+        // Calculate performance score
+        const scoreResult = calculatePerformanceScore({
+          totalPnl: bot.totalPnl,
+          initialBalance,
+          maxDrawdown,
+          totalTrades: bot.totalTrades,
+        });
+
+        return {
           botId: bot.botId,
           botName: bot.botName,
+          aiModel: bot.aiModel || 'Unknown',
           walletAddress: userMap.get(bot.userId) || '',
           totalPnl: bot.totalPnl,
+          totalPnlPercent: scoreResult.totalPnlPercent,
+          maxDrawdown,
+          maxDrawdownPercent: scoreResult.maxDrawdownPercent,
           winRate: bot.totalTrades > 0 ? (bot.winningTrades / bot.totalTrades) * 100 : 0,
           totalTrades: bot.totalTrades,
+          performanceScore: scoreResult.score,
+          qualifies: scoreResult.qualifies,
         };
+      })
+    );
+
+    // Group by AI model and get top bot for each (only qualified bots)
+    const byModel: Record<string, any> = {};
+
+    for (const bot of botsWithScores) {
+      if (!bot.qualifies) continue;
+
+      const aiModel = bot.aiModel;
+
+      if (!byModel[aiModel] || bot.performanceScore > byModel[aiModel].performanceScore) {
+        byModel[aiModel] = bot;
       }
     }
 
-    return c.json({ success: true, data: { byModel } });
+    return c.json({
+      success: true,
+      data: {
+        byModel,
+        formula: getPerformanceScoreFormula(),
+        minTradesToQualify: MIN_TRADES_TO_QUALIFY,
+      },
+    });
   } catch (error) {
     console.error('Get top by model error:', error);
     return c.json({ success: false, error: 'Failed to get top bots by model' }, 500);

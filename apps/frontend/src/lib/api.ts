@@ -175,8 +175,8 @@ class ApiClient {
   }
 
   // Trades
-  async getTrades(): Promise<ApiResponse<Trade[]>> {
-    return this.request('/trades', {}, true);
+  async getTrades(limit = 50, offset = 0): Promise<ApiResponse<Trade[]> & { total?: number; hasMore?: boolean }> {
+    return this.request(`/trades?limit=${limit}&offset=${offset}`, {}, true);
   }
 
   async getBotTrades(botId: string): Promise<ApiResponse<Trade[]>> {
@@ -202,8 +202,8 @@ class ApiClient {
     return this.request(`/bot-execution/${botId}/positions`, {}, true);
   }
 
-  async getAllTradeHistory(limit = 200): Promise<ApiResponse<any[]>> {
-    return this.request(`/trades?limit=${limit}`, {}, true);
+  async getAllTradeHistory(limit = 50, offset = 0): Promise<ApiResponse<any[]> & { total?: number; hasMore?: boolean }> {
+    return this.request(`/trades?limit=${limit}&offset=${offset}`, {}, true);
   }
 
   // API Keys
@@ -354,9 +354,18 @@ class ApiClient {
       aiModel: string | null;
       walletAddress: string;
       totalPnl: number;
+      totalPnlPercent: number;
+      maxDrawdown: number;
+      maxDrawdownPercent: number;
       winRate: number;
       totalTrades: number;
-    }>
+      performanceScore: number;
+      calmarRatio: number;
+      confidenceScore: number;
+      qualifies: boolean;
+    }>;
+    formula: string;
+    minTradesToQualify: number;
   }>> {
     return this.request(`/public/leaderboard/top-bots?limit=${limit}`);
   }
@@ -365,11 +374,19 @@ class ApiClient {
     byModel: Record<string, {
       botId: string;
       botName: string;
+      aiModel: string;
       walletAddress: string;
       totalPnl: number;
+      totalPnlPercent: number;
+      maxDrawdown: number;
+      maxDrawdownPercent: number;
       winRate: number;
       totalTrades: number;
-    }>
+      performanceScore: number;
+      qualifies: boolean;
+    }>;
+    formula: string;
+    minTradesToQualify: number;
   }>> {
     return this.request(`/public/leaderboard/top-by-model`);
   }

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { getDb } from '../lib/db';
 import { tradeHistory, tradingBots } from '../db/schema';
 import { authMiddleware, getUserId } from '../middleware/auth';
@@ -25,10 +25,32 @@ tradesRoutes.get('/bot/:botId', async (c) => {
       return c.json({ success: false, error: 'Bot not found' }, 404);
     }
 
-    // Get trades from tradeHistory table
+    // Get trades from tradeHistory table with bot name
     const botTrades = await db
-      .select()
+      .select({
+        id: tradeHistory.id,
+        botId: tradeHistory.botId,
+        botName: tradingBots.name,
+        symbol: tradeHistory.symbol,
+        side: tradeHistory.side,
+        orderType: tradeHistory.orderType,
+        quantity: tradeHistory.quantity,
+        entryPrice: tradeHistory.entryPrice,
+        exitPrice: tradeHistory.exitPrice,
+        leverage: tradeHistory.leverage,
+        margin: tradeHistory.margin,
+        realizedPnl: tradeHistory.realizedPnl,
+        fees: tradeHistory.fees,
+        orderId: tradeHistory.orderId,
+        stopLossOrderId: tradeHistory.stopLossOrderId,
+        takeProfitOrderId: tradeHistory.takeProfitOrderId,
+        aiReasoning: tradeHistory.aiReasoning,
+        status: tradeHistory.status,
+        openedAt: tradeHistory.openedAt,
+        closedAt: tradeHistory.closedAt,
+      })
       .from(tradeHistory)
+      .leftJoin(tradingBots, eq(tradeHistory.botId, tradingBots.id))
       .where(eq(tradeHistory.botId, botId))
       .orderBy(desc(tradeHistory.openedAt))
       .limit(limit)
@@ -44,7 +66,8 @@ tradesRoutes.get('/bot/:botId', async (c) => {
 // Get all trades for user
 tradesRoutes.get('/', async (c) => {
   const userId = getUserId(c);
-  const limit = parseInt(c.req.query('limit') || '200');
+  const limit = parseInt(c.req.query('limit') || '50');
+  const offset = parseInt(c.req.query('offset') || '0');
   const db = getDb(c.env.DB);
 
   try {
@@ -56,19 +79,53 @@ tradesRoutes.get('/', async (c) => {
     const botIds = userBots.map((bot) => bot.id);
 
     if (botIds.length === 0) {
-      return c.json({ success: true, data: [] });
+      return c.json({ success: true, data: [], total: 0, hasMore: false });
     }
 
-    // Get trades from tradeHistory table for all user's bots
-    const allTrades = await db
-      .select()
+    // Get total count for pagination
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
       .from(tradeHistory)
+      .where(inArray(tradeHistory.botId, botIds))
+      .get();
+
+    const total = countResult?.count || 0;
+
+    // Get trades from tradeHistory table for all user's bots with bot name
+    const allTrades = await db
+      .select({
+        id: tradeHistory.id,
+        botId: tradeHistory.botId,
+        botName: tradingBots.name,
+        symbol: tradeHistory.symbol,
+        side: tradeHistory.side,
+        orderType: tradeHistory.orderType,
+        quantity: tradeHistory.quantity,
+        entryPrice: tradeHistory.entryPrice,
+        exitPrice: tradeHistory.exitPrice,
+        leverage: tradeHistory.leverage,
+        margin: tradeHistory.margin,
+        realizedPnl: tradeHistory.realizedPnl,
+        fees: tradeHistory.fees,
+        orderId: tradeHistory.orderId,
+        stopLossOrderId: tradeHistory.stopLossOrderId,
+        takeProfitOrderId: tradeHistory.takeProfitOrderId,
+        aiReasoning: tradeHistory.aiReasoning,
+        status: tradeHistory.status,
+        openedAt: tradeHistory.openedAt,
+        closedAt: tradeHistory.closedAt,
+      })
+      .from(tradeHistory)
+      .leftJoin(tradingBots, eq(tradeHistory.botId, tradingBots.id))
       .where(inArray(tradeHistory.botId, botIds))
       .orderBy(desc(tradeHistory.openedAt))
       .limit(limit)
+      .offset(offset)
       .all();
 
-    return c.json({ success: true, data: allTrades });
+    const hasMore = offset + allTrades.length < total;
+
+    return c.json({ success: true, data: allTrades, total, hasMore });
   } catch (error) {
     console.error('Get all trades error:', error);
     return c.json({ success: false, error: 'Failed to get trades' }, 500);

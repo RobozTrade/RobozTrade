@@ -9,6 +9,7 @@ import {
   Download,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
 
 type TradeStatus = "OPEN" | "CLOSED" | "CANCELLED" | "ALL";
@@ -20,10 +21,13 @@ const getCryptoIcon = (symbol: string | undefined): string => {
   return `/crypto/${coin}.svg`;
 };
 
+const ITEMS_PER_PAGE = 50;
+
 export default function TradeHistoryPage() {
   const [statusFilter, setStatusFilter] = useState<TradeStatus>("ALL");
   const [selectedBot, setSelectedBot] = useState<string>("ALL");
   const [expandedTradeId, setExpandedTradeId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
 
   const { data: bots } = useQuery({
     queryKey: ["bots"],
@@ -35,10 +39,10 @@ export default function TradeHistoryPage() {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["all-trade-history", selectedBot, statusFilter],
+    queryKey: ["all-trade-history", selectedBot, statusFilter, currentPage],
     queryFn: async () => {
       if (selectedBot === "ALL") {
-        return api.getTrades();
+        return api.getTrades(ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
       } else {
         const status = statusFilter === "ALL" ? undefined : statusFilter;
         return api.getBotTradeHistory(selectedBot, 200, status);
@@ -47,6 +51,20 @@ export default function TradeHistoryPage() {
   });
 
   const trades = allTrades?.data || [];
+  const total = allTrades?.total || 0;
+  const hasMore = allTrades?.hasMore || false;
+  const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
+
+  // Reset page when filters change
+  const handleStatusFilterChange = (newStatus: TradeStatus) => {
+    setStatusFilter(newStatus);
+    setCurrentPage(0);
+  };
+
+  const handleBotFilterChange = (newBot: string) => {
+    setSelectedBot(newBot);
+    setCurrentPage(0);
+  };
 
   // Debug logging
   if (trades.length > 0) {
@@ -204,7 +222,7 @@ export default function TradeHistoryPage() {
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 flex-1">
             <select
               value={selectedBot}
-              onChange={(e) => setSelectedBot(e.target.value)}
+              onChange={(e) => handleBotFilterChange(e.target.value)}
               className="input flex-1 sm:max-w-xs"
             >
               <option value="ALL">All Bots</option>
@@ -217,7 +235,9 @@ export default function TradeHistoryPage() {
 
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as TradeStatus)}
+              onChange={(e) =>
+                handleStatusFilterChange(e.target.value as TradeStatus)
+              }
               className="input flex-1 sm:max-w-xs"
             >
               <option value="ALL">All Status</option>
@@ -246,6 +266,9 @@ export default function TradeHistoryPage() {
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                     Date
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                    Bot
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                     Symbol
@@ -297,6 +320,9 @@ export default function TradeHistoryPage() {
                                   : new Date(trade.openedAt)
                               )
                             : "N/A"}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-text-primary">
+                          {trade.botName || "Unknown Bot"}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           {trade.symbol ? (
@@ -483,6 +509,36 @@ export default function TradeHistoryPage() {
             </table>
           )}
         </div>
+
+        {/* Pagination Controls */}
+        {selectedBot === "ALL" && !isLoading && filteredTrades.length > 0 && (
+          <div className="px-6 py-4 border-t border-border flex items-center justify-between">
+            <div className="text-sm text-text-secondary">
+              Showing {currentPage * ITEMS_PER_PAGE + 1} to{" "}
+              {Math.min((currentPage + 1) * ITEMS_PER_PAGE, total)} of {total}{" "}
+              trades
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                disabled={currentPage === 0}
+                className="px-3 py-2 rounded-lg border border-border bg-background-secondary hover:bg-background-tertiary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm text-text-primary">
+                Page {currentPage + 1} of {totalPages || 1}
+              </span>
+              <button
+                onClick={() => setCurrentPage((p) => p + 1)}
+                disabled={currentPage >= totalPages - 1}
+                className="px-3 py-2 rounded-lg border border-border bg-background-secondary hover:bg-background-tertiary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

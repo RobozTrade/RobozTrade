@@ -733,14 +733,41 @@ async function executeCloseOrder(
     .get();
 
   if (openTrade) {
-    // Calculate realized PnL
-    const realizedPnl = context.position.unrealizedPnl;
+    // Calculate realized PnL based on entry/exit prices and position side
+    // For LONG positions (BUY): PnL = (exitPrice - entryPrice) * quantity
+    // For SHORT positions (SELL): PnL = (entryPrice - exitPrice) * quantity
+    const exitPrice = closeOrder.avgPrice;
+    const entryPrice = openTrade.entryPrice;
+    const quantity = openTrade.quantity;
+    const side = openTrade.side;
+
+    let realizedPnl: number;
+    if (side === 'BUY') {
+      // LONG position
+      realizedPnl = (exitPrice - entryPrice) * quantity;
+    } else {
+      // SHORT position
+      realizedPnl = (entryPrice - exitPrice) * quantity;
+    }
+
+    // Subtract fees if available
+    const fees = openTrade.fees || 0;
+    realizedPnl -= fees;
+
+    console.log(`Closing position for ${context.symbol}:`, {
+      side,
+      entryPrice,
+      exitPrice,
+      quantity,
+      fees,
+      realizedPnl: realizedPnl.toFixed(2),
+    });
 
     // Update trade record
     await db
       .update(tradeHistory)
       .set({
-        exitPrice: closeOrder.avgPrice,
+        exitPrice,
         realizedPnl,
         status: 'CLOSED',
         closedAt: new Date(),

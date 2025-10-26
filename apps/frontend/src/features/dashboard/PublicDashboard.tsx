@@ -2093,16 +2093,35 @@ export default function PublicDashboard({
       {/* Leaderboard Tab - Top 50 Bots */}
       {activeTab === "leaderboard" && (
         <GlassCard className="p-4 sm:p-6">
-          <h2 className="text-xl font-bold text-light-text-primary dark:text-dark-text-primary mb-6">
-            Top 50 Bots by Total P&L
-          </h2>
+          <div className="mb-6">
+            <h2 className="text-xl font-bold text-light-text-primary dark:text-dark-text-primary mb-2">
+              Top 50 Bots by Performance Score
+            </h2>
+            {topBotsData && (
+              <div className="bg-accent-blue/10 border border-accent-blue/30 rounded-lg p-3 mb-4">
+                <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mb-1">
+                  <span className="font-semibold">Ranking Formula:</span>
+                </p>
+                <p className="text-sm font-mono text-light-text-primary dark:text-dark-text-primary">
+                  {topBotsData.formula}
+                </p>
+                <p className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary mt-2">
+                  Minimum {topBotsData.minTradesToQualify} trades required to
+                  qualify. This formula balances risk-adjusted returns with
+                  trading experience.
+                </p>
+              </div>
+            )}
+          </div>
           {!topBotsData ? (
             <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
               Loading leaderboard...
             </div>
           ) : topBotsData.bots.length === 0 ? (
             <div className="py-6 text-center text-light-text-tertiary dark:text-dark-text-tertiary">
-              No bots found.
+              No qualifying bots found. Bots need at least{" "}
+              {topBotsData.minTradesToQualify} trades to appear on the
+              leaderboard.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -2118,11 +2137,14 @@ export default function PublicDashboard({
                     <th className="text-left py-3 px-2 text-xs font-semibold text-light-text-tertiary dark:text-dark-text-tertiary uppercase tracking-wider">
                       AI Model
                     </th>
-                    <th className="text-left py-3 px-2 text-xs font-semibold text-light-text-tertiary dark:text-dark-text-tertiary uppercase tracking-wider">
-                      Owner
+                    <th className="text-right py-3 px-2 text-xs font-semibold text-light-text-tertiary dark:text-dark-text-tertiary uppercase tracking-wider">
+                      Score
                     </th>
                     <th className="text-right py-3 px-2 text-xs font-semibold text-light-text-tertiary dark:text-dark-text-tertiary uppercase tracking-wider">
-                      Total P&L
+                      P&L %
+                    </th>
+                    <th className="text-right py-3 px-2 text-xs font-semibold text-light-text-tertiary dark:text-dark-text-tertiary uppercase tracking-wider">
+                      MDD %
                     </th>
                     <th className="text-right py-3 px-2 text-xs font-semibold text-light-text-tertiary dark:text-dark-text-tertiary uppercase tracking-wider">
                       Win Rate
@@ -2145,26 +2167,37 @@ export default function PublicDashboard({
                       <td className="py-3 px-2 text-sm text-light-text-primary dark:text-dark-text-primary font-semibold">
                         #{index + 1}
                       </td>
-                      <td className="py-3 px-2 text-sm text-light-text-primary dark:text-dark-text-primary font-medium">
-                        {bot.botName}
+                      <td className="py-3 px-2">
+                        <div className="text-sm text-light-text-primary dark:text-dark-text-primary font-medium">
+                          {bot.botName}
+                        </div>
+                        <div className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary font-mono">
+                          {bot.walletAddress.slice(0, 6)}...
+                          {bot.walletAddress.slice(-4)}
+                        </div>
                       </td>
                       <td className="py-3 px-2 text-sm text-light-text-secondary dark:text-dark-text-secondary">
                         {bot.aiModel || "Unknown"}
                       </td>
-                      <td className="py-3 px-2 text-xs text-light-text-secondary dark:text-dark-text-secondary font-mono">
-                        {bot.walletAddress.slice(0, 6)}...
-                        {bot.walletAddress.slice(-4)}
+                      <td className="py-3 px-2 text-right">
+                        <span className="text-sm font-bold text-accent-blue">
+                          {bot.performanceScore.toFixed(2)}
+                        </span>
                       </td>
                       <td className="py-3 px-2 text-right">
                         <span
                           className={`text-sm font-semibold ${
-                            bot.totalPnl >= 0
+                            bot.totalPnlPercent >= 0
                               ? "text-accent-green"
                               : "text-accent-red"
                           }`}
                         >
-                          {formatSignedCurrency(bot.totalPnl)}
+                          {bot.totalPnlPercent >= 0 ? "+" : ""}
+                          {bot.totalPnlPercent.toFixed(1)}%
                         </span>
+                      </td>
+                      <td className="py-3 px-2 text-right text-sm text-accent-red">
+                        {bot.maxDrawdownPercent.toFixed(1)}%
                       </td>
                       <td className="py-3 px-2 text-right text-sm text-light-text-primary dark:text-dark-text-primary">
                         {bot.winRate.toFixed(1)}%

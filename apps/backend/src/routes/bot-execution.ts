@@ -89,25 +89,50 @@ botExecutionRoutes.get('/:botId/trades', async (c) => {
       return c.json({ success: false, error: 'Bot not found' }, 404);
     }
 
-    // Build query
-    let query = db
-      .select()
-      .from(tradeHistory)
-      .where(eq(tradeHistory.botId, botId))
-      .orderBy(desc(tradeHistory.openedAt))
-      .limit(limit);
+    // Build query with bot name
+    const selectFields = {
+      id: tradeHistory.id,
+      botId: tradeHistory.botId,
+      botName: tradingBots.name,
+      symbol: tradeHistory.symbol,
+      side: tradeHistory.side,
+      orderType: tradeHistory.orderType,
+      quantity: tradeHistory.quantity,
+      entryPrice: tradeHistory.entryPrice,
+      exitPrice: tradeHistory.exitPrice,
+      leverage: tradeHistory.leverage,
+      margin: tradeHistory.margin,
+      realizedPnl: tradeHistory.realizedPnl,
+      fees: tradeHistory.fees,
+      orderId: tradeHistory.orderId,
+      stopLossOrderId: tradeHistory.stopLossOrderId,
+      takeProfitOrderId: tradeHistory.takeProfitOrderId,
+      aiReasoning: tradeHistory.aiReasoning,
+      status: tradeHistory.status,
+      openedAt: tradeHistory.openedAt,
+      closedAt: tradeHistory.closedAt,
+    };
 
-    // Filter by status if provided
+    let trades;
     if (status) {
-      query = db
-        .select()
+      trades = await db
+        .select(selectFields)
         .from(tradeHistory)
+        .leftJoin(tradingBots, eq(tradeHistory.botId, tradingBots.id))
         .where(and(eq(tradeHistory.botId, botId), eq(tradeHistory.status, status)))
         .orderBy(desc(tradeHistory.openedAt))
-        .limit(limit);
+        .limit(limit)
+        .all();
+    } else {
+      trades = await db
+        .select(selectFields)
+        .from(tradeHistory)
+        .leftJoin(tradingBots, eq(tradeHistory.botId, tradingBots.id))
+        .where(eq(tradeHistory.botId, botId))
+        .orderBy(desc(tradeHistory.openedAt))
+        .limit(limit)
+        .all();
     }
-
-    const trades = await query.all();
 
     return c.json({
       success: true,
