@@ -736,10 +736,16 @@ async function executeCloseOrder(
     // Calculate realized PnL based on entry/exit prices and position side
     // For LONG positions (BUY): PnL = (exitPrice - entryPrice) * quantity
     // For SHORT positions (SELL): PnL = (entryPrice - exitPrice) * quantity
-    const exitPrice = closeOrder.avgPrice;
+    let exitPrice = closeOrder.avgPrice;
     const entryPrice = openTrade.entryPrice;
     const quantity = openTrade.quantity;
     const side = openTrade.side;
+
+    // If avgPrice is 0 or missing, try to get current market price as fallback
+    if (!exitPrice || exitPrice === 0) {
+      console.warn(`⚠️ Close order avgPrice is ${exitPrice} for ${context.symbol}, using current price from position`);
+      exitPrice = context.position?.currentPrice || entryPrice;
+    }
 
     let realizedPnl: number;
     if (side === 'BUY') {

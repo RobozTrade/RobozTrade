@@ -505,8 +505,9 @@ export default function PublicDashboard({
           const modelColor = colorByBotId.get(trade.botId) ?? "#007aff";
 
           const pnl = trade.realizedPnl ?? 0;
-          const entryValue = trade.entryPrice * trade.quantity;
-          const pnlPercent = entryValue > 0 ? (pnl / entryValue) * 100 : 0;
+          const margin = trade.margin ?? 0;
+          // Calculate P&L percentage based on margin (actual investment) for leveraged trading
+          const pnlPercent = margin > 0 ? (pnl / margin) * 100 : 0;
 
           return {
             id: trade.id,
