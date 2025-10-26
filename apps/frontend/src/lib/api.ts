@@ -188,7 +188,7 @@ class ApiClient {
     return this.request(`/bot-execution/${botId}/history?limit=${limit}`, {}, true);
   }
 
-  async getBotTradeHistory(botId: string, limit = 100, status?: string): Promise<ApiResponse<any[]>> {
+  async getBotTradeHistory(botId: string, limit = 100, status?: string): Promise<ApiResponse<any[]> & { total?: number; hasMore?: boolean }> {
     const params = new URLSearchParams({ limit: String(limit) });
     if (status) params.append('status', status);
     return this.request(`/bot-execution/${botId}/trades?${params}`, {}, true);

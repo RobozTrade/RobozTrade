@@ -52,7 +52,6 @@ export default function TradeHistoryPage() {
 
   const trades = allTrades?.data || [];
   const total = allTrades?.total || 0;
-  const hasMore = allTrades?.hasMore || false;
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
 
   // Reset page when filters change
