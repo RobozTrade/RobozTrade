@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useMarketStore } from '../stores/marketStore';
 import type { WebSocketMessage, SubscribeMessage } from '@roboz-trade/shared-types';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8787/ws';
+const WS_URL = import.meta.env.VITE_WS_URL || 'wss://roboz.trade/ws';
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
