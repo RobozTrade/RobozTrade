@@ -18,7 +18,7 @@ const SUPPORTED_SYMBOLS = [
 // Supported AI models (Latest - October 2025)
 const SUPPORTED_AI_MODELS = [
   // OpenAI (Latest - October 2025)
-  'openai/gpt-5', 'openai/gpt-5-mini', 'openai/o3',
+  'openai/gpt-5', 'openai/gpt-5-mini', 'openai/o3', 'openai/gpt-oss-120b',
   // Anthropic (Latest - October 2025)
   'anthropic/claude-4.5-sonnet', 'anthropic/claude-3.5-sonnet',
   // Google (Latest - October 2025)

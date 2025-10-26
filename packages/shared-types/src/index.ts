@@ -30,6 +30,7 @@ export const SUPPORTED_AI_MODELS: {
     { value: 'openai/gpt-5', label: 'GPT-5', description: 'Latest flagship model with advanced reasoning', logo: '/logos/openai.svg', provider: 'OpenAI' },
     { value: 'openai/gpt-5-mini', label: 'GPT-5 Mini', description: 'Fast GPT-5 variant for quick responses', logo: '/logos/openai.svg', provider: 'OpenAI' },
     { value: 'openai/o3', label: 'OpenAI o3', description: 'Most advanced reasoning model', logo: '/logos/openai.svg', provider: 'OpenAI' },
+    { value: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B', description: 'Latest open-source model from OpenAI', logo: '/logos/openai.svg', provider: 'OpenAI' },
 
     // Anthropic Models (Latest - October 2025)
     { value: 'anthropic/claude-4.5-sonnet', label: 'Claude 4.5 Sonnet', description: 'Latest Claude with enhanced capabilities', logo: '/logos/claude.svg', provider: 'Anthropic' },
@@ -279,6 +280,7 @@ export type AIModel =
   | 'openai/gpt-5'
   | 'openai/gpt-5-mini'
   | 'openai/o3'
+  | 'openai/gpt-oss-120b'
   // Anthropic (Latest - October 2025)
   | 'anthropic/claude-4.5-sonnet'
   | 'anthropic/claude-3.5-sonnet'
