@@ -295,85 +295,109 @@ function parseAIResponse(response: string, symbols: string[]): ParsedAIResponse 
   let summary: string | undefined;
   let thinking: string | undefined;
 
+  const tryParseJson = (input: string): any => {
+    try {
+      return JSON.parse(input);
+    } catch (error) {
+      const sanitized = input.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+      if (sanitized !== input) {
+        try {
+          return JSON.parse(sanitized);
+        } catch (sanitizedError) {
+          console.warn('Failed to parse sanitized AI JSON response:', sanitizedError);
+        }
+      }
+      throw error;
+    }
+  };
+
   try {
     // Try to parse as JSON first
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      const leadingText = jsonMatch.index !== undefined && jsonMatch.index >= 0
-        ? response.slice(0, jsonMatch.index).trim()
-        : undefined;
-      if (typeof parsed.summary === 'string') {
-        summary = parsed.summary.trim();
+      let parsed: any | null = null;
+      try {
+        parsed = tryParseJson(jsonMatch[0]);
+      } catch (jsonError) {
+        console.warn('AI response included invalid JSON, falling back to text parsing:', jsonError);
       }
-      if (typeof parsed.analysis === 'string') {
-        thinking = parsed.analysis.trim();
-      }
-      if (Array.isArray(parsed.decisions)) {
-        if (!summary && leadingText) {
-          summary = leadingText;
-        }
-        if (!thinking && summary) {
-          thinking = summary;
-        }
 
-        // Map AI response fields to expected interface fields
-        const mappedDecisions: TradingDecision[] = parsed.decisions.map((d: any) => {
-          const decision: TradingDecision = {
-            action: d.action,
-            symbol: d.symbol,
-            reasoning: d.reasoning || '',
-            confidence: d.confidence || 0.5,
-          };
-
-          // Map leverage field
-          if (d.leverage !== undefined && d.leverage !== null) {
-            decision.suggestedLeverage = Number(d.leverage);
-          } else if (d.suggestedLeverage !== undefined && d.suggestedLeverage !== null) {
-            decision.suggestedLeverage = Number(d.suggestedLeverage);
+      if (parsed) {
+        const leadingText = jsonMatch.index !== undefined && jsonMatch.index >= 0
+          ? response.slice(0, jsonMatch.index).trim()
+          : undefined;
+        if (typeof parsed.summary === 'string') {
+          summary = parsed.summary.trim();
+        }
+        if (typeof parsed.analysis === 'string') {
+          thinking = parsed.analysis.trim();
+        }
+        if (Array.isArray(parsed.decisions)) {
+          if (!summary && leadingText) {
+            summary = leadingText;
+          }
+          if (!thinking && summary) {
+            thinking = summary;
           }
 
-          // Map target_notional to suggestedQuantity (will be converted to quantity later)
-          // Store target_notional as a special field that will be used in quantity calculation
-          if (d.target_notional !== undefined && d.target_notional !== null) {
-            (decision as any).targetNotional = Number(d.target_notional);
-          } else if (d.suggestedQuantity !== undefined && d.suggestedQuantity !== null) {
-            const qty = Number(d.suggestedQuantity);
-            // Heuristic: If suggestedQuantity is in the range of typical notional values (10-10000 USDT)
-            // and seems too large to be a coin quantity, treat it as target_notional instead
-            // This handles cases where AI returns suggestedQuantity thinking it means notional value
-            if (qty >= 10 && qty <= 10000) {
-              // Likely a notional value in USDT, not a coin quantity
-              console.log(`Interpreting suggestedQuantity ${qty} as target_notional (USDT) for ${d.symbol}`);
-              (decision as any).targetNotional = qty;
-            } else {
-              // Likely an actual coin quantity
-              decision.suggestedQuantity = qty;
+          // Map AI response fields to expected interface fields
+          const mappedDecisions: TradingDecision[] = parsed.decisions.map((d: any) => {
+            const decision: TradingDecision = {
+              action: d.action,
+              symbol: d.symbol,
+              reasoning: d.reasoning || '',
+              confidence: d.confidence || 0.5,
+            };
+
+            // Map leverage field
+            if (d.leverage !== undefined && d.leverage !== null) {
+              decision.suggestedLeverage = Number(d.leverage);
+            } else if (d.suggestedLeverage !== undefined && d.suggestedLeverage !== null) {
+              decision.suggestedLeverage = Number(d.suggestedLeverage);
             }
-          }
 
-          // Map stop_loss field
-          if (d.stop_loss !== undefined && d.stop_loss !== null) {
-            decision.suggestedStopLoss = Number(d.stop_loss);
-          } else if (d.suggestedStopLoss !== undefined && d.suggestedStopLoss !== null) {
-            decision.suggestedStopLoss = Number(d.suggestedStopLoss);
-          }
+            // Map target_notional to suggestedQuantity (will be converted to quantity later)
+            // Store target_notional as a special field that will be used in quantity calculation
+            if (d.target_notional !== undefined && d.target_notional !== null) {
+              (decision as any).targetNotional = Number(d.target_notional);
+            } else if (d.suggestedQuantity !== undefined && d.suggestedQuantity !== null) {
+              const qty = Number(d.suggestedQuantity);
+              // Heuristic: If suggestedQuantity is in the range of typical notional values (10-10000 USDT)
+              // and seems too large to be a coin quantity, treat it as target_notional instead
+              // This handles cases where AI returns suggestedQuantity thinking it means notional value
+              if (qty >= 10 && qty <= 10000) {
+                // Likely a notional value in USDT, not a coin quantity
+                console.log(`Interpreting suggestedQuantity ${qty} as target_notional (USDT) for ${d.symbol}`);
+                (decision as any).targetNotional = qty;
+              } else {
+                // Likely an actual coin quantity
+                decision.suggestedQuantity = qty;
+              }
+            }
 
-          // Map take_profit field
-          if (d.take_profit !== undefined && d.take_profit !== null) {
-            decision.suggestedTakeProfit = Number(d.take_profit);
-          } else if (d.suggestedTakeProfit !== undefined && d.suggestedTakeProfit !== null) {
-            decision.suggestedTakeProfit = Number(d.suggestedTakeProfit);
-          }
+            // Map stop_loss field
+            if (d.stop_loss !== undefined && d.stop_loss !== null) {
+              decision.suggestedStopLoss = Number(d.stop_loss);
+            } else if (d.suggestedStopLoss !== undefined && d.suggestedStopLoss !== null) {
+              decision.suggestedStopLoss = Number(d.suggestedStopLoss);
+            }
 
-          return decision;
-        });
+            // Map take_profit field
+            if (d.take_profit !== undefined && d.take_profit !== null) {
+              decision.suggestedTakeProfit = Number(d.take_profit);
+            } else if (d.suggestedTakeProfit !== undefined && d.suggestedTakeProfit !== null) {
+              decision.suggestedTakeProfit = Number(d.suggestedTakeProfit);
+            }
 
-        return {
-          decisions: mappedDecisions,
-          summary,
-          thinking,
-        };
+            return decision;
+          });
+
+          return {
+            decisions: mappedDecisions,
+            summary,
+            thinking,
+          };
+        }
       }
     }
 

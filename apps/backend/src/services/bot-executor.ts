@@ -72,6 +72,8 @@ export async function executeBot(
       throw new Error(`Bot ${botId} is not active (status: ${bot.status})`);
     }
 
+    const logPrefix = bot.name ? `[${bot.name}]` : `[Bot ${botId}]`;
+
     // Resolve encrypted credentials. Support both new (inline) and legacy (shared API key) flows.
     let asterApiKey: string | null = null;
     let asterApiSecret: string | null = null;
@@ -377,7 +379,11 @@ export async function executeBot(
       return (priority[a.action] || 99) - (priority[b.action] || 99);
     });
 
-    console.log(`Executing ${sortedDecisions.length} decisions in priority order: ${sortedDecisions.map(d => `${d.action} ${d.symbol}`).join(', ')}`);
+    console.log(
+      `${logPrefix} Executing ${sortedDecisions.length} decisions in priority order: ${sortedDecisions
+        .map(d => `${d.action} ${d.symbol}`)
+        .join(', ')}`
+    );
 
     for (const decision of sortedDecisions) {
       try {
@@ -385,18 +391,25 @@ export async function executeBot(
         if (!context) continue;
 
         const isCloseAction = decision.action === 'CLOSE';
+        const isTradeAction = decision.action === 'BUY' || decision.action === 'SELL';
 
-        // Skip if confidence is below threshold (allow CLOSE actions regardless)
-        if (!isCloseAction && decision.confidence < 0.65) {
-          console.log(`Skipping ${decision.symbol} - low confidence: ${decision.confidence}`);
+        if (isTradeAction && decision.confidence < 0.65) {
+          console.log(
+            `${logPrefix} Skipping ${decision.symbol} - low confidence: ${decision.confidence}`
+          );
           continue;
         }
 
-        if (!isCloseAction) {
+        if (decision.action === 'HOLD') {
+          console.log(`${logPrefix} Holding ${decision.symbol} - no action required`);
+          continue;
+        }
+
+        if (isTradeAction) {
           const maxOpenTrades = context.maxOpenTrades ?? maxOpenTradesConfigured;
           if (openTradesCount >= maxOpenTrades) {
             console.log(
-              `Skipping ${decision.symbol} - open trades limit reached (${openTradesCount}/${maxOpenTrades})`
+              `${logPrefix} Skipping ${decision.symbol} - open trades limit reached (${openTradesCount}/${maxOpenTrades})`
             );
             continue;
           }
@@ -416,12 +429,14 @@ export async function executeBot(
           syncOpenTradesCount(openTradesCount);
         } else if (isCloseAction && context.position) {
           // Close existing position
-          const closed = await executeCloseOrder(decision, context, credentials, db, botId);
+          const closed = await executeCloseOrder(decision, context, credentials, db, botId, logPrefix);
           if (closed) {
             tradesExecuted++;
             openTradesCount = Math.max(openTradesCount - 1, 0);
             syncOpenTradesCount(openTradesCount);
           }
+        } else if (isCloseAction && !context.position) {
+          console.log(`${logPrefix} Skipping ${decision.symbol} close - no open position`);
         }
         // HOLD - do nothing
 
@@ -711,7 +726,8 @@ async function executeCloseOrder(
   context: TradingContext,
   credentials: AsterAPI.AsterCredentials,
   db: DbClient,
-  botId: string
+  botId: string,
+  logPrefix: string
 ): Promise<boolean> {
   if (!context.position) {
     throw new Error(`No position to close for ${context.symbol}`);
@@ -737,11 +753,10 @@ async function executeCloseOrder(
     .get();
 
   if (!openTrade) {
-    console.warn(`No open trade record found for ${context.symbol} when attempting close`);
-    return false;
+    console.warn(`${logPrefix} No open trade record found for ${context.symbol} when attempting close`);
   }
 
-  const entryTimestampSource = openTrade.openedAt ?? context.position.entryTime;
+  const entryTimestampSource = openTrade?.openedAt ?? context.position.entryTime;
   let minutesHeld = MIN_HOLD_MINUTES;
 
   if (entryTimestampSource) {
@@ -751,26 +766,28 @@ async function executeCloseOrder(
     }
   }
 
-  const leverageForMargin = context.position.leverage || openTrade.leverage || context.maxLeverage || 1;
+  const leverageForMargin = context.position.leverage || openTrade?.leverage || context.maxLeverage || 1;
   const fallbackMargin =
     context.position.entryPrice > 0 && leverageForMargin > 0
       ? (context.position.entryPrice * context.position.quantity) / leverageForMargin
       : 0;
-  const marginCandidates = [context.position.margin, openTrade.margin, fallbackMargin];
+  const marginCandidates = [context.position.margin, openTrade?.margin, fallbackMargin];
   const marginBase = marginCandidates.find(value => value !== undefined && value > 0) ?? 0;
-  const pnlPercent = marginBase > 0 ? (context.position.unrealizedPnl / marginBase) * 100 : 0;
+  const pnlPercent = marginBase > 0
+    ? (context.position.unrealizedPnl / marginBase) * 100
+    : Number.NEGATIVE_INFINITY;
 
   if (minutesHeld < MIN_HOLD_MINUTES) {
     if (pnlPercent > EMERGENCY_LOSS_THRESHOLD) {
       console.log(
-        `⚠️ Rejecting premature close for ${context.symbol}: ` +
+        `${logPrefix} ⚠️ Rejecting premature close for ${context.symbol}: ` +
         `position only ${minutesHeld} minutes old (min: ${MIN_HOLD_MINUTES}), ` +
         `PnL: ${pnlPercent.toFixed(2)}% (not emergency loss)`
       );
       return false; // Skip this close action
     } else {
       console.log(
-        `⚠️ Allowing emergency close for ${context.symbol}: ` +
+        `${logPrefix} ⚠️ Allowing emergency close for ${context.symbol}: ` +
         `${minutesHeld} min old with ${pnlPercent.toFixed(2)}% loss`
       );
     }
@@ -780,9 +797,17 @@ async function executeCloseOrder(
   const closeOrder = await AsterAPI.closePosition(context.symbol, credentials);
 
   const exitPrice = closeOrder.avgPrice;
-  const entryPrice = openTrade.entryPrice;
-  const quantity = openTrade.quantity;
-  const side = openTrade.side;
+  const entryPrice = openTrade?.entryPrice ?? context.position.entryPrice;
+  const quantity = openTrade?.quantity ?? context.position.quantity;
+  const side = openTrade?.side ?? (context.position.side === 'LONG' ? 'BUY' : 'SELL');
+
+  if (!entryPrice || quantity <= 0) {
+    console.warn(
+      `${logPrefix} Unable to compute realized PnL for ${context.symbol}: invalid entryPrice (${entryPrice}) or quantity (${quantity})`
+    );
+    context.position = undefined;
+    return true;
+  }
 
   let realizedPnl: number;
   if (side === 'BUY') {
@@ -791,10 +816,10 @@ async function executeCloseOrder(
     realizedPnl = (entryPrice - exitPrice) * quantity;
   }
 
-  const fees = openTrade.fees ?? 0;
+  const fees = openTrade?.fees ?? 0;
   realizedPnl -= fees;
 
-  console.log(`✅ Closed position for ${context.symbol}:`, {
+  console.log(`${logPrefix} ✅ Closed position for ${context.symbol}:`, {
     side,
     entryPrice,
     exitPrice,
@@ -803,15 +828,43 @@ async function executeCloseOrder(
     realizedPnl: realizedPnl.toFixed(2),
   });
 
-  await db
-    .update(tradeHistory)
-    .set({
+  const closedAt = new Date();
+
+  if (openTrade) {
+    await db
+      .update(tradeHistory)
+      .set({
+        exitPrice,
+        realizedPnl,
+        status: 'CLOSED',
+        closedAt,
+      })
+      .where(eq(tradeHistory.id, openTrade.id));
+  } else {
+    const inferredLeverage = Math.max(Math.round(leverageForMargin), 1);
+    const inferredMargin = marginBase > 0
+      ? marginBase
+      : Math.abs(entryPrice * quantity) / inferredLeverage;
+
+    await db.insert(tradeHistory).values({
+      id: nanoid(),
+      botId,
+      symbol: context.symbol,
+      side,
+      orderType: 'MARKET',
+      quantity,
+      entryPrice,
       exitPrice,
+      leverage: inferredLeverage,
+      margin: inferredMargin,
       realizedPnl,
+      fees,
+      orderId: closeOrder.orderId,
       status: 'CLOSED',
-      closedAt: new Date(),
-    })
-    .where(eq(tradeHistory.id, openTrade.id));
+      openedAt: entryTimestampSource ? new Date(entryTimestampSource) : new Date(Date.now() - MIN_HOLD_MINUTES * 60000),
+      closedAt,
+    });
+  }
 
   await updateBotMetrics(db, botId, realizedPnl);
 
