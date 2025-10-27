@@ -462,6 +462,15 @@ export default function DashboardPageNew() {
   const [selectedSingleBotId, setSelectedSingleBotId] = useState<string | null>(
     null
   );
+  const [expandedDecisions, setExpandedDecisions] = useState<Set<string>>(
+    new Set()
+  );
+  const [expandedPrompts, setExpandedPrompts] = useState<Set<string>>(
+    new Set()
+  );
+  const [expandedAnalysis, setExpandedAnalysis] = useState<Set<string>>(
+    new Set()
+  );
 
   const {
     data: bots = [],
@@ -501,21 +510,21 @@ export default function DashboardPageNew() {
     return map;
   }, [safeBots]);
 
+  // Auto-select all bots on initial load only
   useEffect(() => {
     const currentBotIds = safeBots.map((bot) => bot.id);
 
     if (currentBotIds.length === 0) {
-      setSelectedBotIds((prev) => (prev.length === 0 ? prev : []));
       return;
     }
 
+    // Only auto-select if no bots are currently selected (initial load)
     setSelectedBotIds((prev) => {
-      if (
-        prev.length === currentBotIds.length &&
-        prev.every((id, index) => id === currentBotIds[index])
-      ) {
+      if (prev.length > 0) {
+        // User has already made a selection, don't override
         return prev;
       }
+      // Initial load: select all bots
       return currentBotIds;
     });
   }, [safeBots]);
@@ -761,7 +770,9 @@ export default function DashboardPageNew() {
         (entry) => entry.botId === selectedSingleBotId
       );
     }
-    if (selectedBotIds.length === 0) return activeTranscripts;
+    // If no bots selected, show empty list (user explicitly cleared)
+    if (selectedBotIds.length === 0) return [];
+    // If some bots selected, filter to those bots
     const selectedSet = new Set(selectedBotIds);
     return activeTranscripts.filter((entry) => selectedSet.has(entry.botId));
   }, [transcripts, selectedBotIds, selectedSingleBotId, safeBots]);
@@ -1067,14 +1078,21 @@ export default function DashboardPageNew() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={handleSelectAllBots}
-                      className="px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-white/10 hover:border-white/20 hover:bg-white/5 transition-colors text-light-text-primary dark:text-dark-text-primary"
+                      className={`px-3 py-1.5 text-xs sm:text-sm rounded-xl border transition-all duration-200 ${
+                        selectedBotIds.length === safeBots.length
+                          ? "border-accent-green bg-accent-green/20 text-accent-green font-semibold"
+                          : "border-white/10 hover:border-white/20 hover:bg-white/5 text-light-text-primary dark:text-dark-text-primary"
+                      }`}
                     >
                       All Bots
                     </button>
                     <button
                       onClick={handleClearBots}
-                      className="px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-white/10 hover:border-white/20 hover:bg-white/5 transition-colors text-light-text-primary dark:text-dark-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
-                      disabled={selectedBotIds.length === 0}
+                      className={`px-3 py-1.5 text-xs sm:text-sm rounded-xl border transition-all duration-200 ${
+                        selectedBotIds.length === 0
+                          ? "border-white/10 bg-white/5 text-light-text-tertiary dark:text-dark-text-tertiary cursor-default"
+                          : "border-white/10 hover:border-accent-red hover:bg-accent-red/10 hover:text-accent-red text-light-text-primary dark:text-dark-text-primary"
+                      }`}
                     >
                       Clear
                     </button>
@@ -1085,9 +1103,9 @@ export default function DashboardPageNew() {
                         <button
                           key={bot.id}
                           onClick={() => handleToggleBotSelection(bot.id)}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs sm:text-sm transition-colors ${
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs sm:text-sm transition-all duration-200 ${
                             isActive
-                              ? "border-white/40 bg-white/10"
+                              ? "border-accent-blue bg-accent-blue/20 shadow-glow"
                               : "border-white/10 hover:border-white/20 hover:bg-white/5"
                           }`}
                         >
@@ -1096,9 +1114,28 @@ export default function DashboardPageNew() {
                             alt="AI Model"
                             className="w-4 h-4 rounded object-contain bg-white dark:bg-gray-800 p-0.5"
                           />
-                          <span className="text-light-text-primary dark:text-dark-text-primary">
+                          <span
+                            className={`${
+                              isActive
+                                ? "text-accent-blue font-semibold"
+                                : "text-light-text-primary dark:text-dark-text-primary"
+                            }`}
+                          >
                             {bot.name}
                           </span>
+                          {isActive && (
+                            <svg
+                              className="w-3 h-3 text-accent-blue"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          )}
                         </button>
                       );
                     })}
@@ -1205,16 +1242,32 @@ export default function DashboardPageNew() {
                             </div>
 
                             {entry.decisions.length > 0 && (
-                              <details className="group mt-2 border border-white/10 rounded-xl bg-white/5 dark:bg-black/5">
-                                <summary className="cursor-pointer list-none flex items-center justify-between px-3 py-2 text-xs font-semibold text-accent-blue">
-                                  <span className="group-open:hidden">
-                                    Show individual decisions
-                                  </span>
-                                  <span className="hidden group-open:inline">
-                                    Hide individual decisions
+                              <div className="mt-2 border border-white/10 rounded-xl bg-white/5 dark:bg-black/5">
+                                <button
+                                  onClick={() => {
+                                    setExpandedDecisions((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(entry.id)) {
+                                        next.delete(entry.id);
+                                      } else {
+                                        next.add(entry.id);
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  className="w-full cursor-pointer flex items-center justify-between px-3 py-2 text-xs font-semibold text-accent-blue hover:bg-white/5 dark:hover:bg-black/5 transition-colors select-none"
+                                >
+                                  <span>
+                                    {expandedDecisions.has(entry.id)
+                                      ? "Hide individual decisions"
+                                      : "Show individual decisions"}
                                   </span>
                                   <svg
-                                    className="w-3.5 h-3.5 transition-transform group-open:rotate-180"
+                                    className={`w-3.5 h-3.5 transition-transform ${
+                                      expandedDecisions.has(entry.id)
+                                        ? "rotate-180"
+                                        : ""
+                                    }`}
                                     fill="none"
                                     stroke="currentColor"
                                     viewBox="0 0 24 24"
@@ -1226,65 +1279,83 @@ export default function DashboardPageNew() {
                                       d="M19 9l-7 7-7-7"
                                     />
                                   </svg>
-                                </summary>
-                                <div className="px-3 pb-3 space-y-3">
-                                  {entry.decisions.map((decision, index) => (
-                                    <div
-                                      key={`${entry.id}-decision-${index}`}
-                                      className="rounded-lg border border-white/10 bg-white/5 dark:bg-black/10 p-3 space-y-2"
-                                    >
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
-                                            {decision.symbol}
-                                          </span>
-                                          <span
-                                            className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getActionBadgeClasses(
-                                              decision.action
-                                            )}`}
-                                          >
-                                            {decision.action}
-                                          </span>
+                                </button>
+                                {expandedDecisions.has(entry.id) && (
+                                  <div className="px-3 pb-3 space-y-3">
+                                    {entry.decisions.map((decision, index) => (
+                                      <div
+                                        key={`${entry.id}-decision-${index}`}
+                                        className="rounded-lg border border-white/10 bg-white/5 dark:bg-black/10 p-3 space-y-2"
+                                      >
+                                        <div className="flex items-center justify-between gap-3">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
+                                              {decision.symbol}
+                                            </span>
+                                            <span
+                                              className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getActionBadgeClasses(
+                                                decision.action
+                                              )}`}
+                                            >
+                                              {decision.action}
+                                            </span>
+                                          </div>
+                                          <div className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+                                            CONF{" "}
+                                            {formatConfidence(
+                                              decision.confidence
+                                            )}
+                                          </div>
                                         </div>
-                                        <div className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
-                                          CONF{" "}
-                                          {formatConfidence(
-                                            decision.confidence
-                                          )}
-                                        </div>
+
+                                        {decision.reasoning && (
+                                          <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line">
+                                            {decision.reasoning}
+                                          </p>
+                                        )}
+
+                                        {decision.exitStrategy && (
+                                          <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
+                                            <span className="font-medium text-light-text-primary dark:text-dark-text-primary">
+                                              Exit Strategy:
+                                            </span>{" "}
+                                            {decision.exitStrategy}
+                                          </div>
+                                        )}
                                       </div>
-
-                                      {decision.reasoning && (
-                                        <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line">
-                                          {decision.reasoning}
-                                        </p>
-                                      )}
-
-                                      {decision.exitStrategy && (
-                                        <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
-                                          <span className="font-medium text-light-text-primary dark:text-dark-text-primary">
-                                            Exit Strategy:
-                                          </span>{" "}
-                                          {decision.exitStrategy}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </details>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             )}
 
                             {entry.prompt && (
-                              <details className="group mt-2 border border-white/10 rounded-xl bg-white/5 dark:bg-black/5">
-                                <summary className="cursor-pointer list-none flex items-center justify-between px-3 py-2 text-xs font-semibold text-accent-blue">
-                                  <span className="group-open:hidden">
-                                    Show prompt
-                                  </span>
-                                  <span className="hidden group-open:inline">
-                                    Hide prompt
+                              <div className="mt-2 border border-white/10 rounded-xl bg-white/5 dark:bg-black/5">
+                                <button
+                                  onClick={() => {
+                                    setExpandedPrompts((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(entry.id)) {
+                                        next.delete(entry.id);
+                                      } else {
+                                        next.add(entry.id);
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  className="w-full cursor-pointer flex items-center justify-between px-3 py-2 text-xs font-semibold text-accent-blue hover:bg-white/5 dark:hover:bg-black/5 transition-colors select-none"
+                                >
+                                  <span>
+                                    {expandedPrompts.has(entry.id)
+                                      ? "Hide prompt"
+                                      : "Show prompt"}
                                   </span>
                                   <svg
-                                    className="w-3.5 h-3.5 transition-transform group-open:rotate-180"
+                                    className={`w-3.5 h-3.5 transition-transform ${
+                                      expandedPrompts.has(entry.id)
+                                        ? "rotate-180"
+                                        : ""
+                                    }`}
                                     fill="none"
                                     stroke="currentColor"
                                     viewBox="0 0 24 24"
@@ -1296,26 +1367,44 @@ export default function DashboardPageNew() {
                                       d="M19 9l-7 7-7-7"
                                     />
                                   </svg>
-                                </summary>
-                                <div className="px-3 pb-3 pt-2">
-                                  <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line leading-relaxed">
-                                    {entry.prompt}
-                                  </p>
-                                </div>
-                              </details>
+                                </button>
+                                {expandedPrompts.has(entry.id) && (
+                                  <div className="px-3 pb-3 pt-2">
+                                    <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line leading-relaxed">
+                                      {entry.prompt}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
                             )}
 
                             {entry.thinking && (
-                              <details className="group mt-2 border border-white/10 rounded-xl bg-white/5 dark:bg-black/5">
-                                <summary className="cursor-pointer list-none flex items-center justify-between px-3 py-2 text-xs font-semibold text-accent-purple">
-                                  <span className="group-open:hidden">
-                                    Show analysis
-                                  </span>
-                                  <span className="hidden group-open:inline">
-                                    Hide analysis
+                              <div className="mt-2 border border-white/10 rounded-xl bg-white/5 dark:bg-black/5">
+                                <button
+                                  onClick={() => {
+                                    setExpandedAnalysis((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(entry.id)) {
+                                        next.delete(entry.id);
+                                      } else {
+                                        next.add(entry.id);
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  className="w-full cursor-pointer flex items-center justify-between px-3 py-2 text-xs font-semibold text-accent-purple hover:bg-white/5 dark:hover:bg-black/5 transition-colors select-none"
+                                >
+                                  <span>
+                                    {expandedAnalysis.has(entry.id)
+                                      ? "Hide analysis"
+                                      : "Show analysis"}
                                   </span>
                                   <svg
-                                    className="w-3.5 h-3.5 transition-transform group-open:rotate-180"
+                                    className={`w-3.5 h-3.5 transition-transform ${
+                                      expandedAnalysis.has(entry.id)
+                                        ? "rotate-180"
+                                        : ""
+                                    }`}
                                     fill="none"
                                     stroke="currentColor"
                                     viewBox="0 0 24 24"
@@ -1327,13 +1416,15 @@ export default function DashboardPageNew() {
                                       d="M19 9l-7 7-7-7"
                                     />
                                   </svg>
-                                </summary>
-                                <div className="px-3 pb-3 pt-2">
-                                  <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line leading-relaxed">
-                                    {entry.thinking}
-                                  </p>
-                                </div>
-                              </details>
+                                </button>
+                                {expandedAnalysis.has(entry.id) && (
+                                  <div className="px-3 pb-3 pt-2">
+                                    <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line leading-relaxed">
+                                      {entry.thinking}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
