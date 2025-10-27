@@ -1,0 +1,1 @@
+ALTER TABLE `trade_history` ADD `invalidation_condition` text;

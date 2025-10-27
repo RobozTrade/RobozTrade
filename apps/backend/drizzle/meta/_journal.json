@@ -43,6 +43,13 @@
       "when": 1761483248276,
       "tag": "0005_wonderful_whizzer",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1761587447531,
+      "tag": "0006_romantic_vulcan",
+      "breakpoints": true
     }
   ]
 }
