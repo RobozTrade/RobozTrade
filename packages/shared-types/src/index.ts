@@ -108,6 +108,7 @@ Position Status
 - Unrealized PnL: {{position.unrealized_pnl}} USDT
 - Leverage: {{position.leverage}}x | Notional: {{position.notional}} USDT | Liquidation: {{position.liquidation_price}}
 - Time in Position: {{position.entry_time}} ({{position.minutes_held}} minutes)
+
 {{/if}}
 {{/each}}
 

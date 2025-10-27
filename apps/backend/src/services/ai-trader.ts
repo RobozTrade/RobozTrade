@@ -87,13 +87,12 @@ function populatePromptTemplate(
 
   let prompt = template;
   const firstContext = contexts[0];
-
   const globalReplacements: Record<string, string | number | undefined> = {
     current_time: firstContext.currentTimeIso ?? new Date().toISOString(),
     cycle_count: formatNumber(firstContext.cycleCount ?? 0, 0),
     minutes_trading: formatNumber(firstContext.minutesTrading ?? 0, 0),
     total_invocations: formatNumber(
-      firstContext.totalInvocations ?? (firstContext.totalExecutions ?? 0),
+      firstContext.totalInvocations ?? firstContext.totalExecutions ?? 0,
       0
     ),
     total_executions: formatNumber(firstContext.totalExecutions ?? 0, 0),
@@ -104,7 +103,7 @@ function populatePromptTemplate(
     initial_balance: formatNumber(firstContext.initialBalance, 2),
     total_return: formatNumber(firstContext.totalReturn, 2),
     sharpe_ratio: formatNumber(firstContext.sharpeRatio, 3),
-    win_rate: formatNumber(firstContext.winRate * 100, 1),
+    win_rate: formatNumber((firstContext.winRate ?? 0) * 100, 1),
     max_leverage: firstContext.maxLeverage,
     min_notional_per_trade: formatNumber(firstContext.minNotionalPerTrade, 2),
     max_notional_per_trade: formatNumber(firstContext.maxNotionalPerTrade, 2),
@@ -169,7 +168,9 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
     ht_atr3: ctx.higherTimeframeAtr3 !== undefined ? formatNumber(ctx.higherTimeframeAtr3, 2) : undefined,
     ht_atr14: ctx.higherTimeframeAtr14 !== undefined ? formatNumber(ctx.higherTimeframeAtr14, 2) : undefined,
     ht_volume_current: ctx.higherTimeframeVolume !== undefined ? formatNumber(ctx.higherTimeframeVolume, 2) : undefined,
-    ht_volume_average: ctx.higherTimeframeVolumeAverage !== undefined ? formatNumber(ctx.higherTimeframeVolumeAverage, 2) : undefined,
+    ht_volume_average: ctx.higherTimeframeVolumeAverage !== undefined
+      ? formatNumber(ctx.higherTimeframeVolumeAverage, 2)
+      : undefined,
     ht_macd_series: formatSeries(ctx.higherTimeframeMacdSeries),
     ht_rsi14_series: formatSeries(ctx.higherTimeframeRsi14Series),
   };
@@ -219,7 +220,7 @@ function replaceTemplatePlaceholders(
       continue;
     }
 
-    const regex = new RegExp(`\\{\\{\s*${escapeRegExp(key)}\s*\\}\\}`, 'g');
+    const regex = new RegExp(`\{\{\s*${escapeRegExp(key)}\s*\}\}`, 'g');
     output = output.replace(regex, String(value));
   }
 
@@ -287,6 +288,64 @@ export function buildTradingPrompt(
   return populatePromptTemplate(template, contexts);
 }
 
+function sanitizeJsonString(input: string): string {
+  let result = '';
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+
+    if (!inString) {
+      result += char;
+      if (char === '"') {
+        inString = true;
+      }
+      continue;
+    }
+
+    if (escapeNext) {
+      result += char;
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      result += char;
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === '"') {
+      result += char;
+      inString = false;
+      continue;
+    }
+
+    switch (char) {
+      case '\n':
+        result += '\\n';
+        break;
+      case '\r':
+        result += '\\r';
+        break;
+      case '\t':
+        result += '\\t';
+        break;
+      default: {
+        const code = char.charCodeAt(0);
+        if (code >= 0 && code < 32) {
+          result += `\\u${code.toString(16).padStart(4, '0')}`;
+        } else {
+          result += char;
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
 /**
  * Parse AI response to extract trading decisions
  */
@@ -296,13 +355,14 @@ function parseAIResponse(response: string, symbols: string[]): ParsedAIResponse 
   let thinking: string | undefined;
 
   const tryParseJson = (input: string): any => {
+    const sanitizedInput = sanitizeJsonString(input);
     try {
-      return JSON.parse(input);
+      return JSON.parse(sanitizedInput);
     } catch (error) {
-      const sanitized = input.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
-      if (sanitized !== input) {
+      const controlStripped = sanitizedInput.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+      if (controlStripped !== sanitizedInput) {
         try {
-          return JSON.parse(sanitized);
+          return JSON.parse(controlStripped);
         } catch (sanitizedError) {
           console.warn('Failed to parse sanitized AI JSON response:', sanitizedError);
         }
@@ -311,13 +371,129 @@ function parseAIResponse(response: string, symbols: string[]): ParsedAIResponse 
     }
   };
 
+  const extractJsonFromMarkdown = (input: string): string => {
+    // Check for markdown code blocks
+    const codeBlockRegex = /```(?:json|javascript)?\s*\n?([\s\S]*?)\n?```/i;
+    const match = input.match(codeBlockRegex);
+    if (match) {
+      return match[1].trim();
+    }
+    return input;
+  };
+
+  const mapJsonDecision = (entry: any, index: number): TradingDecision | null => {
+    if (!entry || typeof entry !== 'object') {
+      return null;
+    }
+
+    const action = (entry.action ?? entry.Action ?? '').toString().toUpperCase();
+    const symbol = (entry.symbol ?? entry.Symbol ?? symbols[index] ?? '').toString().toUpperCase();
+
+    if (!['BUY', 'SELL', 'HOLD', 'CLOSE'].includes(action) || !symbol) {
+      return null;
+    }
+
+    let confidenceValue = Number(entry.confidence ?? entry.Confidence ?? 0.5);
+    if (!Number.isFinite(confidenceValue)) {
+      confidenceValue = 0.5;
+    }
+    if (confidenceValue > 1 && confidenceValue <= 100) {
+      confidenceValue /= 100;
+    }
+    confidenceValue = Math.max(0, Math.min(confidenceValue, 1));
+
+    const decision: TradingDecision = {
+      action: action as TradingDecision['action'],
+      symbol,
+      reasoning: (entry.reasoning ?? entry.Reasoning ?? '').toString(),
+      confidence: confidenceValue,
+    };
+
+    if (entry.target_notional !== undefined) {
+      const value = Number(entry.target_notional);
+      if (Number.isFinite(value)) {
+        (decision as any).targetNotional = value;
+      }
+    }
+
+    if (entry.targetNotional !== undefined) {
+      const value = Number(entry.targetNotional);
+      if (Number.isFinite(value)) {
+        (decision as any).targetNotional = value;
+      }
+    }
+
+    if (entry.suggestedQuantity !== undefined) {
+      const qty = Number(entry.suggestedQuantity);
+      if (Number.isFinite(qty)) {
+        if ((decision as any).targetNotional === undefined && qty >= 10 && qty <= 10000) {
+          // Treat as notional in USDT when value looks like sizing
+          (decision as any).targetNotional = qty;
+        } else {
+          decision.suggestedQuantity = qty;
+        }
+      }
+    }
+
+    if (entry.quantity !== undefined && decision.suggestedQuantity === undefined) {
+      const qty = Number(entry.quantity);
+      if (Number.isFinite(qty)) {
+        decision.suggestedQuantity = qty;
+      }
+    }
+
+    if (entry.leverage !== undefined) {
+      const leverage = Number(entry.leverage);
+      if (Number.isFinite(leverage)) {
+        decision.suggestedLeverage = leverage;
+      }
+    }
+
+    if (entry.suggestedLeverage !== undefined) {
+      const leverage = Number(entry.suggestedLeverage);
+      if (Number.isFinite(leverage)) {
+        decision.suggestedLeverage = leverage;
+      }
+    }
+
+    if (entry.stop_loss !== undefined) {
+      const stop = Number(entry.stop_loss);
+      if (Number.isFinite(stop)) {
+        decision.suggestedStopLoss = stop;
+      }
+    }
+
+    if (entry.suggestedStopLoss !== undefined) {
+      const stop = Number(entry.suggestedStopLoss);
+      if (Number.isFinite(stop)) {
+        decision.suggestedStopLoss = stop;
+      }
+    }
+
+    if (entry.take_profit !== undefined) {
+      const take = Number(entry.take_profit);
+      if (Number.isFinite(take)) {
+        decision.suggestedTakeProfit = take;
+      }
+    }
+
+    if (entry.suggestedTakeProfit !== undefined) {
+      const take = Number(entry.suggestedTakeProfit);
+      if (Number.isFinite(take)) {
+        decision.suggestedTakeProfit = take;
+      }
+    }
+
+    return decision;
+  };
+
   try {
     // Try to parse as JSON first
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       let parsed: any | null = null;
       try {
-        parsed = tryParseJson(jsonMatch[0]);
+        parsed = tryParseJson(extractJsonFromMarkdown(jsonMatch[0]));
       } catch (jsonError) {
         console.warn('AI response included invalid JSON, falling back to text parsing:', jsonError);
       }
@@ -341,56 +517,39 @@ function parseAIResponse(response: string, symbols: string[]): ParsedAIResponse 
           }
 
           // Map AI response fields to expected interface fields
-          const mappedDecisions: TradingDecision[] = parsed.decisions.map((d: any) => {
-            const decision: TradingDecision = {
-              action: d.action,
-              symbol: d.symbol,
-              reasoning: d.reasoning || '',
-              confidence: d.confidence || 0.5,
+          const mappedDecisions = parsed.decisions
+            .map((entry: any, index: number) => mapJsonDecision(entry, index))
+            .filter((decision: TradingDecision | null): decision is TradingDecision => decision !== null);
+
+          if (mappedDecisions.length > 0) {
+            return {
+              decisions: mappedDecisions,
+              summary,
+              thinking,
             };
+          }
+        }
+      }
+    }
 
-            // Map leverage field
-            if (d.leverage !== undefined && d.leverage !== null) {
-              decision.suggestedLeverage = Number(d.leverage);
-            } else if (d.suggestedLeverage !== undefined && d.suggestedLeverage !== null) {
-              decision.suggestedLeverage = Number(d.suggestedLeverage);
-            }
+    // Try parsing entire response as JSON if no braced block matched
+    try {
+      const parsed = tryParseJson(extractJsonFromMarkdown(response));
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.decisions)) {
+        const mappedDecisions = parsed.decisions
+          .map((entry: any, index: number) => mapJsonDecision(entry, index))
+          .filter((decision: TradingDecision | null): decision is TradingDecision => decision !== null);
 
-            // Map target_notional to suggestedQuantity (will be converted to quantity later)
-            // Store target_notional as a special field that will be used in quantity calculation
-            if (d.target_notional !== undefined && d.target_notional !== null) {
-              (decision as any).targetNotional = Number(d.target_notional);
-            } else if (d.suggestedQuantity !== undefined && d.suggestedQuantity !== null) {
-              const qty = Number(d.suggestedQuantity);
-              // Heuristic: If suggestedQuantity is in the range of typical notional values (10-10000 USDT)
-              // and seems too large to be a coin quantity, treat it as target_notional instead
-              // This handles cases where AI returns suggestedQuantity thinking it means notional value
-              if (qty >= 10 && qty <= 10000) {
-                // Likely a notional value in USDT, not a coin quantity
-                console.log(`Interpreting suggestedQuantity ${qty} as target_notional (USDT) for ${d.symbol}`);
-                (decision as any).targetNotional = qty;
-              } else {
-                // Likely an actual coin quantity
-                decision.suggestedQuantity = qty;
-              }
-            }
-
-            // Map stop_loss field
-            if (d.stop_loss !== undefined && d.stop_loss !== null) {
-              decision.suggestedStopLoss = Number(d.stop_loss);
-            } else if (d.suggestedStopLoss !== undefined && d.suggestedStopLoss !== null) {
-              decision.suggestedStopLoss = Number(d.suggestedStopLoss);
-            }
-
-            // Map take_profit field
-            if (d.take_profit !== undefined && d.take_profit !== null) {
-              decision.suggestedTakeProfit = Number(d.take_profit);
-            } else if (d.suggestedTakeProfit !== undefined && d.suggestedTakeProfit !== null) {
-              decision.suggestedTakeProfit = Number(d.suggestedTakeProfit);
-            }
-
-            return decision;
-          });
+        if (mappedDecisions.length > 0) {
+          if (typeof parsed.summary === 'string') {
+            summary = parsed.summary.trim();
+          }
+          if (typeof parsed.analysis === 'string') {
+            thinking = parsed.analysis.trim();
+          }
+          if (!thinking && summary) {
+            thinking = summary;
+          }
 
           return {
             decisions: mappedDecisions,
@@ -399,6 +558,9 @@ function parseAIResponse(response: string, symbols: string[]): ParsedAIResponse 
           };
         }
       }
+    } catch (fullParseError) {
+      // Ignore and fall back to heuristics below
+      console.warn('Full-response JSON parse failed, using heuristics:', fullParseError);
     }
 
     // Fallback: Parse text-based response
