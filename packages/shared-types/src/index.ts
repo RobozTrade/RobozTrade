@@ -108,6 +108,8 @@ Position Status
 - Unrealized PnL: {{position.unrealized_pnl}} USDT
 - Leverage: {{position.leverage}}x | Notional: {{position.notional}} USDT | Liquidation: {{position.liquidation_price}}
 - Time in Position: {{position.entry_time}} ({{position.minutes_held}} minutes)
+- Entry Reasoning: {{position.reasoning}}
+- Invalidation Condition: {{position.invalidation_condition}}
 
 {{/if}}
 {{/each}}
@@ -129,9 +131,13 @@ For each symbol, provide:
 - leverage: up to {{max_leverage}}x (justify higher leverage)
 - stop_loss & take_profit levels (USDT)
 - confidence (0-1)
-- reasoning: Must explain why closing (if CLOSE action) including position age consideration
+- reasoning: Explain your decision
   * Summarize intraday + higher timeframe drivers
   * For CLOSE actions, explicitly state why the position thesis is invalidated
+- invalidation_condition: (REQUIRED for BUY/SELL actions) Specify the market conditions that would invalidate your position thesis
+  * Be specific: e.g., "EMA20 crosses below EMA50", "RSI drops below 40", "Price breaks below 44000"
+  * This helps evaluate whether to HOLD or CLOSE the position in future cycles
+  * For existing positions, check if the invalidation condition has been met
 
 Ensure notional sizing respects portfolio limits and exchange minimums, preserves diversification, and avoids conflicting positions.`;
 
@@ -185,6 +191,8 @@ export const PROMPT_TEMPLATE_VARIABLES = [
   { name: '{{position.profit_target}}', description: 'Position take profit price' },
   { name: '{{position.entry_time}}', description: 'Time since position entry (formatted as "X min", "Xh Ym", or "Xd Yh")' },
   { name: '{{position.minutes_held}}', description: 'Total minutes the position has been held' },
+  { name: '{{position.reasoning}}', description: 'AI trading agent\'s decision-making rationale for opening this position' },
+  { name: '{{position.invalidation_condition}}', description: 'Market conditions that would invalidate the position thesis' },
 ];
 
 // User Types

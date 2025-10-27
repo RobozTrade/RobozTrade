@@ -241,10 +241,10 @@ botExecutionRoutes.get('/:botId/positions', async (c) => {
       return acc;
     }, {} as Record<string, typeof positions[0]>);
 
-    // Enrich positions with entry time and side from trade history
+    // Enrich positions with entry time, side, reasoning, and invalidation condition from trade history
     const enrichedPositions = await Promise.all(
       Object.values(latestPositions).map(async (position) => {
-        // Find the open trade for this symbol to get entry time and side
+        // Find the open trade for this symbol to get entry time, side, reasoning, and invalidation condition
         const openTrade = await db
           .select()
           .from(tradeHistory)
@@ -263,6 +263,8 @@ botExecutionRoutes.get('/:botId/positions', async (c) => {
           ...position,
           entryTime: openTrade?.openedAt || null,
           side: openTrade?.side || null,
+          reasoning: openTrade?.aiReasoning || null,
+          invalidationCondition: openTrade?.invalidationCondition || null,
         };
       })
     );

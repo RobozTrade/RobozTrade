@@ -122,10 +122,10 @@ export async function executeBot(
     // Get current positions
     const allPositions = await AsterAPI.getPositions(credentials);
 
-    // Enrich positions with entry time from trade history
+    // Enrich positions with entry time, reasoning, and invalidation condition from trade history
     const enrichedPositions = await Promise.all(
       allPositions.map(async (position) => {
-        // Find the open trade for this symbol to get entry time
+        // Find the open trade for this symbol to get entry time, reasoning, and invalidation condition
         const openTrade = await db
           .select()
           .from(tradeHistory)
@@ -143,6 +143,8 @@ export async function executeBot(
         return {
           ...position,
           entryTime: openTrade?.openedAt || undefined,
+          reasoning: openTrade?.aiReasoning || undefined,
+          invalidationCondition: openTrade?.invalidationCondition || undefined,
         };
       })
     );
@@ -630,6 +632,7 @@ async function executeBuyOrder(
     stopLossOrderId,
     takeProfitOrderId,
     aiReasoning: decision.reasoning,
+    invalidationCondition: decision.invalidationCondition,
     status: 'OPEN',
     openedAt: new Date(),
   });
@@ -716,6 +719,7 @@ async function executeSellOrder(
     stopLossOrderId,
     takeProfitOrderId,
     aiReasoning: decision.reasoning,
+    invalidationCondition: decision.invalidationCondition,
     status: 'OPEN',
     openedAt: new Date(),
   });

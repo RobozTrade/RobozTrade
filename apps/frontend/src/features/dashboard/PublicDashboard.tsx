@@ -205,6 +205,8 @@ interface PositionSnapshot {
   snapshotTime: string | number | Date | null;
   entryTime?: string | number | Date | null;
   side?: "BUY" | "SELL" | null;
+  reasoning?: string | null;
+  invalidationCondition?: string | null;
 }
 
 interface CompletedTradeRow {

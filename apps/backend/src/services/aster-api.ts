@@ -50,6 +50,8 @@ export interface Position {
   leverage: number;
   margin: number;
   entryTime?: Date; // Entry time from trade history
+  reasoning?: string; // AI trading agent's entry reasoning from trade history
+  invalidationCondition?: string; // Conditions that would invalidate the position thesis
 }
 
 export interface AccountInfo {

@@ -51,6 +51,7 @@ export interface TradingDecision {
   action: 'BUY' | 'SELL' | 'HOLD' | 'CLOSE';
   symbol: string;
   reasoning: string;
+  invalidationCondition?: string; // Conditions that would invalidate the position thesis
   confidence: number;
   suggestedQuantity?: number;
   suggestedLeverage?: number;
@@ -202,6 +203,8 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
       'position.exposure': '0',
       'position.entry_time': 'N/A',
       'position.minutes_held': 'N/A',
+      'position.reasoning': 'N/A',
+      'position.invalidation_condition': 'N/A',
     };
 
   block = replaceTemplatePlaceholders(block, fallbackPositionReplacements);
@@ -261,6 +264,8 @@ function getPositionReplacements(position: Position): Record<string, string> {
     'position.exposure': formatNumber(notional, 2),
     'position.entry_time': entryTimeFormatted,
     'position.minutes_held': minutesSinceEntry !== null ? String(minutesSinceEntry) : 'N/A',
+    'position.reasoning': position.reasoning || 'No reasoning available',
+    'position.invalidation_condition': position.invalidationCondition || 'Not specified',
   };
 }
 

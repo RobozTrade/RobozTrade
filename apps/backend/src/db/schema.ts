@@ -121,7 +121,8 @@ export const tradeHistory = sqliteTable('trade_history', {
   orderId: text('order_id'),
   stopLossOrderId: text('stop_loss_order_id'),
   takeProfitOrderId: text('take_profit_order_id'),
-  aiReasoning: text('ai_reasoning'),
+  aiReasoning: text('ai_reasoning'), // Entry reasoning
+  invalidationCondition: text('invalidation_condition'), // Conditions that would invalidate the position thesis
   status: text('status').notNull(), // 'OPEN', 'CLOSED', 'CANCELLED'
   openedAt: integer('opened_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
   closedAt: integer('closed_at', { mode: 'timestamp' }),

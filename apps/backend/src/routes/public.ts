@@ -184,10 +184,10 @@ publicRoutes.get('/positions/:walletAddress', async (c) => {
 
     const positions = Array.from(latestPositionsMap.values());
 
-    // Enrich positions with entry time and side from trade history
+    // Enrich positions with entry time, side, reasoning, and invalidation condition from trade history
     const enrichedPositions = await Promise.all(
       positions.map(async (position) => {
-        // Find the open trade for this symbol to get entry time and side
+        // Find the open trade for this symbol to get entry time, side, reasoning, and invalidation condition
         const openTrade = await db
           .select()
           .from(tradeHistory)
@@ -206,6 +206,8 @@ publicRoutes.get('/positions/:walletAddress', async (c) => {
           ...position,
           entryTime: openTrade?.openedAt || null,
           side: openTrade?.side || null,
+          reasoning: openTrade?.aiReasoning || null,
+          invalidationCondition: openTrade?.invalidationCondition || null,
         };
       })
     );
@@ -816,7 +818,7 @@ publicRoutes.get('/all-positions', async (c) => {
 
     const positions = Array.from(latestByBotSymbol.values());
 
-    // Enrich with entry time and side from open trades
+    // Enrich with entry time, side, reasoning, and invalidation condition from open trades
     const positionsWithEntryTime = await Promise.all(
       positions.map(async (pos) => {
         if (pos.tradeId) {
@@ -827,9 +829,11 @@ publicRoutes.get('/all-positions', async (c) => {
             ...pos,
             entryTime: trade?.openedAt ?? null,
             side: trade?.side ?? null,
+            reasoning: trade?.aiReasoning ?? null,
+            invalidationCondition: trade?.invalidationCondition ?? null,
           };
         }
-        return { ...pos, entryTime: null, side: null };
+        return { ...pos, entryTime: null, side: null, reasoning: null, invalidationCondition: null };
       })
     );
 
