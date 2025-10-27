@@ -204,6 +204,7 @@ interface PositionSnapshot {
   takeProfit: number | null;
   snapshotTime: string | number | Date | null;
   entryTime?: string | number | Date | null;
+  side?: "BUY" | "SELL" | null;
 }
 
 interface CompletedTradeRow {
@@ -551,7 +552,16 @@ export default function PublicDashboard({
       const color = colorByBotId.get(botId) ?? "#007aff";
 
       const positionRows: BotPositionRow[] = positions.map((pos) => {
-        const side = pos.quantity > 0 ? "LONG" : "SHORT";
+        // Determine side from the trade side field if available, otherwise from quantity
+        // BUY = LONG, SELL = SHORT
+        let side: "LONG" | "SHORT" = "LONG";
+        if (pos.side) {
+          side = pos.side === "BUY" ? "LONG" : "SHORT";
+        } else {
+          // Fallback: positive quantity = LONG, negative = SHORT
+          side = pos.quantity >= 0 ? "LONG" : "SHORT";
+        }
+
         const entryValue = Math.abs(pos.entryPrice * pos.quantity);
         const unrealizedPnlPercent =
           entryValue > 0 ? (pos.unrealizedPnl / entryValue) * 100 : 0;
@@ -664,9 +674,22 @@ export default function PublicDashboard({
       activeBotIds.has(exec.botId)
     );
 
-    const filtered = selectedSingleBotId
-      ? activeExecutions.filter((exec) => exec.botId === selectedSingleBotId)
-      : activeExecutions.filter((exec) => selectedBotIds.includes(exec.botId));
+    // Apply bot selection filter
+    let filtered: typeof activeExecutions;
+    if (selectedSingleBotId) {
+      // Single bot mode: show only that bot
+      filtered = activeExecutions.filter(
+        (exec) => exec.botId === selectedSingleBotId
+      );
+    } else if (selectedBotIds.length === 0) {
+      // No bots selected: show all active bots
+      filtered = activeExecutions;
+    } else {
+      // Some bots selected: show only those bots
+      filtered = activeExecutions.filter((exec) =>
+        selectedBotIds.includes(exec.botId)
+      );
+    }
 
     return filtered.map((exec) => {
       const bot = botById.get(exec.botId);

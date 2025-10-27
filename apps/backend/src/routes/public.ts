@@ -184,10 +184,10 @@ publicRoutes.get('/positions/:walletAddress', async (c) => {
 
     const positions = Array.from(latestPositionsMap.values());
 
-    // Enrich positions with entry time from trade history
+    // Enrich positions with entry time and side from trade history
     const enrichedPositions = await Promise.all(
       positions.map(async (position) => {
-        // Find the open trade for this symbol to get entry time
+        // Find the open trade for this symbol to get entry time and side
         const openTrade = await db
           .select()
           .from(tradeHistory)
@@ -205,6 +205,7 @@ publicRoutes.get('/positions/:walletAddress', async (c) => {
         return {
           ...position,
           entryTime: openTrade?.openedAt || null,
+          side: openTrade?.side || null,
         };
       })
     );
@@ -815,16 +816,20 @@ publicRoutes.get('/all-positions', async (c) => {
 
     const positions = Array.from(latestByBotSymbol.values());
 
-    // Enrich with entry time from open trades
+    // Enrich with entry time and side from open trades
     const positionsWithEntryTime = await Promise.all(
       positions.map(async (pos) => {
         if (pos.tradeId) {
           const trade = await db.query.tradeHistory.findFirst({
             where: eq(tradeHistory.id, pos.tradeId),
           });
-          return { ...pos, entryTime: trade?.openedAt ?? null };
+          return {
+            ...pos,
+            entryTime: trade?.openedAt ?? null,
+            side: trade?.side ?? null,
+          };
         }
-        return { ...pos, entryTime: null };
+        return { ...pos, entryTime: null, side: null };
       })
     );
 

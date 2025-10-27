@@ -208,6 +208,13 @@ export async function executeBot(
     const tradingSymbols = (bot.tradingSymbols as string[]) || [];
     const contexts: TradingContext[] = [];
     const marketDataSnapshot: Record<string, any> = {};
+    let openTradesCount = enrichedPositions.length;
+    const maxOpenTradesConfigured = bot.maxOpenTrades || 5;
+    const syncOpenTradesCount = (count: number) => {
+      for (const ctx of contexts) {
+        ctx.currentOpenTrades = count;
+      }
+    };
 
     // Use shared cache if available, otherwise fetch fresh data
     let symbolMetadataMap: Map<string, AsterAPI.SymbolMetadata>;
@@ -307,8 +314,8 @@ export async function executeBot(
           maxLeverage: bot.maxLeverage || 20,
           minNotionalPerTrade,
           maxNotionalPerTrade,
-          maxOpenTrades: bot.maxOpenTrades || 5,
-          currentOpenTrades: enrichedPositions.length,
+          maxOpenTrades: maxOpenTradesConfigured,
+          currentOpenTrades: openTradesCount,
           accountExposure: totalExposure,
           instrument,
           intradayMidPrices,
@@ -340,6 +347,8 @@ export async function executeBot(
         console.error(`Error processing ${symbol}:`, error);
       }
     }
+
+    syncOpenTradesCount(openTradesCount);
 
     if (contexts.length === 0) {
       throw new Error('No valid market data available for any symbol');
@@ -375,24 +384,44 @@ export async function executeBot(
         const context = contexts.find(ctx => ctx.symbol === decision.symbol);
         if (!context) continue;
 
-        // Skip if confidence is below threshold
-        if (decision.confidence < 0.65) {
+        const isCloseAction = decision.action === 'CLOSE';
+
+        // Skip if confidence is below threshold (allow CLOSE actions regardless)
+        if (!isCloseAction && decision.confidence < 0.65) {
           console.log(`Skipping ${decision.symbol} - low confidence: ${decision.confidence}`);
           continue;
         }
 
-        if (decision.action === 'BUY' && context.currentOpenTrades < context.maxOpenTrades) {
+        if (!isCloseAction) {
+          const maxOpenTrades = context.maxOpenTrades ?? maxOpenTradesConfigured;
+          if (openTradesCount >= maxOpenTrades) {
+            console.log(
+              `Skipping ${decision.symbol} - open trades limit reached (${openTradesCount}/${maxOpenTrades})`
+            );
+            continue;
+          }
+        }
+
+        if (decision.action === 'BUY') {
           // Open long position
           await executeBuyOrder(decision, context, credentials, db, botId);
           tradesExecuted++;
-        } else if (decision.action === 'SELL' && context.currentOpenTrades < context.maxOpenTrades) {
+          openTradesCount++;
+          syncOpenTradesCount(openTradesCount);
+        } else if (decision.action === 'SELL') {
           // Open short position
           await executeSellOrder(decision, context, credentials, db, botId);
           tradesExecuted++;
-        } else if (decision.action === 'CLOSE' && context.position) {
+          openTradesCount++;
+          syncOpenTradesCount(openTradesCount);
+        } else if (isCloseAction && context.position) {
           // Close existing position
-          await executeCloseOrder(decision, context, credentials, db, botId);
-          tradesExecuted++;
+          const closed = await executeCloseOrder(decision, context, credentials, db, botId);
+          if (closed) {
+            tradesExecuted++;
+            openTradesCount = Math.max(openTradesCount - 1, 0);
+            syncOpenTradesCount(openTradesCount);
+          }
         }
         // HOLD - do nothing
 
@@ -678,12 +707,12 @@ async function executeSellOrder(
 }
 
 async function executeCloseOrder(
-  decision: TradingDecision,
+  _decision: TradingDecision,
   context: TradingContext,
   credentials: AsterAPI.AsterCredentials,
   db: DbClient,
   botId: string
-) {
+): Promise<boolean> {
   if (!context.position) {
     throw new Error(`No position to close for ${context.symbol}`);
   }
@@ -693,21 +722,52 @@ async function executeCloseOrder(
   const MIN_HOLD_MINUTES = bot?.minHoldMinutes ?? 30;
   const EMERGENCY_LOSS_THRESHOLD = -5; // Allow early close if losing >5%
 
-  // Enforce minimum hold time
-  const minutesHeld = context.position.entryTime
-    ? Math.floor((Date.now() - new Date(context.position.entryTime).getTime()) / 60000)
-    : 0;
+  const openTrade = await db
+    .select()
+    .from(tradeHistory)
+    .where(
+      and(
+        eq(tradeHistory.botId, botId),
+        eq(tradeHistory.symbol, context.symbol),
+        eq(tradeHistory.status, 'OPEN')
+      )
+    )
+    .orderBy(desc(tradeHistory.openedAt))
+    .limit(1)
+    .get();
+
+  if (!openTrade) {
+    console.warn(`No open trade record found for ${context.symbol} when attempting close`);
+    return false;
+  }
+
+  const entryTimestampSource = openTrade.openedAt ?? context.position.entryTime;
+  let minutesHeld = MIN_HOLD_MINUTES;
+
+  if (entryTimestampSource) {
+    const entryTimestamp = new Date(entryTimestampSource).getTime();
+    if (Number.isFinite(entryTimestamp)) {
+      minutesHeld = Math.floor((Date.now() - entryTimestamp) / 60000);
+    }
+  }
+
+  const leverageForMargin = context.position.leverage || openTrade.leverage || context.maxLeverage || 1;
+  const fallbackMargin =
+    context.position.entryPrice > 0 && leverageForMargin > 0
+      ? (context.position.entryPrice * context.position.quantity) / leverageForMargin
+      : 0;
+  const marginCandidates = [context.position.margin, openTrade.margin, fallbackMargin];
+  const marginBase = marginCandidates.find(value => value !== undefined && value > 0) ?? 0;
+  const pnlPercent = marginBase > 0 ? (context.position.unrealizedPnl / marginBase) * 100 : 0;
 
   if (minutesHeld < MIN_HOLD_MINUTES) {
-    const pnlPercent = (context.position.unrealizedPnl / context.position.margin) * 100;
-
     if (pnlPercent > EMERGENCY_LOSS_THRESHOLD) {
       console.log(
         `⚠️ Rejecting premature close for ${context.symbol}: ` +
         `position only ${minutesHeld} minutes old (min: ${MIN_HOLD_MINUTES}), ` +
         `PnL: ${pnlPercent.toFixed(2)}% (not emergency loss)`
       );
-      return; // Skip this close action
+      return false; // Skip this close action
     } else {
       console.log(
         `⚠️ Allowing emergency close for ${context.symbol}: ` +
@@ -719,64 +779,45 @@ async function executeCloseOrder(
   // Close the position
   const closeOrder = await AsterAPI.closePosition(context.symbol, credentials);
 
-  // Find the open trade in database
-  const openTrade = await db
-    .select()
-    .from(tradeHistory)
-    .where(
-      and(
-        eq(tradeHistory.botId, botId),
-        eq(tradeHistory.symbol, context.symbol),
-        eq(tradeHistory.status, 'OPEN')
-      )
-    )
-    .get();
+  const exitPrice = closeOrder.avgPrice;
+  const entryPrice = openTrade.entryPrice;
+  const quantity = openTrade.quantity;
+  const side = openTrade.side;
 
-  if (openTrade) {
-    // Calculate realized PnL based on entry/exit prices and position side
-    // For LONG positions (BUY): PnL = (exitPrice - entryPrice) * quantity
-    // For SHORT positions (SELL): PnL = (entryPrice - exitPrice) * quantity
-    const exitPrice = closeOrder.avgPrice;
-    const entryPrice = openTrade.entryPrice;
-    const quantity = openTrade.quantity;
-    const side = openTrade.side;
-
-    let realizedPnl: number;
-    if (side === 'BUY') {
-      // LONG position
-      realizedPnl = (exitPrice - entryPrice) * quantity;
-    } else {
-      // SHORT position
-      realizedPnl = (entryPrice - exitPrice) * quantity;
-    }
-
-    // Subtract fees if available
-    const fees = openTrade.fees || 0;
-    realizedPnl -= fees;
-
-    console.log(`✅ Closed position for ${context.symbol}:`, {
-      side,
-      entryPrice,
-      exitPrice,
-      quantity,
-      fees,
-      realizedPnl: realizedPnl.toFixed(2),
-    });
-
-    // Update trade record
-    await db
-      .update(tradeHistory)
-      .set({
-        exitPrice,
-        realizedPnl,
-        status: 'CLOSED',
-        closedAt: new Date(),
-      })
-      .where(eq(tradeHistory.id, openTrade.id));
-
-    // Update bot metrics
-    await updateBotMetrics(db, botId, realizedPnl);
+  let realizedPnl: number;
+  if (side === 'BUY') {
+    realizedPnl = (exitPrice - entryPrice) * quantity;
+  } else {
+    realizedPnl = (entryPrice - exitPrice) * quantity;
   }
+
+  const fees = openTrade.fees ?? 0;
+  realizedPnl -= fees;
+
+  console.log(`✅ Closed position for ${context.symbol}:`, {
+    side,
+    entryPrice,
+    exitPrice,
+    quantity,
+    fees,
+    realizedPnl: realizedPnl.toFixed(2),
+  });
+
+  await db
+    .update(tradeHistory)
+    .set({
+      exitPrice,
+      realizedPnl,
+      status: 'CLOSED',
+      closedAt: new Date(),
+    })
+    .where(eq(tradeHistory.id, openTrade.id));
+
+  await updateBotMetrics(db, botId, realizedPnl);
+
+  context.position = undefined;
+
+  return true;
 }
 
 async function updateBotMetrics(

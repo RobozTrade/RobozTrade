@@ -53,6 +53,7 @@ interface PositionSnapshot {
   takeProfit: number | null;
   snapshotTime: string | number | Date | null;
   entryTime?: string | number | Date | null;
+  side?: "BUY" | "SELL" | null;
 }
 
 interface CompletedTradeRow {
@@ -785,7 +786,16 @@ export default function DashboardPageNew() {
           .map((position) => {
             const margin = position.margin ?? 0;
             const unrealizedPnl = position.unrealizedPnl ?? 0;
-            const side = position.quantity >= 0 ? "LONG" : "SHORT";
+
+            // Determine side from the trade side field if available, otherwise from quantity
+            // BUY = LONG, SELL = SHORT
+            let side: "LONG" | "SHORT" = "LONG";
+            if (position.side) {
+              side = position.side === "BUY" ? "LONG" : "SHORT";
+            } else {
+              // Fallback: positive quantity = LONG, negative = SHORT
+              side = position.quantity >= 0 ? "LONG" : "SHORT";
+            }
 
             return {
               id: position.id,

@@ -442,11 +442,23 @@ export async function getAccountInfo(credentials: AsterCredentials): Promise<Acc
   return withRateLimit(async () => {
     const data = await makeRequest('/fapi/v2/account', 'GET', credentials);
 
+    const availableBalance = parseNumber(data.availableBalance, 0);
+    const walletBalance = parseNumber(data.totalWalletBalance, 0);
+    const unrealizedPnl = parseNumber(data.totalUnrealizedProfit, 0);
+    const marginBalance = parseNumber(data.totalMarginBalance, walletBalance + unrealizedPnl);
+    const totalInitialMargin = parseNumber(data.totalInitialMargin, 0);
+    const positionInitialMargin = parseNumber(data.totalPositionInitialMargin, 0);
+    const openOrderInitialMargin = parseNumber(data.totalOpenOrderInitialMargin, 0);
+    const marginUsed =
+      totalInitialMargin > 0
+        ? totalInitialMargin
+        : positionInitialMargin + openOrderInitialMargin;
+
     return {
-      availableBalance: parseFloat(data.availableBalance),
-      totalBalance: parseFloat(data.totalWalletBalance),
-      unrealizedPnl: parseFloat(data.totalUnrealizedProfit),
-      marginUsed: parseFloat(data.totalMarginBalance),
+      availableBalance,
+      totalBalance: marginBalance,
+      unrealizedPnl,
+      marginUsed,
     };
   }, false);
 }
