@@ -411,6 +411,7 @@ function parseAIResponse(response: string, symbols: string[]): ParsedAIResponse 
       action: action as TradingDecision['action'],
       symbol,
       reasoning: (entry.reasoning ?? entry.Reasoning ?? '').toString(),
+      invalidationCondition: (entry.invalidation_condition ?? entry.InvalidationCondition ?? '').toString(),
       confidence: confidenceValue,
     };
 
@@ -582,6 +583,10 @@ function parseAIResponse(response: string, symbols: string[]): ParsedAIResponse 
         const reasoningMatch = response.match(reasoningRegex);
         const reasoning = reasoningMatch ? reasoningMatch[1].trim() : 'No specific reasoning provided';
 
+        const invalidationRegex = /invalidation_condition[:\\s]+([^\\n]+)/i;
+        const invalidationMatch = response.match(invalidationRegex);
+        const invalidationCondition = invalidationMatch ? invalidationMatch[1].trim() : undefined;
+
         // Extract confidence if mentioned
         const confidenceRegex = /confidence[:\\s]+(\\d+(?:\\.\\d+)?)/i;
         const confidenceMatch = response.match(confidenceRegex);
@@ -591,6 +596,7 @@ function parseAIResponse(response: string, symbols: string[]): ParsedAIResponse 
           action,
           symbol,
           reasoning,
+          invalidationCondition,
           confidence,
         });
       } else {
@@ -600,6 +606,7 @@ function parseAIResponse(response: string, symbols: string[]): ParsedAIResponse 
           symbol,
           reasoning: 'No clear signal from AI',
           confidence: 0.3,
+          invalidationCondition: 'No clear signal from AI',
         });
       }
     }
@@ -621,6 +628,7 @@ function parseAIResponse(response: string, symbols: string[]): ParsedAIResponse 
         symbol,
         reasoning: 'Error parsing AI response',
         confidence: 0,
+        invalidationCondition: 'Error parsing AI response',
       })),
       summary,
       thinking,
@@ -685,7 +693,7 @@ CRITICAL TRADING RULES:
 
 4. AVOID FLIP-FLOPPING: Don't reverse positions rapidly. If you close a position, you should have strong conviction before reopening.
 
-Analyze the market data and provide clear trading decisions (BUY, SELL, HOLD, or CLOSE) for each symbol with reasoning. Format your response as JSON with a "decisions" array containing objects with: action, symbol, reasoning, confidence (0-1), and optional target_notional (in USDT), leverage (multiplier), stop_loss (price in USDT), take_profit (price in USDT).
+Analyze the market data and provide clear trading decisions (BUY, SELL, HOLD, or CLOSE) for each symbol with reasoning. Format your response as JSON with a "decisions" array containing objects with: action, symbol, reasoning, confidence (0-1), and optional target_notional (in USDT), leverage (multiplier), stop_loss (price in USDT), take_profit (price in USDT), and invalidation_condition .
 
 IMPORTANT: target_notional should be the desired position size in USDT (e.g., 150 means $150 worth of the asset), NOT the quantity of coins.
 
