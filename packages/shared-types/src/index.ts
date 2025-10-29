@@ -63,7 +63,9 @@ export const SUPPORTED_AI_MODELS: {
 
     // Perplexity Models (Latest with real-time web access)
     { value: 'perplexity/sonar-pro', label: 'Sonar Pro', description: 'Latest flagship model from Perplexity', logo: '/logos/perplexity.svg', provider: 'Perplexity' },
-  ]; export const DEFAULT_PROMPT_TEMPLATE = `You are an expert cryptocurrency futures trader overseeing a multi-asset USDT-margined portfolio.
+  ];
+
+export const DEFAULT_PROMPT_TEMPLATE = `You are an expert cryptocurrency futures trader overseeing a multi-asset USDT-margined portfolio.
 
 SESSION CONTEXT
 It has been {{minutes_trading}} minutes since you started trading. The current time is {{current_time}} and you've been invoked {{total_invocations}} times to reason through the markets.

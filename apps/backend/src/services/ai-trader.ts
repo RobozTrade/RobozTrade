@@ -693,11 +693,40 @@ CRITICAL TRADING RULES:
 
 4. AVOID FLIP-FLOPPING: Don't reverse positions rapidly. If you close a position, you should have strong conviction before reopening.
 
-Analyze the market data and provide clear trading decisions (BUY, SELL, HOLD, or CLOSE) for each symbol with reasoning. Format your response as JSON with a "decisions" array containing objects with: action, symbol, reasoning, confidence (0-1), and optional target_notional (in USDT), leverage (multiplier), stop_loss (price in USDT), take_profit (price in USDT), and invalidation_condition .
+5. LEVERAGE & NOTIONAL: Remember that NOTIONAL = MARGIN * LEVERAGE. With the available balance and leverage, you can control much larger positions than the cash balance alone.
 
-IMPORTANT: target_notional should be the desired position size in USDT (e.g., 150 means $150 worth of the asset), NOT the quantity of coins.
+RESPONSE FORMAT REQUIREMENTS:
+You MUST respond with valid JSON ONLY - no markdown code blocks, no explanations outside JSON.
 
-Include an optional "summary" field for a concise narrative of your outlook and an optional "analysis" field capturing your thinking process.`,
+Structure:
+{
+  "summary": "Brief market overview",
+  "decisions": [
+    {
+      "symbol": "BTCUSDT",
+      "action": "BUY" | "SELL" | "HOLD" | "CLOSE",
+      "target_notional": 200,
+      "leverage": 10,
+      "stop_loss": 42000,
+      "take_profit": 46000,
+      "confidence": 0.75,
+      "reasoning": "Detailed reasoning",
+      "invalidation_condition": "Specific conditions"
+    }
+  ]
+}
+
+CRITICAL JSON RULES:
+- NO markdown code blocks (no \`\`\`json or \`\`\`)
+- Use double quotes for strings
+- Numbers must be raw numbers, not strings
+- Actions: "BUY", "SELL", "HOLD", "CLOSE" (uppercase)
+- Confidence: 0-1 decimal (e.g., 0.75)
+- target_notional is TOTAL POSITION SIZE in USDT (not margin, not quantity)
+
+IMPORTANT: target_notional should be the desired position size in USDT (e.g., 150 means $150 worth of the asset), NOT the quantity of coins. This is the NOTIONAL value (total position size), and the system will calculate the required MARGIN by dividing by leverage.
+
+Include an "summary" field for a concise narrative of your outlook and an optional "analysis" field capturing your thinking process.`,
         prompt,
         temperature: 0.4,
         maxRetries: 0,
