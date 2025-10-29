@@ -12,7 +12,7 @@ import { botExecutionRoutes } from './routes/bot-execution';
 import { botPerformanceRoutes } from './routes/bot-performance';
 import { publicRoutes } from './routes/public';
 import { MarketDataWebSocket } from './services/websocket';
-import { handleScheduled, runScheduledExecution, type Env as ScheduledEnv } from './scheduled';
+import { handleScheduled, runScheduledExecution, cleanupOldBotExecutions, type Env as ScheduledEnv } from './scheduled';
 
 export { MarketDataWebSocket };
 
@@ -135,6 +135,37 @@ app.get('/api/cron/trigger', async (c) => {
     console.error('Error triggering cron execution:', error);
     return c.json(
       { success: false, error: 'Failed to trigger cron execution', message: error.message },
+      500
+    );
+  }
+});
+
+/**
+ * Manually trigger bot execution cleanup (development only)
+ * POST /api/cron/cleanup
+ */
+app.get('/api/cron/cleanup', async (c) => {
+  try {
+    const runtimeEnv = (c.env.APP_RUNTIME_ENV || 'production').toLowerCase();
+    if (runtimeEnv !== 'development') {
+      return c.json({ success: false, error: 'Manual cleanup trigger is disabled outside development' }, 403);
+    }
+
+    const result = await cleanupOldBotExecutions({
+      DB: c.env.DB,
+      ENCRYPTION_KEY: c.env.ENCRYPTION_KEY,
+      PBKDF2_ITERATIONS: c.env.PBKDF2_ITERATIONS,
+      APP_RUNTIME_ENV: c.env.APP_RUNTIME_ENV,
+    });
+
+    return c.json({
+      success: true,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error('Error triggering cleanup:', error);
+    return c.json(
+      { success: false, error: 'Failed to trigger cleanup', message: error.message },
       500
     );
   }

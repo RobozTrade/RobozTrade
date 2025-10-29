@@ -3,9 +3,9 @@
  * Runs trading bots every 2 minutes
  */
 
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { getDb } from './lib/db';
-import { tradingBots, apiKeys } from './db/schema';
+import { tradingBots, apiKeys, botExecutions } from './db/schema';
 import { executeBot, type SharedMarketDataCache } from './services/bot-executor';
 import { asterRateLimiter } from './services/rate-limiter';
 import { decrypt } from './lib/crypto';
@@ -282,6 +282,59 @@ export async function runScheduledExecution(
 }
 
 /**
+ * Clean up old bot execution records
+ * Keeps only the 100 most recent execution records for each bot
+ * Runs once per day at midnight UTC
+ */
+export async function cleanupOldBotExecutions(env: Env): Promise<{
+  totalDeleted: number;
+  botsProcessed: number;
+}> {
+  const db = getDb(env.DB);
+  let totalDeleted = 0;
+  let botsProcessed = 0;
+
+  try {
+    // Get all unique bot IDs that have executions
+    const allBots = await db
+      .selectDistinct({ botId: botExecutions.botId })
+      .from(botExecutions)
+      .all();
+
+    console.log(`Cleaning up bot executions for ${allBots.length} bots...`);
+
+    // For each bot, delete old executions keeping only the 100 most recent
+    for (const { botId } of allBots) {
+      // Delete executions using a subquery to keep only the 100 most recent
+      // This is more efficient than fetching IDs and using NOT IN
+      const result = await db.run(
+        sql`DELETE FROM bot_executions
+            WHERE bot_id = ${botId}
+            AND id NOT IN (
+              SELECT id FROM bot_executions
+              WHERE bot_id = ${botId}
+              ORDER BY execution_time DESC
+              LIMIT 100
+            )`
+      );
+
+      const deletedCount = result.meta.changes || 0;
+      if (deletedCount > 0) {
+        console.log(`Bot ${botId}: Deleted ${deletedCount} old execution records`);
+        totalDeleted += deletedCount;
+      }
+      botsProcessed++;
+    }
+
+    console.log(`Cleanup completed: ${totalDeleted} records deleted across ${botsProcessed} bots`);
+    return { totalDeleted, botsProcessed };
+  } catch (error) {
+    console.error('Error cleaning up bot executions:', error);
+    throw error;
+  }
+}
+
+/**
  * Scheduled event handler - runs every 2 minutes
  * Configure in wrangler.toml:
  * [triggers]
@@ -322,6 +375,18 @@ export async function handleScheduled(
       ordersMinute: `${summary.rateLimit.ordersUsedMinute}/${summary.rateLimit.ordersLimitMinute}`,
       orders10s: `${summary.rateLimit.ordersUsed10s}/${summary.rateLimit.ordersLimit10s}`,
     });
+
+    // Run cleanup once per day (at midnight UTC)
+    // Check if current hour is 0 (midnight UTC)
+    const currentHour = new Date().getUTCHours();
+    const currentMinute = new Date().getUTCMinutes();
+
+    // Run cleanup if it's between 00:00 and 00:02 UTC (within the first cron window of the day)
+    if (currentHour === 0 && currentMinute < 2) {
+      console.log('Running daily bot execution cleanup...');
+      const cleanupResult = await cleanupOldBotExecutions(env);
+      console.log(`Cleanup result: ${cleanupResult.totalDeleted} records deleted from ${cleanupResult.botsProcessed} bots`);
+    }
 
   } catch (error) {
     console.error('Fatal error in scheduled execution:', error);
