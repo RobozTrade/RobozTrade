@@ -198,6 +198,16 @@ export const botMetrics = sqliteTable('bot_metrics', {
   lastUpdated: integer('last_updated', { mode: 'timestamp' }).default(sql`(unixepoch())`),
 });
 
+// Bot performance snapshots - stores account value at each bot execution
+export const botPerformanceSnapshots = sqliteTable('bot_performance_snapshots', {
+  id: text('id').primaryKey(),
+  botId: text('bot_id')
+    .notNull()
+    .references(() => tradingBots.id, { onDelete: 'cascade' }),
+  totalBalance: real('total_balance').notNull(), // Total account value at this snapshot
+  snapshotTime: integer('snapshot_time', { mode: 'timestamp' }).default(sql`(unixepoch())`).notNull(),
+});
+
 // Type exports for use in application
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -219,4 +229,19 @@ export type NewBenchmarkTest = typeof benchmarkTests.$inferInsert;
 
 export type BotPayment = typeof botPayments.$inferSelect;
 export type NewBotPayment = typeof botPayments.$inferInsert;
+
+export type TradeHistory = typeof tradeHistory.$inferSelect;
+export type NewTradeHistory = typeof tradeHistory.$inferInsert;
+
+export type BotExecution = typeof botExecutions.$inferSelect;
+export type NewBotExecution = typeof botExecutions.$inferInsert;
+
+export type PositionSnapshot = typeof positionSnapshots.$inferSelect;
+export type NewPositionSnapshot = typeof positionSnapshots.$inferInsert;
+
+export type BotMetrics = typeof botMetrics.$inferSelect;
+export type NewBotMetrics = typeof botMetrics.$inferInsert;
+
+export type BotPerformanceSnapshot = typeof botPerformanceSnapshots.$inferSelect;
+export type NewBotPerformanceSnapshot = typeof botPerformanceSnapshots.$inferInsert;
 

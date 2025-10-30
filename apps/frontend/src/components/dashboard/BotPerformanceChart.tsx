@@ -7,7 +7,7 @@ import {
   MouseEventParams,
 } from "lightweight-charts";
 import { useQuery } from "@tanstack/react-query";
-import { api, type TradeHistoryResponse } from "@/lib/api";
+import { api } from "@/lib/api";
 import type { TradingBot, AIModel } from "@roboz-trade/shared-types";
 import { SUPPORTED_AI_MODELS } from "@roboz-trade/shared-types";
 
@@ -118,41 +118,48 @@ export function BotPerformanceChart({
     refetchInterval: 120000, // Refetch every 2 minutes
   });
 
-  // Fetch trade-based performance history for all bots
+  // Fetch snapshot-based performance history for all bots
   const { data: tradeHistoryData } = useQuery({
     queryKey: showAllPublicBots
-      ? ["all-public-bot-trade-history", latestData]
+      ? ["all-public-bot-snapshot-history", latestData]
       : walletAddress
-      ? ["public-bot-trade-history", walletAddress, latestData]
-      : ["bot-trade-history", latestData],
+      ? ["public-bot-snapshot-history", walletAddress, latestData]
+      : ["bot-snapshot-history", latestData],
     queryFn: async () => {
       if (!latestData || latestData.length === 0) return {};
 
       const historyPromises = latestData.map(async (bot) => {
         const response = showAllPublicBots
-          ? await api.getAllPublicBotTradePerformanceHistory(bot.botId, 100)
+          ? await api.getAllPublicBotSnapshotPerformanceHistory(bot.botId, 0)
           : walletAddress
-          ? await api.getPublicBotTradePerformanceHistory(
+          ? await api.getPublicBotSnapshotPerformanceHistory(
               walletAddress,
               bot.botId,
-              100
+              0
             )
-          : await api.getBotTradePerformanceHistory(bot.botId, 100);
+          : await api.getBotSnapshotPerformanceHistory(bot.botId, 0);
 
         return {
           botId: bot.botId,
-          data: response.data as TradeHistoryResponse,
+          data: response.data,
         };
       });
 
       const results = await Promise.all(historyPromises);
-      const tradeHistoryMap: Record<string, TradeHistoryResponse> = {};
+      const snapshotHistoryMap: Record<string, any[]> = {};
 
       results.forEach(({ botId, data }) => {
-        tradeHistoryMap[botId] = data;
+        // Handle both array and AggregatedHistoryResponse formats
+        if (Array.isArray(data)) {
+          snapshotHistoryMap[botId] = data;
+        } else if (data && "history" in data) {
+          snapshotHistoryMap[botId] = data.history;
+        } else {
+          snapshotHistoryMap[botId] = [];
+        }
       });
 
-      return tradeHistoryMap;
+      return snapshotHistoryMap;
     },
     enabled: !!latestData && latestData.length > 0,
   });
@@ -308,12 +315,11 @@ export function BotPerformanceChart({
 
     // Create a line series for each bot
     filteredData.forEach((bot, index) => {
-      // Get trade data for this bot
-      const tradeData = tradeHistoryData[bot.botId];
-      if (!tradeData || !tradeData.history || tradeData.history.length === 0)
-        return;
+      // Get snapshot data for this bot
+      const snapshotData = tradeHistoryData[bot.botId];
+      if (!snapshotData || snapshotData.length === 0) return;
 
-      const dataPoints = tradeData.history;
+      const dataPoints = snapshotData;
       const initialBalance = 100; // Fixed initial balance
 
       const color = BOT_COLORS[index % BOT_COLORS.length];
@@ -540,12 +546,12 @@ export function BotPerformanceChart({
             />
           </svg>
           <span>
-            Showing trade-based performance •{" "}
+            Showing snapshot-based performance •{" "}
             {Object.values(tradeHistoryData).reduce(
-              (sum, data) => sum + (data?.totalTrades || 0),
+              (sum, data) => sum + (Array.isArray(data) ? data.length : 0),
               0
             )}{" "}
-            total trades
+            total snapshots
           </span>
         </div>
       )}

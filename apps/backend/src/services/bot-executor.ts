@@ -6,7 +6,7 @@
 import { nanoid } from 'nanoid';
 import { eq, and, sql, desc } from 'drizzle-orm';
 import { DEFAULT_PROMPT_TEMPLATE } from '@roboz-trade/shared-types';
-import { tradingBots, tradeHistory, botExecutions, positionSnapshots, botMetrics, apiKeys } from '../db/schema';
+import { tradingBots, tradeHistory, botExecutions, positionSnapshots, botMetrics, apiKeys, botPerformanceSnapshots } from '../db/schema';
 import { decrypt } from '../lib/crypto';
 import * as AsterAPI from './aster-api';
 import * as AITrader from './ai-trader';
@@ -490,6 +490,16 @@ export async function executeBot(
         margin: position.margin,
         stopLoss: null,
         takeProfit: null,
+        snapshotTime: new Date(),
+      });
+    }
+
+    // Save bot performance snapshot (total account value at this execution)
+    if (accountInfo?.totalBalance) {
+      await db.insert(botPerformanceSnapshots).values({
+        id: nanoid(),
+        botId,
+        totalBalance: accountInfo.totalBalance,
         snapshotTime: new Date(),
       });
     }

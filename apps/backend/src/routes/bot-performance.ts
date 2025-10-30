@@ -5,8 +5,9 @@
 
 import { Hono } from 'hono';
 import { eq, desc, and, asc } from 'drizzle-orm';
+import { nanoid } from 'nanoid';
 import { getDb } from '../lib/db';
-import { tradingBots, botExecutions, tradeHistory } from '../db/schema';
+import { tradingBots, botExecutions, tradeHistory, botPerformanceSnapshots } from '../db/schema';
 import { authMiddleware, getUserId } from '../middleware/auth';
 import {
   determineAggregationInterval,
@@ -318,6 +319,120 @@ botPerformanceRoutes.post('/:botId/sync-balances', async (c) => {
       {
         success: false,
         error: 'Failed to sync account balances',
+        message: error.message,
+      },
+      500
+    );
+  }
+});
+
+/**
+ * Get snapshot-based performance history for a specific bot with intelligent aggregation
+ * GET /api/bot-performance/:botId/snapshot-history?limit=100
+ * Returns account balance progression based on bot_performance_snapshots
+ * Use limit=0 to fetch all records with automatic aggregation
+ * Use aggregate=false to disable aggregation and get raw data
+ */
+botPerformanceRoutes.get('/:botId/snapshot-history', async (c) => {
+  try {
+    const userId = getUserId(c);
+    const botId = c.req.param('botId');
+    const limitParam = c.req.query('limit') || '100';
+    const limit = parseInt(limitParam);
+    const disableAggregation = c.req.query('aggregate') === 'false';
+    const db = getDb(c.env.DB);
+
+    // Verify bot ownership
+    const bot = await db
+      .select()
+      .from(tradingBots)
+      .where(and(eq(tradingBots.id, botId), eq(tradingBots.userId, userId)))
+      .get();
+
+    if (!bot) {
+      return c.json({ success: false, error: 'Bot not found' }, 404);
+    }
+
+    // Get all snapshots ordered by time
+    const snapshots = await db
+      .select({
+        id: botPerformanceSnapshots.id,
+        totalBalance: botPerformanceSnapshots.totalBalance,
+        snapshotTime: botPerformanceSnapshots.snapshotTime,
+      })
+      .from(botPerformanceSnapshots)
+      .where(eq(botPerformanceSnapshots.botId, botId))
+      .orderBy(asc(botPerformanceSnapshots.snapshotTime))
+      .all();
+
+    if (snapshots.length === 0) {
+      return c.json({
+        success: true,
+        data: {
+          history: [],
+          metadata: {
+            totalRecords: 0,
+            returnedRecords: 0,
+            aggregated: false,
+          },
+        },
+      });
+    }
+
+    // Build history from snapshots
+    const allHistory = snapshots.map((snapshot) => ({
+      id: snapshot.id,
+      timestamp: snapshot.snapshotTime,
+      totalBalance: snapshot.totalBalance,
+      accountBalance: snapshot.totalBalance,
+    }));
+
+    // If limit is specified and less than total, return limited results
+    if (limit > 0 && limit < allHistory.length && !disableAggregation) {
+      // Apply intelligent aggregation
+      const timeRange = getTimeRange(allHistory);
+      if (timeRange.first !== null && timeRange.last !== null) {
+        const timeSpanSeconds = timeRange.last - timeRange.first;
+        const interval = determineAggregationInterval(allHistory.length, timeSpanSeconds);
+        const aggregatedHistory = aggregateRecordsInMemory(allHistory, interval);
+        const metadata = calculateMetadata(
+          allHistory.length,
+          aggregatedHistory.length,
+          timeRange.first,
+          timeRange.last,
+          interval
+        );
+
+        return c.json({
+          success: true,
+          data: {
+            history: aggregatedHistory.slice(-limit),
+            metadata,
+          },
+        });
+      }
+    }
+
+    // Return all records or limited raw data
+    const returnedHistory = limit > 0 ? allHistory.slice(-limit) : allHistory;
+
+    return c.json({
+      success: true,
+      data: {
+        history: returnedHistory,
+        metadata: {
+          totalRecords: allHistory.length,
+          returnedRecords: returnedHistory.length,
+          aggregated: false,
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching bot snapshot history:', error);
+    return c.json(
+      {
+        success: false,
+        error: 'Failed to fetch bot snapshot history',
         message: error.message,
       },
       500
@@ -1170,6 +1285,122 @@ botPerformanceRoutes.get('/:botId/statistics', async (c) => {
       {
         success: false,
         error: 'Failed to fetch bot statistics',
+        message: error.message,
+      },
+      500
+    );
+  }
+});
+
+/**
+ * Sync bot performance snapshots from trade history
+ * POST /api/bot-performance/:botId/sync-snapshots
+ * Populates bot_performance_snapshots table with historical data from trade_history.accountBalance
+ */
+botPerformanceRoutes.post('/:botId/sync-snapshots', async (c) => {
+  try {
+    const userId = getUserId(c);
+    const botId = c.req.param('botId');
+    const db = getDb(c.env.DB);
+
+    // Verify bot ownership
+    const bot = await db
+      .select()
+      .from(tradingBots)
+      .where(and(eq(tradingBots.id, botId), eq(tradingBots.userId, userId)))
+      .get();
+
+    if (!bot) {
+      return c.json({ success: false, error: 'Bot not found' }, 404);
+    }
+
+    // Get all trades with accountBalance, ordered by time
+    const trades = await db
+      .select({
+        id: tradeHistory.id,
+        accountBalance: tradeHistory.accountBalance,
+        openedAt: tradeHistory.openedAt,
+        closedAt: tradeHistory.closedAt,
+        status: tradeHistory.status,
+      })
+      .from(tradeHistory)
+      .where(eq(tradeHistory.botId, botId))
+      .orderBy(asc(tradeHistory.openedAt))
+      .all();
+
+    if (trades.length === 0) {
+      return c.json({
+        success: true,
+        message: 'No trades found for this bot',
+        snapshotsCreated: 0,
+        totalTrades: 0,
+      });
+    }
+
+    // Delete existing snapshots for this bot to avoid duplicates
+    await db.delete(botPerformanceSnapshots).where(eq(botPerformanceSnapshots.botId, botId));
+
+    // Create snapshots from trades with accountBalance
+    let snapshotsCreated = 0;
+    const snapshots: Array<{ id: string; botId: string; totalBalance: number; snapshotTime: Date }> = [];
+
+    for (const trade of trades) {
+      if (trade.accountBalance !== null && trade.accountBalance !== undefined) {
+        // Use closedAt for closed trades, openedAt for open trades
+        const snapshotTime = trade.status === 'CLOSED' && trade.closedAt
+          ? trade.closedAt
+          : trade.openedAt;
+
+        if (snapshotTime) {
+          snapshots.push({
+            id: nanoid(),
+            botId,
+            totalBalance: trade.accountBalance,
+            snapshotTime: snapshotTime instanceof Date ? snapshotTime : new Date(snapshotTime),
+          });
+        }
+      }
+    }
+
+    // Insert snapshots in batches
+    if (snapshots.length > 0) {
+      // D1/SQLite has a limit of 999 variables per query
+      // Each snapshot has 4 fields (id, botId, totalBalance, snapshotTime)
+      // To be safe, use batch size of 100 (100 * 4 = 400 variables)
+      const batchSize = 100;
+      for (let i = 0; i < snapshots.length; i += batchSize) {
+        const batch = snapshots.slice(i, i + batchSize);
+        try {
+          await db.insert(botPerformanceSnapshots).values(batch);
+          snapshotsCreated += batch.length;
+        } catch (batchError: any) {
+          console.error(`Error inserting batch ${i / batchSize + 1}:`, batchError);
+          // If batch insert fails, try inserting one by one
+          for (const snapshot of batch) {
+            try {
+              await db.insert(botPerformanceSnapshots).values(snapshot);
+              snapshotsCreated += 1;
+            } catch (singleError: any) {
+              console.error('Error inserting single snapshot:', singleError);
+              // Continue with next snapshot
+            }
+          }
+        }
+      }
+    }
+
+    return c.json({
+      success: true,
+      message: `Successfully synced ${snapshotsCreated} performance snapshots`,
+      snapshotsCreated,
+      totalTrades: trades.length,
+    });
+  } catch (error: any) {
+    console.error('Error syncing bot performance snapshots:', error);
+    return c.json(
+      {
+        success: false,
+        error: 'Failed to sync bot performance snapshots',
         message: error.message,
       },
       500

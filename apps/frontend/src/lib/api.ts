@@ -356,6 +356,22 @@ class ApiClient {
     return this.request(`/bot-performance/${botId}/trade-history${queryString}`, {}, true);
   }
 
+  async getBotSnapshotPerformanceHistory(
+    botId: string,
+    limit?: number
+  ): Promise<ApiResponse<AggregatedHistoryResponse | any[]>> {
+    const params = limit !== undefined ? `?limit=${limit}` : '';
+    return this.request(`/bot-performance/${botId}/snapshot-history${params}`, {}, true);
+  }
+
+  async syncBotSnapshots(botId: string): Promise<ApiResponse<{
+    snapshotsCreated: number;
+    totalTrades: number;
+    message: string;
+  }>> {
+    return this.request(`/bot-performance/${botId}/sync-snapshots`, { method: 'POST' }, true);
+  }
+
   async syncBotBalances(
     botId: string,
     initialBalance?: number
@@ -468,6 +484,15 @@ class ApiClient {
     return this.request(`/public/bot-performance/${walletAddress}/${botId}/trade-history${queryString}`);
   }
 
+  async getPublicBotSnapshotPerformanceHistory(
+    walletAddress: string,
+    botId: string,
+    limit?: number
+  ): Promise<ApiResponse<AggregatedHistoryResponse | any[]>> {
+    const params = limit !== undefined ? `?limit=${limit}` : '';
+    return this.request(`/public/bot-performance/${walletAddress}/${botId}/snapshot-history${params}`);
+  }
+
   async getPublicBotStatistics(walletAddress: string, botId: string): Promise<ApiResponse<BotStatistics>> {
     return this.request(`/public/bot-performance/${walletAddress}/${botId}/statistics`);
   }
@@ -558,6 +583,14 @@ class ApiClient {
     if (limit !== undefined) params.append('limit', String(limit));
     const queryString = params.toString() ? `?${params.toString()}` : '';
     return this.request(`/public/all-bot-performance/${botId}/trade-history${queryString}`);
+  }
+
+  async getAllPublicBotSnapshotPerformanceHistory(
+    botId: string,
+    limit?: number
+  ): Promise<ApiResponse<AggregatedHistoryResponse | any[]>> {
+    const params = limit !== undefined ? `?limit=${limit}` : '';
+    return this.request(`/public/all-bot-performance/${botId}/snapshot-history${params}`);
   }
 
   async getAllPublicBotStatistics(botId: string): Promise<ApiResponse<BotStatistics>> {

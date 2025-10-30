@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { eq, and, desc, inArray, sql, asc } from 'drizzle-orm';
 import { getDb } from '../lib/db';
-import { users, tradingBots, tradeHistory, positionSnapshots, botExecutions } from '../db/schema';
+import { users, tradingBots, tradeHistory, positionSnapshots, botExecutions, botPerformanceSnapshots } from '../db/schema';
 import {
   determineAggregationInterval,
   aggregateRecordsInMemory,
@@ -506,6 +506,129 @@ publicRoutes.get('/bot-performance/:walletAddress/:botId/initial-balance', async
       {
         success: false,
         error: 'Failed to fetch initial balance',
+        message: error.message,
+      },
+      500
+    );
+  }
+});
+
+/**
+ * Get snapshot-based performance history for a specific bot (public endpoint) with intelligent aggregation
+ * GET /api/public/bot-performance/:walletAddress/:botId/snapshot-history?limit=100
+ * Returns account balance progression based on bot_performance_snapshots
+ * Use limit=0 to fetch all records with automatic aggregation
+ * Use aggregate=false to disable aggregation and get raw data
+ */
+publicRoutes.get('/bot-performance/:walletAddress/:botId/snapshot-history', async (c) => {
+  try {
+    const walletAddress = c.req.param('walletAddress').toLowerCase();
+    const botId = c.req.param('botId');
+    const limitParam = c.req.query('limit') || '100';
+    const limit = parseInt(limitParam);
+    const disableAggregation = c.req.query('aggregate') === 'false';
+    const db = getDb(c.env.DB);
+
+    // Verify user exists
+    const user = await db.query.users.findFirst({
+      where: eq(users.walletAddress, walletAddress),
+    });
+
+    if (!user) {
+      return c.json({ success: false, error: 'User not found' }, 404);
+    }
+
+    // Verify bot belongs to user
+    const bot = await db
+      .select()
+      .from(tradingBots)
+      .where(and(eq(tradingBots.id, botId), eq(tradingBots.userId, user.id)))
+      .get();
+
+    if (!bot) {
+      return c.json({ success: false, error: 'Bot not found' }, 404);
+    }
+
+    // Get all snapshots ordered by time
+    const snapshots = await db
+      .select({
+        id: botPerformanceSnapshots.id,
+        totalBalance: botPerformanceSnapshots.totalBalance,
+        snapshotTime: botPerformanceSnapshots.snapshotTime,
+      })
+      .from(botPerformanceSnapshots)
+      .where(eq(botPerformanceSnapshots.botId, botId))
+      .orderBy(asc(botPerformanceSnapshots.snapshotTime))
+      .all();
+
+    if (snapshots.length === 0) {
+      return c.json({
+        success: true,
+        data: {
+          history: [],
+          metadata: {
+            totalRecords: 0,
+            returnedRecords: 0,
+            aggregated: false,
+          },
+        },
+      });
+    }
+
+    // Build history from snapshots
+    const allHistory = snapshots.map((snapshot) => ({
+      id: snapshot.id,
+      timestamp: snapshot.snapshotTime,
+      totalBalance: snapshot.totalBalance,
+      accountBalance: snapshot.totalBalance,
+    }));
+
+    // If limit is specified and less than total, return limited results
+    if (limit > 0 && limit < allHistory.length && !disableAggregation) {
+      // Apply intelligent aggregation
+      const timeRange = getTimeRange(allHistory);
+      if (timeRange.first !== null && timeRange.last !== null) {
+        const timeSpanSeconds = timeRange.last - timeRange.first;
+        const interval = determineAggregationInterval(allHistory.length, timeSpanSeconds);
+        const aggregatedHistory = aggregateRecordsInMemory(allHistory, interval);
+        const metadata = calculateMetadata(
+          allHistory.length,
+          aggregatedHistory.length,
+          timeRange.first,
+          timeRange.last,
+          interval
+        );
+
+        return c.json({
+          success: true,
+          data: {
+            history: aggregatedHistory.slice(-limit),
+            metadata,
+          },
+        });
+      }
+    }
+
+    // Return all records or limited raw data
+    const returnedHistory = limit > 0 ? allHistory.slice(-limit) : allHistory;
+
+    return c.json({
+      success: true,
+      data: {
+        history: returnedHistory,
+        metadata: {
+          totalRecords: allHistory.length,
+          returnedRecords: returnedHistory.length,
+          aggregated: false,
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching bot snapshot history:', error);
+    return c.json(
+      {
+        success: false,
+        error: 'Failed to fetch bot snapshot history',
         message: error.message,
       },
       500
@@ -1143,6 +1266,119 @@ publicRoutes.get('/all-bot-performance/:botId/history', async (c) => {
   } catch (error) {
     console.error('Get bot performance history error:', error);
     return c.json({ success: false, error: 'Failed to get bot performance history' }, 500);
+  }
+});
+
+/**
+ * Get snapshot-based performance history for a specific bot (all public bots, no wallet filter) with intelligent aggregation
+ * GET /api/public/all-bot-performance/:botId/snapshot-history?limit=100
+ * Returns account balance progression based on bot_performance_snapshots
+ * Use limit=0 to fetch all records with automatic aggregation
+ * Use aggregate=false to disable aggregation and get raw data
+ */
+publicRoutes.get('/all-bot-performance/:botId/snapshot-history', async (c) => {
+  try {
+    const botId = c.req.param('botId');
+    const limitParam = c.req.query('limit') || '100';
+    const limit = parseInt(limitParam);
+    const disableAggregation = c.req.query('aggregate') === 'false';
+    const db = getDb(c.env.DB);
+
+    // Verify bot exists
+    const bot = await db
+      .select()
+      .from(tradingBots)
+      .where(eq(tradingBots.id, botId))
+      .get();
+
+    if (!bot) {
+      return c.json({ success: false, error: 'Bot not found' }, 404);
+    }
+
+    // Get all snapshots ordered by time
+    const snapshots = await db
+      .select({
+        id: botPerformanceSnapshots.id,
+        totalBalance: botPerformanceSnapshots.totalBalance,
+        snapshotTime: botPerformanceSnapshots.snapshotTime,
+      })
+      .from(botPerformanceSnapshots)
+      .where(eq(botPerformanceSnapshots.botId, botId))
+      .orderBy(asc(botPerformanceSnapshots.snapshotTime))
+      .all();
+
+    if (snapshots.length === 0) {
+      return c.json({
+        success: true,
+        data: {
+          history: [],
+          metadata: {
+            totalRecords: 0,
+            returnedRecords: 0,
+            aggregated: false,
+          },
+        },
+      });
+    }
+
+    // Build history from snapshots
+    const allHistory = snapshots.map((snapshot) => ({
+      id: snapshot.id,
+      timestamp: snapshot.snapshotTime,
+      totalBalance: snapshot.totalBalance,
+      accountBalance: snapshot.totalBalance,
+    }));
+
+    // If limit is specified and less than total, return limited results
+    if (limit > 0 && limit < allHistory.length && !disableAggregation) {
+      // Apply intelligent aggregation
+      const timeRange = getTimeRange(allHistory);
+      if (timeRange.first !== null && timeRange.last !== null) {
+        const timeSpanSeconds = timeRange.last - timeRange.first;
+        const interval = determineAggregationInterval(allHistory.length, timeSpanSeconds);
+        const aggregatedHistory = aggregateRecordsInMemory(allHistory, interval);
+        const metadata = calculateMetadata(
+          allHistory.length,
+          aggregatedHistory.length,
+          timeRange.first,
+          timeRange.last,
+          interval
+        );
+
+        return c.json({
+          success: true,
+          data: {
+            history: aggregatedHistory.slice(-limit),
+            metadata,
+          },
+        });
+      }
+    }
+
+    // Return all records or limited raw data
+    const returnedHistory = limit > 0 ? allHistory.slice(-limit) : allHistory;
+
+    return c.json({
+      success: true,
+      data: {
+        history: returnedHistory,
+        metadata: {
+          totalRecords: allHistory.length,
+          returnedRecords: returnedHistory.length,
+          aggregated: false,
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching bot snapshot history:', error);
+    return c.json(
+      {
+        success: false,
+        error: 'Failed to fetch bot snapshot history',
+        message: error.message,
+      },
+      500
+    );
   }
 });
 
