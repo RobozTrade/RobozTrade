@@ -267,32 +267,6 @@ export function IndividualBotPerformance({
                       </div>
                     </div>
 
-                    {/* Current Balance (from Aster API) */}
-                    <div>
-                      <p className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary mb-1">
-                        Current Balance
-                      </p>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-xl font-bold text-light-text-primary dark:text-dark-text-primary">
-                          {formatCurrency(currentBalance)}
-                        </p>
-                        <div
-                          className={`flex items-center gap-1 text-sm ${
-                            balanceChange >= 0
-                              ? "text-accent-green"
-                              : "text-accent-red"
-                          }`}
-                        >
-                          {balanceChange >= 0 ? (
-                            <TrendingUp className="w-4 h-4" />
-                          ) : (
-                            <TrendingDown className="w-4 h-4" />
-                          )}
-                          <span>{formatPercentage(balanceChange)}</span>
-                        </div>
-                      </div>
-                    </div>
-
                     {/* Initial & Final Balance */}
                     <div className="pt-3 border-t border-white/10 dark:border-white/5">
                       <div className="grid grid-cols-2 gap-3">
@@ -308,12 +282,23 @@ export function IndividualBotPerformance({
                           <p className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary mb-1">
                             Final Balance
                           </p>
-                          <p
-                            className={`text-sm font-semibold ${
-                              isProfit ? "text-accent-green" : "text-accent-red"
-                            }`}
-                          >
+                          <p className="text-sm font-semibold ">
                             {formatCurrency(finalBalance)}
+
+                            <span
+                              className={`ml-2 text-xs ${
+                                isProfit
+                                  ? "text-accent-green"
+                                  : "text-accent-red"
+                              }`}
+                            >
+                              {isProfit ? (
+                                <TrendingUp className="w-4 h-4 inline-block" />
+                              ) : (
+                                <TrendingDown className="w-4 h-4 inline-block" />
+                              )}
+                              {formatPercentage(balanceChange)}
+                            </span>
                           </p>
                         </div>
                       </div>
