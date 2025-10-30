@@ -149,6 +149,10 @@ export function calculateMetadata(
 /**
  * Aggregate execution records in-memory (fallback for complex aggregations)
  * This is used when database-level aggregation is not feasible
+ *
+ * IMPORTANT: For the first bucket (oldest data), the firstTotalBalance and firstAccountBalance
+ * fields preserve the very first balance value, which should be used as the initial balance
+ * when calculating performance metrics from aggregated data.
  */
 export function aggregateRecordsInMemory(
   records: any[],
@@ -178,15 +182,19 @@ export function aggregateRecordsInMemory(
   buckets.forEach((bucketRecords, bucketTimestamp) => {
     const count = bucketRecords.length;
 
-    // Calculate averages
-    const totalBalance = bucketRecords.reduce((sum, r) => sum + (r.totalBalance || 0), 0) / count;
-    const unrealizedPnl = bucketRecords.reduce((sum, r) => sum + (r.unrealizedPnl || 0), 0) / count;
-    const accountBalance = bucketRecords.reduce((sum, r) => sum + (r.accountBalance || 0), 0) / count;
-    const accountExposure = bucketRecords.reduce((sum, r) => sum + (r.accountExposure || 0), 0) / count;
-    const tradesExecuted = bucketRecords.reduce((sum, r) => sum + (r.tradesExecuted || 0), 0);
+    // Get first and last records in the bucket
+    const firstRecord = bucketRecords[0];
+    const lastRecord = bucketRecords[bucketRecords.length - 1];
 
-    // Get most recent status
-    const mostRecentRecord = bucketRecords[bucketRecords.length - 1];
+    // For balance fields, use the last (most recent) value in the bucket
+    // This ensures we capture the final state at the end of each time period
+    const totalBalance = lastRecord.totalBalance || 0;
+    const unrealizedPnl = lastRecord.unrealizedPnl || 0;
+    const accountBalance = lastRecord.accountBalance || 0;
+    const accountExposure = lastRecord.accountExposure || 0;
+
+    // Sum up trades executed across the bucket
+    const tradesExecuted = bucketRecords.reduce((sum, r) => sum + (r.tradesExecuted || 0), 0);
 
     aggregated.push({
       id: `agg_${bucketTimestamp}`,
@@ -196,17 +204,23 @@ export function aggregateRecordsInMemory(
       accountBalance: Math.round(accountBalance * 100) / 100,
       accountExposure: Math.round(accountExposure * 100) / 100,
       tradesExecuted,
-      status: mostRecentRecord.status,
+      status: lastRecord.status,
       recordCount: count,
       // Optional: include min/max for volatility visualization
       minTotalBalance: Math.min(...bucketRecords.map(r => r.totalBalance || 0)),
       maxTotalBalance: Math.max(...bucketRecords.map(r => r.totalBalance || 0)),
       minUnrealizedPnl: Math.min(...bucketRecords.map(r => r.unrealizedPnl || 0)),
       maxUnrealizedPnl: Math.max(...bucketRecords.map(r => r.unrealizedPnl || 0)),
+      // Store first balance in bucket for accurate initial balance tracking
+      // For the first bucket in the aggregated array, these values represent the oldest balance
+      firstTotalBalance: firstRecord.totalBalance || 0,
+      firstAccountBalance: firstRecord.accountBalance || 0,
     });
   });
 
-  // Sort by timestamp
+  // Sort by timestamp (ascending - oldest first)
+  // This ensures aggregated[0] contains the oldest data with firstTotalBalance/firstAccountBalance
+  // representing the true initial balance
   return aggregated.sort((a, b) => a.executionTime - b.executionTime);
 }
 
