@@ -123,6 +123,7 @@ export const tradeHistory = sqliteTable('trade_history', {
   takeProfitOrderId: text('take_profit_order_id'),
   aiReasoning: text('ai_reasoning'), // Entry reasoning
   invalidationCondition: text('invalidation_condition'), // Conditions that would invalidate the position thesis
+  accountBalance: real('account_balance'), // Account balance at the time of trade (for performance tracking)
   status: text('status').notNull(), // 'OPEN', 'CLOSED', 'CANCELLED'
   openedAt: integer('opened_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
   closedAt: integer('closed_at', { mode: 'timestamp' }),
@@ -183,6 +184,8 @@ export const botMetrics = sqliteTable('bot_metrics', {
   totalTrades: integer('total_trades').notNull().default(0),
   winningTrades: integer('winning_trades').notNull().default(0),
   losingTrades: integer('losing_trades').notNull().default(0),
+  longTrades: integer('long_trades').notNull().default(0),
+  shortTrades: integer('short_trades').notNull().default(0),
   totalReturn: real('total_return').notNull().default(0),
   totalPnl: real('total_pnl').notNull().default(0),
   sharpeRatio: real('sharpe_ratio'),
@@ -191,6 +194,7 @@ export const botMetrics = sqliteTable('bot_metrics', {
   averageWin: real('average_win'),
   averageLoss: real('average_loss'),
   profitFactor: real('profit_factor'),
+  averageLeverage: real('average_leverage'),
   lastUpdated: integer('last_updated', { mode: 'timestamp' }).default(sql`(unixepoch())`),
 });
 

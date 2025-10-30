@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, desc, inArray, sql } from 'drizzle-orm';
+import { eq, and, desc, inArray, sql, asc } from 'drizzle-orm';
 import { getDb } from '../lib/db';
 import { users, tradingBots, tradeHistory, positionSnapshots, botExecutions } from '../db/schema';
 import {
@@ -514,6 +514,166 @@ publicRoutes.get('/bot-performance/:walletAddress/:botId/initial-balance', async
 });
 
 /**
+ * Get trade-based performance history for a specific bot (public endpoint) with intelligent aggregation
+ * GET /api/public/bot-performance/:walletAddress/:botId/trade-history?limit=100
+ * Returns account balance progression based on closed trades
+ * Use limit=0 to fetch all records with automatic aggregation
+ * Use aggregate=false to disable aggregation and get raw data
+ */
+publicRoutes.get('/bot-performance/:walletAddress/:botId/trade-history', async (c) => {
+  try {
+    const walletAddress = c.req.param('walletAddress').toLowerCase();
+    const botId = c.req.param('botId');
+    const limitParam = c.req.query('limit') || '100';
+    const limit = parseInt(limitParam);
+    const disableAggregation = c.req.query('aggregate') === 'false';
+    const db = getDb(c.env.DB);
+
+    // Verify user exists
+    const user = await db.query.users.findFirst({
+      where: eq(users.walletAddress, walletAddress),
+    });
+
+    if (!user) {
+      return c.json({ success: false, error: 'User not found' }, 404);
+    }
+
+    // Verify bot belongs to user
+    const bot = await db
+      .select()
+      .from(tradingBots)
+      .where(and(eq(tradingBots.id, botId), eq(tradingBots.userId, user.id)))
+      .get();
+
+    if (!bot) {
+      return c.json({ success: false, error: 'Bot not found' }, 404);
+    }
+
+    // Get all closed trades ordered by closedAt (ascending for aggregation)
+    const closedTrades = await db
+      .select({
+        id: tradeHistory.id,
+        symbol: tradeHistory.symbol,
+        side: tradeHistory.side,
+        entryPrice: tradeHistory.entryPrice,
+        exitPrice: tradeHistory.exitPrice,
+        quantity: tradeHistory.quantity,
+        realizedPnl: tradeHistory.realizedPnl,
+        fees: tradeHistory.fees,
+        accountBalance: tradeHistory.accountBalance,
+        closedAt: tradeHistory.closedAt,
+        openedAt: tradeHistory.openedAt,
+      })
+      .from(tradeHistory)
+      .where(and(eq(tradeHistory.botId, botId), eq(tradeHistory.status, 'CLOSED')))
+      .orderBy(asc(tradeHistory.closedAt))
+      .all();
+
+    // Build history with account balance from trade_history table
+    const initialBalance = 100; // Fixed initial balance
+    const allHistory = closedTrades.map((trade) => {
+      const pnl = trade.realizedPnl || 0;
+      const fees = trade.fees || 0;
+      const netPnl = pnl - fees;
+
+      // Use stored account balance from trade_history table
+      const accountBalance = trade.accountBalance ?? initialBalance;
+
+      return {
+        id: trade.id,
+        timestamp: trade.closedAt,
+        accountBalance,
+        totalBalance: accountBalance, // For compatibility with aggregation
+        realizedPnl: pnl,
+        fees,
+        netPnl,
+        symbol: trade.symbol,
+        side: trade.side,
+        entryPrice: trade.entryPrice,
+        exitPrice: trade.exitPrice,
+        quantity: trade.quantity,
+      };
+    });
+
+    // If aggregation is disabled or limit is specified (not 0), return raw data
+    if (disableAggregation || (limit > 0 && limit < allHistory.length)) {
+      const limitedRecords = limit > 0 ? allHistory.slice(-limit).reverse() : allHistory.reverse();
+      return c.json({
+        success: true,
+        data: {
+          history: limitedRecords,
+          totalTrades: closedTrades.length,
+        },
+      });
+    }
+
+    // Determine if aggregation is needed
+    const totalRecords = allHistory.length;
+    const timeRange = getTimeRange(allHistory.map(h => ({ executionTime: h.timestamp })));
+
+    if (!timeRange.first || !timeRange.last) {
+      return c.json({
+        success: true,
+        data: { history: [], metadata: null },
+      });
+    }
+
+    const timeSpanSeconds = timeRange.last - timeRange.first;
+    const interval = determineAggregationInterval(totalRecords, timeSpanSeconds);
+
+    // Aggregate the data (convert to execution format for aggregation)
+    const recordsForAggregation = allHistory.map(h => ({
+      id: h.id,
+      executionTime: h.timestamp,
+      totalBalance: h.accountBalance,
+      unrealizedPnl: 0,
+      accountBalance: h.accountBalance,
+      accountExposure: 0,
+      tradesExecuted: 1,
+      status: 'success',
+    }));
+
+    const aggregatedHistory = aggregateRecordsInMemory(recordsForAggregation, interval);
+
+    // Convert back to trade history format
+    const formattedHistory = aggregatedHistory.map(record => ({
+      id: record.id,
+      timestamp: record.executionTime,
+      accountBalance: record.accountBalance,
+      totalBalance: record.totalBalance,
+    }));
+
+    // Calculate metadata
+    const metadata = calculateMetadata(
+      totalRecords,
+      aggregatedHistory.length,
+      timeRange.first,
+      timeRange.last,
+      interval
+    );
+
+    return c.json({
+      success: true,
+      data: {
+        history: formattedHistory,
+        metadata,
+        totalTrades: closedTrades.length,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching public trade-based performance history:', error);
+    return c.json(
+      {
+        success: false,
+        error: 'Failed to fetch trade-based performance history',
+        message: error.message,
+      },
+      500
+    );
+  }
+});
+
+/**
  * Get top performing bots ranked by performance score (leaderboard)
  * GET /api/public/leaderboard/top-bots?limit=50
  *
@@ -987,6 +1147,156 @@ publicRoutes.get('/all-bot-performance/:botId/history', async (c) => {
 });
 
 /**
+ * Get trade-based performance history for a specific bot (all public bots, no wallet filter) with intelligent aggregation
+ * GET /api/public/all-bot-performance/:botId/trade-history?limit=100
+ * Returns account balance progression based on closed trades
+ * Use limit=0 to fetch all records with automatic aggregation
+ * Use aggregate=false to disable aggregation and get raw data
+ */
+publicRoutes.get('/all-bot-performance/:botId/trade-history', async (c) => {
+  try {
+    const botId = c.req.param('botId');
+    const limitParam = c.req.query('limit') || '100';
+    const limit = parseInt(limitParam);
+    const disableAggregation = c.req.query('aggregate') === 'false';
+    const db = getDb(c.env.DB);
+
+    // Verify bot exists
+    const bot = await db
+      .select()
+      .from(tradingBots)
+      .where(eq(tradingBots.id, botId))
+      .get();
+
+    if (!bot) {
+      return c.json({ success: false, error: 'Bot not found' }, 404);
+    }
+
+    // Get all closed trades ordered by closedAt (ascending for aggregation)
+    const closedTrades = await db
+      .select({
+        id: tradeHistory.id,
+        symbol: tradeHistory.symbol,
+        side: tradeHistory.side,
+        entryPrice: tradeHistory.entryPrice,
+        exitPrice: tradeHistory.exitPrice,
+        quantity: tradeHistory.quantity,
+        realizedPnl: tradeHistory.realizedPnl,
+        fees: tradeHistory.fees,
+        accountBalance: tradeHistory.accountBalance,
+        closedAt: tradeHistory.closedAt,
+        openedAt: tradeHistory.openedAt,
+      })
+      .from(tradeHistory)
+      .where(and(eq(tradeHistory.botId, botId), eq(tradeHistory.status, 'CLOSED')))
+      .orderBy(asc(tradeHistory.closedAt))
+      .all();
+
+    // Build history with account balance from trade_history table
+    const initialBalance = 100; // Fixed initial balance
+    const allHistory = closedTrades.map((trade) => {
+      const pnl = trade.realizedPnl || 0;
+      const fees = trade.fees || 0;
+      const netPnl = pnl - fees;
+
+      // Use stored account balance from trade_history table
+      const accountBalance = trade.accountBalance ?? initialBalance;
+
+      return {
+        id: trade.id,
+        timestamp: trade.closedAt,
+        accountBalance,
+        totalBalance: accountBalance, // For compatibility with aggregation
+        realizedPnl: pnl,
+        fees,
+        netPnl,
+        symbol: trade.symbol,
+        side: trade.side,
+        entryPrice: trade.entryPrice,
+        exitPrice: trade.exitPrice,
+        quantity: trade.quantity,
+      };
+    });
+
+    // If aggregation is disabled or limit is specified (not 0), return raw data
+    if (disableAggregation || (limit > 0 && limit < allHistory.length)) {
+      const limitedRecords = limit > 0 ? allHistory.slice(-limit).reverse() : allHistory.reverse();
+      return c.json({
+        success: true,
+        data: {
+          history: limitedRecords,
+          totalTrades: closedTrades.length,
+        },
+      });
+    }
+
+    // Determine if aggregation is needed
+    const totalRecords = allHistory.length;
+    const timeRange = getTimeRange(allHistory.map(h => ({ executionTime: h.timestamp })));
+
+    if (!timeRange.first || !timeRange.last) {
+      return c.json({
+        success: true,
+        data: { history: [], metadata: null },
+      });
+    }
+
+    const timeSpanSeconds = timeRange.last - timeRange.first;
+    const interval = determineAggregationInterval(totalRecords, timeSpanSeconds);
+
+    // Aggregate the data (convert to execution format for aggregation)
+    const recordsForAggregation = allHistory.map(h => ({
+      id: h.id,
+      executionTime: h.timestamp,
+      totalBalance: h.accountBalance,
+      unrealizedPnl: 0,
+      accountBalance: h.accountBalance,
+      accountExposure: 0,
+      tradesExecuted: 1,
+      status: 'success',
+    }));
+
+    const aggregatedHistory = aggregateRecordsInMemory(recordsForAggregation, interval);
+
+    // Convert back to trade history format
+    const formattedHistory = aggregatedHistory.map(record => ({
+      id: record.id,
+      timestamp: record.executionTime,
+      accountBalance: record.accountBalance,
+      totalBalance: record.totalBalance,
+    }));
+
+    // Calculate metadata
+    const metadata = calculateMetadata(
+      totalRecords,
+      aggregatedHistory.length,
+      timeRange.first,
+      timeRange.last,
+      interval
+    );
+
+    return c.json({
+      success: true,
+      data: {
+        history: formattedHistory,
+        metadata,
+        totalTrades: closedTrades.length,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching all-public trade-based performance history:', error);
+    return c.json(
+      {
+        success: false,
+        error: 'Failed to fetch trade-based performance history',
+        message: error.message,
+      },
+      500
+    );
+  }
+});
+
+/**
  * Get initial balance for a specific bot (all public bots, no wallet filter)
  * GET /api/public/all-bot-performance/:botId/initial-balance
  */
@@ -1006,6 +1316,152 @@ publicRoutes.get('/all-bot-performance/:botId/initial-balance', async (c) => {
   } catch (error) {
     console.error('Get bot initial balance error:', error);
     return c.json({ success: false, error: 'Failed to get bot initial balance' }, 500);
+  }
+});
+
+/**
+ * Get bot statistics from trade history (public, filtered by wallet)
+ * GET /api/public/bot-performance/:walletAddress/:botId/statistics
+ */
+publicRoutes.get('/bot-performance/:walletAddress/:botId/statistics', async (c) => {
+  try {
+    const walletAddress = c.req.param('walletAddress');
+    const botId = c.req.param('botId');
+    const db = getDb(c.env.DB);
+
+    // Normalize wallet address
+    const normalizedAddress = walletAddress.toLowerCase();
+
+    // Find user by wallet address
+    const user = await db.query.users.findFirst({
+      where: eq(users.walletAddress, normalizedAddress),
+    });
+
+    if (!user) {
+      return c.json({ success: false, error: 'User not found' }, 404);
+    }
+
+    // Verify bot belongs to this user
+    const bot = await db
+      .select()
+      .from(tradingBots)
+      .where(and(eq(tradingBots.id, botId), eq(tradingBots.userId, user.id)))
+      .get();
+
+    if (!bot) {
+      return c.json({ success: false, error: 'Bot not found' }, 404);
+    }
+
+    // Get all closed trades
+    const closedTrades = await db
+      .select()
+      .from(tradeHistory)
+      .where(and(eq(tradeHistory.botId, botId), eq(tradeHistory.status, 'CLOSED')))
+      .orderBy(asc(tradeHistory.closedAt))
+      .all();
+
+    const totalTrades = closedTrades.length;
+    const longTrades = closedTrades.filter(t => t.side === 'BUY').length;
+    const shortTrades = closedTrades.filter(t => t.side === 'SELL').length;
+
+    const longPercentage = totalTrades > 0 ? (longTrades / totalTrades) * 100 : 0;
+    const shortPercentage = totalTrades > 0 ? (shortTrades / totalTrades) * 100 : 0;
+
+    // Calculate average leverage
+    const totalLeverage = closedTrades.reduce((sum, t) => sum + (t.leverage || 1), 0);
+    const averageLeverage = totalTrades > 0 ? totalLeverage / totalTrades : 0;
+
+    // Get initial and final balance
+    const firstTrade = closedTrades[0];
+    const lastTrade = closedTrades[closedTrades.length - 1];
+
+    const initialBalance = firstTrade?.accountBalance || 100;
+    const finalBalance = lastTrade?.accountBalance || initialBalance;
+
+    return c.json({
+      success: true,
+      data: {
+        totalTrades,
+        longTrades,
+        shortTrades,
+        longPercentage: Math.round(longPercentage * 100) / 100,
+        shortPercentage: Math.round(shortPercentage * 100) / 100,
+        averageLeverage: Math.round(averageLeverage * 100) / 100,
+        initialBalance,
+        finalBalance,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching bot statistics:', error);
+    return c.json(
+      {
+        success: false,
+        error: 'Failed to fetch bot statistics',
+        message: error.message,
+      },
+      500
+    );
+  }
+});
+
+/**
+ * Get bot statistics from trade history (all public bots, no wallet filter)
+ * GET /api/public/all-bot-performance/:botId/statistics
+ */
+publicRoutes.get('/all-bot-performance/:botId/statistics', async (c) => {
+  try {
+    const botId = c.req.param('botId');
+    const db = getDb(c.env.DB);
+
+    // Get all closed trades
+    const closedTrades = await db
+      .select()
+      .from(tradeHistory)
+      .where(and(eq(tradeHistory.botId, botId), eq(tradeHistory.status, 'CLOSED')))
+      .orderBy(asc(tradeHistory.closedAt))
+      .all();
+
+    const totalTrades = closedTrades.length;
+    const longTrades = closedTrades.filter(t => t.side === 'BUY').length;
+    const shortTrades = closedTrades.filter(t => t.side === 'SELL').length;
+
+    const longPercentage = totalTrades > 0 ? (longTrades / totalTrades) * 100 : 0;
+    const shortPercentage = totalTrades > 0 ? (shortTrades / totalTrades) * 100 : 0;
+
+    // Calculate average leverage
+    const totalLeverage = closedTrades.reduce((sum, t) => sum + (t.leverage || 1), 0);
+    const averageLeverage = totalTrades > 0 ? totalLeverage / totalTrades : 0;
+
+    // Get initial and final balance
+    const firstTrade = closedTrades[0];
+    const lastTrade = closedTrades[closedTrades.length - 1];
+
+    const initialBalance = firstTrade?.accountBalance || 100;
+    const finalBalance = lastTrade?.accountBalance || initialBalance;
+
+    return c.json({
+      success: true,
+      data: {
+        totalTrades,
+        longTrades,
+        shortTrades,
+        longPercentage: Math.round(longPercentage * 100) / 100,
+        shortPercentage: Math.round(shortPercentage * 100) / 100,
+        averageLeverage: Math.round(averageLeverage * 100) / 100,
+        initialBalance,
+        finalBalance,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching bot statistics:', error);
+    return c.json(
+      {
+        success: false,
+        error: 'Failed to fetch bot statistics',
+        message: error.message,
+      },
+      500
+    );
   }
 });
 

@@ -163,6 +163,8 @@ export async function executeBot(
         totalTrades: 0,
         winningTrades: 0,
         losingTrades: 0,
+        longTrades: 0,
+        shortTrades: 0,
         totalReturn: 0,
         totalPnl: 0,
         sharpeRatio: 0,
@@ -171,6 +173,7 @@ export async function executeBot(
         averageWin: 0,
         averageLoss: 0,
         profitFactor: 0,
+        averageLeverage: 0,
         lastUpdated: new Date(),
       });
       metrics = await db.select().from(botMetrics).where(eq(botMetrics.botId, botId)).get();
@@ -419,19 +422,19 @@ export async function executeBot(
 
         if (decision.action === 'BUY') {
           // Open long position
-          await executeBuyOrder(decision, context, credentials, db, botId);
+          await executeBuyOrder(decision, context, credentials, db, botId, accountInfo?.totalBalance);
           tradesExecuted++;
           openTradesCount++;
           syncOpenTradesCount(openTradesCount);
         } else if (decision.action === 'SELL') {
           // Open short position
-          await executeSellOrder(decision, context, credentials, db, botId);
+          await executeSellOrder(decision, context, credentials, db, botId, accountInfo?.totalBalance);
           tradesExecuted++;
           openTradesCount++;
           syncOpenTradesCount(openTradesCount);
         } else if (isCloseAction && context.position) {
           // Close existing position
-          const closed = await executeCloseOrder(decision, context, credentials, db, botId, logPrefix);
+          const closed = await executeCloseOrder(decision, context, credentials, db, botId, logPrefix, accountInfo?.totalBalance);
           if (closed) {
             tradesExecuted++;
             openTradesCount = Math.max(openTradesCount - 1, 0);
@@ -556,7 +559,8 @@ async function executeBuyOrder(
   context: TradingContext,
   credentials: AsterAPI.AsterCredentials,
   db: DbClient,
-  botId: string
+  botId: string,
+  totalBalance?: number
 ) {
   const leverage = sanitizeLeverage(decision.suggestedLeverage, context.maxLeverage);
   const { quantity, notional } = determineOrderQuantity(decision, context, leverage);
@@ -633,6 +637,7 @@ async function executeBuyOrder(
     takeProfitOrderId,
     aiReasoning: decision.reasoning,
     invalidationCondition: decision.invalidationCondition,
+    accountBalance: totalBalance ?? null, // Store totalBalance from accountInfo
     status: 'OPEN',
     openedAt: new Date(),
   });
@@ -643,7 +648,8 @@ async function executeSellOrder(
   context: TradingContext,
   credentials: AsterAPI.AsterCredentials,
   db: DbClient,
-  botId: string
+  botId: string,
+  totalBalance?: number
 ) {
   const leverage = sanitizeLeverage(decision.suggestedLeverage, context.maxLeverage);
   const { quantity, notional } = determineOrderQuantity(decision, context, leverage);
@@ -720,6 +726,7 @@ async function executeSellOrder(
     takeProfitOrderId,
     aiReasoning: decision.reasoning,
     invalidationCondition: decision.invalidationCondition,
+    accountBalance: totalBalance ?? null, // Store totalBalance from accountInfo
     status: 'OPEN',
     openedAt: new Date(),
   });
@@ -731,7 +738,8 @@ async function executeCloseOrder(
   credentials: AsterAPI.AsterCredentials,
   db: DbClient,
   botId: string,
-  logPrefix: string
+  logPrefix: string,
+  totalBalance?: number
 ): Promise<boolean> {
   if (!context.position) {
     throw new Error(`No position to close for ${context.symbol}`);
@@ -840,6 +848,7 @@ async function executeCloseOrder(
       .set({
         exitPrice,
         realizedPnl,
+        accountBalance: totalBalance ?? null, // Store totalBalance from accountInfo
         status: 'CLOSED',
         closedAt,
       })
@@ -864,6 +873,7 @@ async function executeCloseOrder(
       realizedPnl,
       fees,
       orderId: closeOrder.orderId,
+      accountBalance: totalBalance ?? null, // Store totalBalance from accountInfo
       status: 'CLOSED',
       openedAt: entryTimestampSource ? new Date(entryTimestampSource) : new Date(Date.now() - MIN_HOLD_MINUTES * 60000),
       closedAt,
@@ -885,7 +895,21 @@ async function updateBotMetrics(
   const metrics = await db.select().from(botMetrics).where(eq(botMetrics.botId, botId)).get();
 
   if (metrics) {
-    const totalTrades = metrics.totalTrades + 1;
+    // Get all closed trades to calculate long/short counts and average leverage
+    const closedTrades = await db
+      .select()
+      .from(tradeHistory)
+      .where(and(eq(tradeHistory.botId, botId), eq(tradeHistory.status, 'CLOSED')))
+      .all();
+
+    const longTrades = closedTrades.filter(t => t.side === 'BUY').length;
+    const shortTrades = closedTrades.filter(t => t.side === 'SELL').length;
+    const totalTrades = closedTrades.length;
+
+    // Calculate average leverage
+    const totalLeverage = closedTrades.reduce((sum, t) => sum + (t.leverage || 1), 0);
+    const averageLeverage = totalTrades > 0 ? totalLeverage / totalTrades : 0;
+
     const winningTrades = realizedPnl > 0 ? metrics.winningTrades + 1 : metrics.winningTrades;
     const losingTrades = realizedPnl < 0 ? metrics.losingTrades + 1 : metrics.losingTrades;
     const totalPnl = metrics.totalPnl + realizedPnl;
@@ -914,13 +938,7 @@ async function updateBotMetrics(
     const initialBalance = firstExecution?.totalBalance || 1000; // Default to 1000 if not found
     const totalReturn = initialBalance > 0 ? (totalPnl / initialBalance) * 100 : 0;
 
-    // Calculate Sharpe Ratio from trade history
-    const closedTrades = await db
-      .select({ realizedPnl: tradeHistory.realizedPnl, margin: tradeHistory.margin })
-      .from(tradeHistory)
-      .where(and(eq(tradeHistory.botId, botId), eq(tradeHistory.status, 'CLOSED')))
-      .all();
-
+    // Calculate Sharpe Ratio from trade history (reuse closedTrades from above)
     let sharpeRatio = 0;
     if (closedTrades.length > 0) {
       // Calculate returns as percentage of margin for each trade
@@ -974,6 +992,8 @@ async function updateBotMetrics(
         totalTrades,
         winningTrades,
         losingTrades,
+        longTrades,
+        shortTrades,
         totalPnl,
         totalReturn,
         sharpeRatio,
@@ -982,6 +1002,7 @@ async function updateBotMetrics(
         averageWin,
         averageLoss,
         profitFactor,
+        averageLeverage,
         lastUpdated: new Date(),
       })
       .where(eq(botMetrics.botId, botId));

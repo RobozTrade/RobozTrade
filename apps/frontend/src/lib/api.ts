@@ -53,6 +53,40 @@ export interface AggregatedHistoryResponse {
   metadata: AggregationMetadata | null;
 }
 
+// Types for trade-based performance data
+export interface TradePerformanceHistory {
+  id: string;
+  timestamp: number;
+  accountBalance: number;
+  realizedPnl: number;
+  fees: number;
+  netPnl: number;
+  symbol: string;
+  side: string;
+  quantity: number;
+  entryPrice: number;
+  exitPrice: number;
+}
+
+export interface TradeHistoryResponse {
+  history: TradePerformanceHistory[];
+  initialBalance: number;
+  currentBalance: number;
+  totalPnl: number;
+  totalTrades: number;
+}
+
+export interface BotStatistics {
+  totalTrades: number;
+  longTrades: number;
+  shortTrades: number;
+  longPercentage: number;
+  shortPercentage: number;
+  averageLeverage: number;
+  initialBalance: number;
+  finalBalance: number;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 class ApiClient {
@@ -312,6 +346,83 @@ class ApiClient {
     return this.request(`/bot-performance/${botId}/initial-balance`, {}, true);
   }
 
+  async getBotTradePerformanceHistory(
+    botId: string,
+    limit?: number
+  ): Promise<ApiResponse<TradeHistoryResponse>> {
+    const params = new URLSearchParams();
+    if (limit !== undefined) params.append('limit', String(limit));
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/bot-performance/${botId}/trade-history${queryString}`, {}, true);
+  }
+
+  async syncBotBalances(
+    botId: string,
+    initialBalance?: number
+  ): Promise<ApiResponse<{ updatedTrades: number; initialBalance: number; finalBalance: number; totalPnl: number }>> {
+    const params = initialBalance !== undefined ? `?initialBalance=${initialBalance}` : '';
+    return this.request(`/bot-performance/${botId}/sync-balances${params}`, { method: 'POST' }, true);
+  }
+
+  async getBotStatistics(botId: string): Promise<ApiResponse<BotStatistics>> {
+    return this.request(`/bot-performance/${botId}/statistics`, {}, true);
+  }
+
+  async syncBot(botId: string): Promise<ApiResponse<{
+    currentAccountBalance: number | null;
+    currentTotalBalance: number | null;
+    unrealizedPnl: number | null;
+    totalTrades: number;
+    longTrades: number;
+    shortTrades: number;
+    longPercentage: number;
+    shortPercentage: number;
+    averageLeverage: number;
+    initialBalance: number;
+    finalBalance: number;
+    totalPnl: number;
+    totalReturn: number;
+    winRate: number;
+    sharpeRatio: number;
+    maxDrawdown: number;
+    message: string;
+  }>> {
+    return this.request(`/bot-performance/${botId}/sync`, { method: 'POST' }, true);
+  }
+
+  async syncBotMetrics(botId: string): Promise<ApiResponse<{
+    totalTrades: number;
+    longTrades: number;
+    shortTrades: number;
+    winningTrades: number;
+    losingTrades: number;
+    averageLeverage: number;
+    totalPnl: number;
+    totalReturn: number;
+    winRate: number;
+    sharpeRatio: number;
+    maxDrawdown: number;
+    message: string;
+  }>> {
+    return this.request(`/bot-performance/${botId}/sync-metrics`, { method: 'POST' }, true);
+  }
+
+  async syncAllBotMetrics(): Promise<ApiResponse<{
+    botsProcessed: number;
+    successCount: number;
+    failureCount: number;
+    results: Array<{
+      botId: string;
+      botName: string;
+      totalTrades?: number;
+      success: boolean;
+      error?: string;
+    }>;
+    message: string;
+  }>> {
+    return this.request('/bot-performance/sync-all-metrics', { method: 'POST' }, true);
+  }
+
   // Public endpoints (no authentication required)
   async getPublicBots(walletAddress: string): Promise<ApiResponse<TradingBot[]>> {
     return this.request(`/public/bots/${walletAddress}`);
@@ -344,6 +455,21 @@ class ApiClient {
 
   async getPublicBotInitialBalance(walletAddress: string, botId: string): Promise<ApiResponse<{ initialBalance: number | null; firstExecutionTime: string | null }>> {
     return this.request(`/public/bot-performance/${walletAddress}/${botId}/initial-balance`);
+  }
+
+  async getPublicBotTradePerformanceHistory(
+    walletAddress: string,
+    botId: string,
+    limit?: number
+  ): Promise<ApiResponse<TradeHistoryResponse>> {
+    const params = new URLSearchParams();
+    if (limit !== undefined) params.append('limit', String(limit));
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/public/bot-performance/${walletAddress}/${botId}/trade-history${queryString}`);
+  }
+
+  async getPublicBotStatistics(walletAddress: string, botId: string): Promise<ApiResponse<BotStatistics>> {
+    return this.request(`/public/bot-performance/${walletAddress}/${botId}/statistics`);
   }
 
   // Leaderboard endpoints
@@ -422,6 +548,20 @@ class ApiClient {
 
   async getAllPublicBotInitialBalance(botId: string): Promise<ApiResponse<{ initialBalance: number }>> {
     return this.request(`/public/all-bot-performance/${botId}/initial-balance`);
+  }
+
+  async getAllPublicBotTradePerformanceHistory(
+    botId: string,
+    limit?: number
+  ): Promise<ApiResponse<TradeHistoryResponse>> {
+    const params = new URLSearchParams();
+    if (limit !== undefined) params.append('limit', String(limit));
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/public/all-bot-performance/${botId}/trade-history${queryString}`);
+  }
+
+  async getAllPublicBotStatistics(botId: string): Promise<ApiResponse<BotStatistics>> {
+    return this.request(`/public/all-bot-performance/${botId}/statistics`);
   }
 }
 

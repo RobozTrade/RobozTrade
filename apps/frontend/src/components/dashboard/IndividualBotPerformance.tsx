@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, type BotStatistics } from "@/lib/api";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import type { TradingBot, AIModel } from "@roboz-trade/shared-types";
@@ -107,6 +107,38 @@ export function IndividualBotPerformance({
     enabled: !!latestData && latestData.length > 0,
   });
 
+  // Fetch bot statistics (trades, long/short, leverage)
+  const { data: botStatistics } = useQuery({
+    queryKey: showAllPublicBots
+      ? ["all-public-bot-statistics", latestData]
+      : walletAddress
+      ? ["public-bot-statistics", walletAddress, latestData]
+      : ["bot-statistics", latestData],
+    queryFn: async () => {
+      if (!latestData || latestData.length === 0) return {};
+
+      const statsPromises = latestData.map(async (bot) => {
+        const response = showAllPublicBots
+          ? await api.getAllPublicBotStatistics(bot.botId)
+          : walletAddress
+          ? await api.getPublicBotStatistics(walletAddress, bot.botId)
+          : await api.getBotStatistics(bot.botId);
+        return {
+          botId: bot.botId,
+          stats: response.data as BotStatistics,
+        };
+      });
+
+      const results = await Promise.all(statsPromises);
+      const statsMap: Record<string, BotStatistics> = {};
+      results.forEach(({ botId, stats }) => {
+        statsMap[botId] = stats;
+      });
+      return statsMap;
+    },
+    enabled: !!latestData && latestData.length > 0,
+  });
+
   const scroll = (direction: "left" | "right") => {
     if (!containerRef.current) return;
     const scrollAmount = 400;
@@ -188,21 +220,17 @@ export function IndividualBotPerformance({
           >
             <div className="flex gap-4 min-w-max pb-2">
               {latestData.map((bot) => {
-                const initialBalance = initialBalances?.[bot.botId] ?? null;
+                const stats = botStatistics?.[bot.botId];
+                // Use account balance from latest execution (Aster API data)
+                const currentBalance = bot.totalBalance ?? 100;
+                const initialBalance =
+                  stats?.initialBalance ?? initialBalances?.[bot.botId] ?? 100;
+                const finalBalance = stats?.finalBalance ?? currentBalance;
                 const balanceChange = calculatePercentageChange(
-                  bot.totalBalance,
+                  currentBalance,
                   initialBalance
                 );
-                // Calculate total P&L (realized + unrealized)
-                const totalPnl =
-                  bot.totalBalance !== null && initialBalance !== null
-                    ? bot.totalBalance - initialBalance
-                    : null;
-                const totalPnlPercentage =
-                  initialBalance && totalPnl !== null
-                    ? (totalPnl / initialBalance) * 100
-                    : 0;
-                const isProfit = (totalPnl ?? 0) >= 0;
+                const isProfit = currentBalance >= initialBalance;
                 const botData = bots.find((b) => b.id === bot.botId);
 
                 return (
@@ -239,14 +267,14 @@ export function IndividualBotPerformance({
                       </div>
                     </div>
 
-                    {/* Current Balance */}
+                    {/* Current Balance (from Aster API) */}
                     <div>
                       <p className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary mb-1">
                         Current Balance
                       </p>
                       <div className="flex items-baseline gap-2">
                         <p className="text-xl font-bold text-light-text-primary dark:text-dark-text-primary">
-                          {formatCurrency(bot.totalBalance)}
+                          {formatCurrency(currentBalance)}
                         </p>
                         <div
                           className={`flex items-center gap-1 text-sm ${
@@ -265,28 +293,64 @@ export function IndividualBotPerformance({
                       </div>
                     </div>
 
-                    {/* Total P&L */}
+                    {/* Initial & Final Balance */}
                     <div className="pt-3 border-t border-white/10 dark:border-white/5">
-                      <p className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary mb-1">
-                        Total P&L
-                      </p>
-                      <div className="flex items-baseline gap-2">
-                        <p
-                          className={`text-lg font-semibold ${
-                            isProfit ? "text-accent-green" : "text-accent-red"
-                          }`}
-                        >
-                          {formatCurrency(totalPnl)}
-                        </p>
-                        <span
-                          className={`text-sm ${
-                            isProfit ? "text-accent-green" : "text-accent-red"
-                          }`}
-                        >
-                          {formatPercentage(totalPnlPercentage)}
-                        </span>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary mb-1">
+                            Initial Balance
+                          </p>
+                          <p className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
+                            {formatCurrency(initialBalance)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary mb-1">
+                            Final Balance
+                          </p>
+                          <p
+                            className={`text-sm font-semibold ${
+                              isProfit ? "text-accent-green" : "text-accent-red"
+                            }`}
+                          >
+                            {formatCurrency(finalBalance)}
+                          </p>
+                        </div>
                       </div>
                     </div>
+
+                    {/* Trade Statistics */}
+                    {stats && (
+                      <div className="pt-3 border-t border-white/10 dark:border-white/5 space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+                            Total Trades
+                          </span>
+                          <span className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
+                            {stats.totalTrades}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+                            Long / Short
+                          </span>
+                          <span className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
+                            {stats.longTrades} (
+                            {stats.longPercentage.toFixed(0)}%) /{" "}
+                            {stats.shortTrades} (
+                            {stats.shortPercentage.toFixed(0)}%)
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+                            Avg Leverage
+                          </span>
+                          <span className="text-sm font-semibold text-light-text-primary dark:text-dark-text-primary">
+                            {stats.averageLeverage.toFixed(1)}x
+                          </span>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Last Updated */}
                     {bot.executionTime && (

@@ -3,16 +3,11 @@ import {
   createChart,
   IChartApi,
   ISeriesApi,
-  LineData,
   Time,
   MouseEventParams,
 } from "lightweight-charts";
 import { useQuery } from "@tanstack/react-query";
-import {
-  api,
-  type AggregationMetadata,
-  type AggregatedHistoryResponse,
-} from "@/lib/api";
+import { api, type TradeHistoryResponse } from "@/lib/api";
 import type { TradingBot, AIModel } from "@roboz-trade/shared-types";
 import { SUPPORTED_AI_MODELS } from "@roboz-trade/shared-types";
 
@@ -24,22 +19,6 @@ interface BotPerformanceData {
   accountBalance: number | null;
   executionTime: string | null;
   status: string;
-}
-
-interface BotPerformanceHistory {
-  id: string;
-  executionTime: string | number; // Can be string (raw) or number (aggregated timestamp)
-  totalBalance: number | null;
-  unrealizedPnl: number | null;
-  accountBalance: number | null;
-  accountExposure: number | null;
-  tradesExecuted: number;
-  status: string;
-  recordCount?: number; // Optional: number of records aggregated
-  minTotalBalance?: number; // Optional: min value in aggregated bucket
-  maxTotalBalance?: number; // Optional: max value in aggregated bucket
-  minUnrealizedPnl?: number; // Optional: min value in aggregated bucket
-  maxUnrealizedPnl?: number; // Optional: max value in aggregated bucket
 }
 
 interface BotDataPoint {
@@ -139,104 +118,44 @@ export function BotPerformanceChart({
     refetchInterval: 120000, // Refetch every 2 minutes
   });
 
-  // Fetch performance history for all bots
-  // Using limit=0 to fetch complete trading history from inception with intelligent aggregation
-  const { data: historyData } = useQuery({
+  // Fetch trade-based performance history for all bots
+  const { data: tradeHistoryData } = useQuery({
     queryKey: showAllPublicBots
-      ? ["all-public-bot-performance-history", latestData]
+      ? ["all-public-bot-trade-history", latestData]
       : walletAddress
-      ? ["public-bot-performance-history", walletAddress, latestData]
-      : ["bot-performance-history", latestData],
+      ? ["public-bot-trade-history", walletAddress, latestData]
+      : ["bot-trade-history", latestData],
     queryFn: async () => {
       if (!latestData || latestData.length === 0) return {};
 
       const historyPromises = latestData.map(async (bot) => {
         const response = showAllPublicBots
-          ? await api.getAllPublicBotPerformanceHistory(bot.botId, 0)
+          ? await api.getAllPublicBotTradePerformanceHistory(bot.botId, 100)
           : walletAddress
-          ? await api.getPublicBotPerformanceHistory(
+          ? await api.getPublicBotTradePerformanceHistory(
               walletAddress,
               bot.botId,
-              0
+              100
             )
-          : await api.getBotPerformanceHistory(bot.botId, 0);
-
-        // Handle both aggregated and raw data formats
-        const responseData = response.data as
-          | AggregatedHistoryResponse
-          | BotPerformanceHistory[];
-
-        let history: BotPerformanceHistory[];
-        let metadata: AggregationMetadata | null = null;
-
-        if (Array.isArray(responseData)) {
-          // Raw data format (backward compatibility)
-          history = responseData;
-        } else {
-          // Aggregated data format
-          history = responseData.history as BotPerformanceHistory[];
-          metadata = responseData.metadata;
-        }
+          : await api.getBotTradePerformanceHistory(bot.botId, 100);
 
         return {
           botId: bot.botId,
-          history,
-          metadata,
+          data: response.data as TradeHistoryResponse,
         };
       });
 
       const results = await Promise.all(historyPromises);
-      const historyMap: Record<string, BotPerformanceHistory[]> = {};
-      const metadataMap: Record<string, AggregationMetadata | null> = {};
+      const tradeHistoryMap: Record<string, TradeHistoryResponse> = {};
 
-      results.forEach(({ botId, history, metadata }) => {
-        historyMap[botId] = history;
-        metadataMap[botId] = metadata;
+      results.forEach(({ botId, data }) => {
+        tradeHistoryMap[botId] = data;
       });
 
-      return { historyMap, metadataMap };
+      return tradeHistoryMap;
     },
     enabled: !!latestData && latestData.length > 0,
   });
-
-  // Fetch initial balances for all bots
-  const { data: initialBalances } = useQuery({
-    queryKey: showAllPublicBots
-      ? ["all-public-bot-initial-balances", latestData]
-      : walletAddress
-      ? ["public-bot-initial-balances", walletAddress, latestData]
-      : ["bot-initial-balances", latestData],
-    queryFn: async () => {
-      if (!latestData || latestData.length === 0) return {};
-
-      const balancePromises = latestData.map(async (bot) => {
-        const response = showAllPublicBots
-          ? await api.getAllPublicBotInitialBalance(bot.botId)
-          : walletAddress
-          ? await api.getPublicBotInitialBalance(walletAddress, bot.botId)
-          : await api.getBotInitialBalance(bot.botId);
-        return {
-          botId: bot.botId,
-          initialBalance: response.data.initialBalance,
-        };
-      });
-
-      const results = await Promise.all(balancePromises);
-      const balanceMap: Record<string, number> = {};
-      results.forEach(({ botId, initialBalance }) => {
-        balanceMap[botId] = initialBalance;
-      });
-      return balanceMap;
-    },
-    enabled: !!latestData && latestData.length > 0,
-  });
-
-  // Calculate minimum initial balance for normalization
-  const minInitialBalance = initialBalances
-    ? Math.min(
-        ...Object.values(initialBalances).filter((b) => b !== null && b > 0)
-      )
-    : null;
 
   // Handle legend item click
   const handleLegendClick = (botId: string) => {
@@ -357,8 +276,7 @@ export function BotPerformanceChart({
 
   // Update chart data when mode, history, or initial balances change
   useEffect(() => {
-    if (!chartRef.current || !historyData || !initialBalances || !latestData)
-      return;
+    if (!chartRef.current || !tradeHistoryData || !latestData) return;
 
     // Remove the price line from its series before clearing
     if (priceLineRef.current) {
@@ -388,16 +306,15 @@ export function BotPerformanceChart({
     const filteredData = getFilteredData();
     if (!filteredData) return;
 
-    // Extract historyMap from the new structure
-    const historyMap = historyData.historyMap || {};
-
     // Create a line series for each bot
     filteredData.forEach((bot, index) => {
-      const history = historyMap[bot.botId];
-      if (!history || history.length === 0) return;
+      // Get trade data for this bot
+      const tradeData = tradeHistoryData[bot.botId];
+      if (!tradeData || !tradeData.history || tradeData.history.length === 0)
+        return;
 
-      const initialBalance = initialBalances[bot.botId];
-      if (!initialBalance) return;
+      const dataPoints = tradeData.history;
+      const initialBalance = 100; // Fixed initial balance
 
       const color = BOT_COLORS[index % BOT_COLORS.length];
 
@@ -415,41 +332,45 @@ export function BotPerformanceChart({
       // Create a map to store bot data for each timestamp
       const botDataMap = new Map<number, BotDataPoint>();
 
-      // Transform history data based on chart mode
-      const data: LineData[] = history
-        .map((entry) => {
-          // Handle both string (ISO date) and number (Unix timestamp) formats
-          const timestamp =
-            typeof entry.executionTime === "number"
-              ? entry.executionTime
-              : new Date(entry.executionTime).getTime() / 1000;
+      // Transform trade data for chart
+      // Add small increments to handle duplicate timestamps
+      const seenTimestamps = new Map<number, number>();
+
+      const data = dataPoints
+        .map((entry: any) => {
+          // Trade data has timestamp
+          let timestamp =
+            typeof entry.timestamp === "number"
+              ? entry.timestamp
+              : new Date(entry.timestamp).getTime() / 1000;
+
+          // Handle duplicate timestamps by adding milliseconds
+          const count = seenTimestamps.get(timestamp) || 0;
+          if (count > 0) {
+            timestamp += count * 0.001; // Add milliseconds
+          }
+          seenTimestamps.set(timestamp, count + 1);
+
+          const totalBalance = entry.accountBalance ?? entry.totalBalance ?? 0;
           let value: number;
 
           if (chartMode === "total_pnl") {
-            // Show total P&L as percentage (current balance - initial balance)
-            const totalBalance =
-              entry.totalBalance ?? entry.accountBalance ?? 0;
+            // Show total P&L as percentage
             value =
               totalBalance !== null && initialBalance > 0
                 ? ((totalBalance - initialBalance) / initialBalance) * 100
                 : 0;
-          } else if (chartMode === "unrealized_pnl") {
-            // Show unrealized P&L as percentage
-            value =
-              entry.unrealizedPnl !== null && initialBalance > 0
-                ? (entry.unrealizedPnl / initialBalance) * 100
-                : 0;
           } else {
             // Show account balance as absolute dollar value
-            value = entry.totalBalance ?? entry.accountBalance ?? 0;
+            value = totalBalance;
           }
 
           // Store bot data for tooltip
           botDataMap.set(timestamp, {
             botId: bot.botId,
             botName: bot.botName,
-            totalBalance: entry.totalBalance ?? entry.accountBalance ?? 0,
-            unrealizedPnl: entry.unrealizedPnl ?? 0,
+            totalBalance,
+            unrealizedPnl: 0,
             initialBalance,
             color,
           });
@@ -459,11 +380,13 @@ export function BotPerformanceChart({
             value,
           };
         })
-        .filter((d) => !isNaN(d.value))
-        .sort((a, b) => (a.time as number) - (b.time as number));
+        .filter((d: any) => !isNaN(d.value))
+        .sort(
+          (a: any, b: any) => (a.time as number) - (b.time as number)
+        ) as any[];
 
       if (data.length > 0) {
-        series.setData(data);
+        series.setData(data as any);
         seriesRefs.current.set(bot.botId, series);
         botDataMapRef.current.set(bot.botId, botDataMap);
       }
@@ -508,17 +431,13 @@ export function BotPerformanceChart({
         let middleValue: number;
         let middleLabel: string;
 
-        if (chartMode === "total_pnl" || chartMode === "unrealized_pnl") {
-          // For P&L modes, middle point is 0 (break-even)
+        if (chartMode === "total_pnl") {
+          // For P&L mode, middle point is 0 (break-even)
           middleValue = 0;
           middleLabel = "Break Even (0%)";
         } else {
-          // For account balance mode, middle point is the average initial balance
-          const initialBalanceValues = Object.values(initialBalances);
-          const avgInitialBalance =
-            initialBalanceValues.reduce((sum, bal) => sum + bal, 0) /
-            initialBalanceValues.length;
-          middleValue = avgInitialBalance;
+          // For account balance mode, middle point is the fixed initial balance
+          middleValue = 100; // Fixed initial balance
           middleLabel = "Initial Balance";
         }
 
@@ -540,8 +459,7 @@ export function BotPerformanceChart({
     }, 100);
   }, [
     chartMode,
-    historyData,
-    initialBalances,
+    tradeHistoryData,
     latestData,
     selectedBots,
     selectedSingleBotId,
@@ -563,9 +481,6 @@ export function BotPerformanceChart({
     setLegendScrollPosition(newPosition);
   };
 
-  // No normalization message needed since we show absolute values in Account Balance mode
-  const showNormalizationMessage = false;
-
   const formatCurrency = (value: number): string => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -583,7 +498,7 @@ export function BotPerformanceChart({
           Bot Performance
         </h3>
 
-        {/* Mode Toggle */}
+        {/* Chart Mode Toggle */}
         <div className="flex items-center gap-2 bg-white/5 dark:bg-white/5 rounded-lg p-1">
           <button
             onClick={() => setChartMode("total_pnl")}
@@ -608,55 +523,32 @@ export function BotPerformanceChart({
         </div>
       </div>
 
-      {/* Aggregation Info */}
-      {historyData?.metadataMap &&
-        Object.keys(historyData.metadataMap).length > 0 && (
-          <div className="flex items-center justify-center gap-2 text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
-            {(() => {
-              // Get metadata from the first bot (they should all have similar intervals)
-              const firstBotId = Object.keys(historyData.metadataMap)[0];
-              const metadata = historyData.metadataMap[firstBotId];
-
-              if (!metadata || metadata.interval === "raw") return null;
-
-              const intervalLabels: Record<string, string> = {
-                "1h": "1-hour",
-                "6h": "6-hour",
-                "1d": "daily",
-                "1w": "weekly",
-                "1M": "monthly",
-              };
-
-              const intervalLabel =
-                intervalLabels[metadata.interval] || metadata.interval;
-
-              return (
-                <>
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <span>
-                    Showing {intervalLabel} aggregated data (
-                    {metadata.aggregatedPoints} points from{" "}
-                    {metadata.totalRecords} records)
-                    {metadata.timeSpanDays > 0 &&
-                      ` • ${Math.round(metadata.timeSpanDays)} days of history`}
-                  </span>
-                </>
-              );
-            })()}
-          </div>
-        )}
+      {/* Trade Info */}
+      {tradeHistoryData && (
+        <div className="flex items-center justify-center gap-2 text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
+            />
+          </svg>
+          <span>
+            Showing trade-based performance •{" "}
+            {Object.values(tradeHistoryData).reduce(
+              (sum, data) => sum + (data?.totalTrades || 0),
+              0
+            )}{" "}
+            total trades
+          </span>
+        </div>
+      )}
 
       {/* Chart Container with Tooltip */}
       <div className="relative">
@@ -729,14 +621,6 @@ export function BotPerformanceChart({
         )}
       </div>
 
-      {/* Normalization Message */}
-      {showNormalizationMessage && (
-        <p className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary text-center">
-          Values adjusted to minimum initial balance: $
-          {minInitialBalance?.toFixed(2)}
-        </p>
-      )}
-
       {/* Legend - Only show when not in single bot mode */}
       {!selectedSingleBotId && (
         <div className="relative">
@@ -784,11 +668,12 @@ export function BotPerformanceChart({
                   const isSelected =
                     selectedBots === null || selectedBots.has(bot.botId);
                   const botData = bots.find((b) => b.id === bot.botId);
+
                   return (
                     <div
                       key={bot.botId}
                       onClick={() => handleLegendClick(bot.botId)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer ${
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                         isSelected
                           ? "bg-accent-green/20 border border-accent-green/30"
                           : "bg-white/5 hover:bg-white/10 opacity-60"
