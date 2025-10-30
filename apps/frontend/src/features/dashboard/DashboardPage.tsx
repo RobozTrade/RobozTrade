@@ -810,6 +810,24 @@ export default function DashboardPageNew() {
               side = position.quantity >= 0 ? "LONG" : "SHORT";
             }
 
+            // Calculate P&L percentage based on margin (actual investment) for leveraged trading
+            // If margin is 0 or missing, calculate it from entry price, quantity, and leverage
+            let effectiveMargin = margin;
+            if (
+              effectiveMargin === 0 ||
+              effectiveMargin === null ||
+              effectiveMargin === undefined
+            ) {
+              const entryPrice = position.entryPrice ?? 0;
+              const quantity = Math.abs(position.quantity);
+              const leverage = position.leverage ?? 1;
+              effectiveMargin =
+                leverage > 0 ? (entryPrice * quantity) / leverage : 0;
+            }
+
+            const unrealizedPnlPercent =
+              effectiveMargin > 0 ? (unrealizedPnl / effectiveMargin) * 100 : 0;
+
             return {
               id: position.id,
               side,
@@ -819,7 +837,7 @@ export default function DashboardPageNew() {
               takeProfit: position.takeProfit ?? null,
               stopLoss: position.stopLoss ?? null,
               unrealizedPnl,
-              unrealizedPnlPercent: margin ? (unrealizedPnl / margin) * 100 : 0,
+              unrealizedPnlPercent,
               entryTime: position.entryTime ?? null,
             } satisfies BotPositionRow;
           });

@@ -573,9 +573,23 @@ export default function PublicDashboard({
           side = pos.quantity >= 0 ? "LONG" : "SHORT";
         }
 
-        const entryValue = Math.abs(pos.entryPrice * pos.quantity);
+        // Calculate P&L percentage based on margin (actual investment) for leveraged trading
+        // If margin is 0 or missing, calculate it from entry price, quantity, and leverage
+        let effectiveMargin = pos.margin ?? 0;
+        if (
+          effectiveMargin === 0 ||
+          effectiveMargin === null ||
+          effectiveMargin === undefined
+        ) {
+          const entryPrice = pos.entryPrice ?? 0;
+          const quantity = Math.abs(pos.quantity);
+          const leverage = pos.leverage ?? 1;
+          effectiveMargin =
+            leverage > 0 ? (entryPrice * quantity) / leverage : 0;
+        }
+
         const unrealizedPnlPercent =
-          entryValue > 0 ? (pos.unrealizedPnl / entryValue) * 100 : 0;
+          effectiveMargin > 0 ? (pos.unrealizedPnl / effectiveMargin) * 100 : 0;
 
         return {
           id: pos.id,
