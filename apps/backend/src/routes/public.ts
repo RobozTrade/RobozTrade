@@ -583,43 +583,79 @@ publicRoutes.get('/bot-performance/:walletAddress/:botId/snapshot-history', asyn
       accountBalance: snapshot.totalBalance,
     }));
 
-    // If limit is specified and less than total, return limited results
-    if (limit > 0 && limit < allHistory.length && !disableAggregation) {
-      // Apply intelligent aggregation
-      const timeRange = getTimeRange(allHistory);
-      if (timeRange.first !== null && timeRange.last !== null) {
-        const timeSpanSeconds = timeRange.last - timeRange.first;
-        const interval = determineAggregationInterval(allHistory.length, timeSpanSeconds);
-        const aggregatedHistory = aggregateRecordsInMemory(allHistory, interval);
-        const metadata = calculateMetadata(
-          allHistory.length,
-          aggregatedHistory.length,
-          timeRange.first,
-          timeRange.last,
-          interval
-        );
-
-        return c.json({
-          success: true,
-          data: {
-            history: aggregatedHistory.slice(-limit),
-            metadata,
+    // If aggregation is disabled or limit is specified (not 0), return raw data
+    if (disableAggregation || (limit > 0 && limit < allHistory.length)) {
+      const returnedHistory = limit > 0 ? allHistory.slice(-limit) : allHistory;
+      return c.json({
+        success: true,
+        data: {
+          history: returnedHistory,
+          metadata: {
+            totalRecords: allHistory.length,
+            returnedRecords: returnedHistory.length,
+            aggregated: false,
           },
-        });
-      }
+        },
+      });
     }
 
-    // Return all records or limited raw data
-    const returnedHistory = limit > 0 ? allHistory.slice(-limit) : allHistory;
+    // Apply intelligent aggregation for limit=0 or limit >= allHistory.length
+    const timeRange = getTimeRange(allHistory.map(h => ({ executionTime: h.timestamp })));
+
+    if (!timeRange.first || !timeRange.last) {
+      return c.json({
+        success: true,
+        data: {
+          history: [],
+          metadata: {
+            totalRecords: allHistory.length,
+            returnedRecords: 0,
+            aggregated: false,
+          },
+        },
+      });
+    }
+
+    const timeSpanSeconds = timeRange.last - timeRange.first;
+    const interval = determineAggregationInterval(allHistory.length, timeSpanSeconds);
+
+    // Convert to execution format for aggregation
+    const recordsForAggregation = allHistory.map(h => ({
+      id: h.id,
+      executionTime: h.timestamp,
+      totalBalance: h.totalBalance,
+      unrealizedPnl: 0,
+      accountBalance: h.accountBalance,
+      accountExposure: 0,
+      tradesExecuted: 0,
+      status: 'success',
+    }));
+
+    const aggregatedHistory = aggregateRecordsInMemory(recordsForAggregation, interval);
+
+    // Convert back to snapshot format
+    const formattedHistory = aggregatedHistory.map(record => ({
+      id: record.id,
+      timestamp: record.executionTime,
+      totalBalance: record.totalBalance,
+      accountBalance: record.accountBalance,
+    }));
+
+    const metadata = calculateMetadata(
+      allHistory.length,
+      aggregatedHistory.length,
+      timeRange.first,
+      timeRange.last,
+      interval
+    );
 
     return c.json({
       success: true,
       data: {
-        history: returnedHistory,
+        history: formattedHistory,
         metadata: {
-          totalRecords: allHistory.length,
-          returnedRecords: returnedHistory.length,
-          aggregated: false,
+          ...metadata,
+          aggregated: true,
         },
       },
     });
@@ -1329,43 +1365,79 @@ publicRoutes.get('/all-bot-performance/:botId/snapshot-history', async (c) => {
       accountBalance: snapshot.totalBalance,
     }));
 
-    // If limit is specified and less than total, return limited results
-    if (limit > 0 && limit < allHistory.length && !disableAggregation) {
-      // Apply intelligent aggregation
-      const timeRange = getTimeRange(allHistory);
-      if (timeRange.first !== null && timeRange.last !== null) {
-        const timeSpanSeconds = timeRange.last - timeRange.first;
-        const interval = determineAggregationInterval(allHistory.length, timeSpanSeconds);
-        const aggregatedHistory = aggregateRecordsInMemory(allHistory, interval);
-        const metadata = calculateMetadata(
-          allHistory.length,
-          aggregatedHistory.length,
-          timeRange.first,
-          timeRange.last,
-          interval
-        );
-
-        return c.json({
-          success: true,
-          data: {
-            history: aggregatedHistory.slice(-limit),
-            metadata,
+    // If aggregation is disabled or limit is specified (not 0), return raw data
+    if (disableAggregation || (limit > 0 && limit < allHistory.length)) {
+      const returnedHistory = limit > 0 ? allHistory.slice(-limit) : allHistory;
+      return c.json({
+        success: true,
+        data: {
+          history: returnedHistory,
+          metadata: {
+            totalRecords: allHistory.length,
+            returnedRecords: returnedHistory.length,
+            aggregated: false,
           },
-        });
-      }
+        },
+      });
     }
 
-    // Return all records or limited raw data
-    const returnedHistory = limit > 0 ? allHistory.slice(-limit) : allHistory;
+    // Apply intelligent aggregation for limit=0 or limit >= allHistory.length
+    const timeRange = getTimeRange(allHistory.map(h => ({ executionTime: h.timestamp })));
+
+    if (!timeRange.first || !timeRange.last) {
+      return c.json({
+        success: true,
+        data: {
+          history: [],
+          metadata: {
+            totalRecords: allHistory.length,
+            returnedRecords: 0,
+            aggregated: false,
+          },
+        },
+      });
+    }
+
+    const timeSpanSeconds = timeRange.last - timeRange.first;
+    const interval = determineAggregationInterval(allHistory.length, timeSpanSeconds);
+
+    // Convert to execution format for aggregation
+    const recordsForAggregation = allHistory.map(h => ({
+      id: h.id,
+      executionTime: h.timestamp,
+      totalBalance: h.totalBalance,
+      unrealizedPnl: 0,
+      accountBalance: h.accountBalance,
+      accountExposure: 0,
+      tradesExecuted: 0,
+      status: 'success',
+    }));
+
+    const aggregatedHistory = aggregateRecordsInMemory(recordsForAggregation, interval);
+
+    // Convert back to snapshot format
+    const formattedHistory = aggregatedHistory.map(record => ({
+      id: record.id,
+      timestamp: record.executionTime,
+      totalBalance: record.totalBalance,
+      accountBalance: record.accountBalance,
+    }));
+
+    const metadata = calculateMetadata(
+      allHistory.length,
+      aggregatedHistory.length,
+      timeRange.first,
+      timeRange.last,
+      interval
+    );
 
     return c.json({
       success: true,
       data: {
-        history: returnedHistory,
+        history: formattedHistory,
         metadata: {
-          totalRecords: allHistory.length,
-          returnedRecords: returnedHistory.length,
-          aggregated: false,
+          ...metadata,
+          aggregated: true,
         },
       },
     });
