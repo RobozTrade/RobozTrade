@@ -692,20 +692,22 @@ async function executeBuyOrder(
   // Calculate volatility-adjusted size
   const { quantity, notional } = determineOrderQuantity(decision, adjustedContext, leverage);
   const adjustedNotional = calculateVolatilityAdjustedSize(notional, context);
-  const adjustedQuantity = adjustedNotional / context.currentPrice;
+  const adjustedQuantityRaw = adjustedNotional / context.currentPrice;
+  const adjustedQuantity = normalizeQuantity(adjustedQuantityRaw, context.instrument);
 
   console.log(
     `Regime-adjusted order: ${regime.regime} regime, ` +
     `leverage ${leverage}x (max: ${riskParams.adjustedMaxLeverage}x), ` +
     `size ${adjustedNotional.toFixed(2)} USDT (${(riskParams.positionSizeMultiplier * 100).toFixed(0)}% of normal)`
   );
+  console.log(`Quantity precision check: ${adjustedQuantityRaw.toFixed(9)} -> ${adjustedQuantity.toFixed(9)} (stepSize: ${context.instrument?.stepSize ?? 'N/A'})`);
 
   const order = await AsterAPI.placeOrder(
     {
       symbol: context.symbol,
       side: 'BUY',
       type: 'MARKET',
-      quantity: adjustedQuantity, // Use volatility-adjusted quantity
+      quantity: adjustedQuantity, // Use volatility-adjusted quantity with proper precision
       leverage,
     },
     credentials
@@ -826,20 +828,22 @@ async function executeSellOrder(
   // Calculate volatility-adjusted size
   const { quantity, notional } = determineOrderQuantity(decision, adjustedContext, leverage);
   const adjustedNotional = calculateVolatilityAdjustedSize(notional, context);
-  const adjustedQuantity = adjustedNotional / context.currentPrice;
+  const adjustedQuantityRaw = adjustedNotional / context.currentPrice;
+  const adjustedQuantity = normalizeQuantity(adjustedQuantityRaw, context.instrument);
 
   console.log(
     `Regime-adjusted order: ${regime.regime} regime, ` +
     `leverage ${leverage}x (max: ${riskParams.adjustedMaxLeverage}x), ` +
     `size ${adjustedNotional.toFixed(2)} USDT (${(riskParams.positionSizeMultiplier * 100).toFixed(0)}% of normal)`
   );
+  console.log(`Quantity precision check: ${adjustedQuantityRaw.toFixed(9)} -> ${adjustedQuantity.toFixed(9)} (stepSize: ${context.instrument?.stepSize ?? 'N/A'})`);
 
   const order = await AsterAPI.placeOrder(
     {
       symbol: context.symbol,
       side: 'SELL',
       type: 'MARKET',
-      quantity: adjustedQuantity, // Use volatility-adjusted quantity
+      quantity: adjustedQuantity, // Use volatility-adjusted quantity with proper precision
       leverage,
     },
     credentials
@@ -1232,6 +1236,24 @@ function sanitizeLeverage(suggested: number | undefined, maxLeverage: number): n
   const candidate = suggested && suggested > 0 ? suggested : maxLeverage;
   const clamped = Math.min(candidate, maxLeverage);
   return Math.max(1, clamped);
+}
+
+/**
+ * Normalize quantity to exchange precision requirements
+ */
+function normalizeQuantity(quantity: number, instrument: AsterAPI.SymbolMetadata | undefined): number {
+  if (!instrument) {
+    return quantity;
+  }
+
+  // Apply step size rounding
+  let normalizedQty = roundDownToStep(quantity, instrument.stepSize);
+
+  // Apply quantity precision
+  const precision = instrument?.quantityPrecision ?? 6;
+  normalizedQty = Number(normalizedQty.toFixed(Math.min(precision, 8)));
+
+  return normalizedQty;
 }
 
 function determineOrderQuantity(
