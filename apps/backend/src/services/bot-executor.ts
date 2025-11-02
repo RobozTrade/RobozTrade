@@ -958,6 +958,31 @@ async function executeCloseOrder(
     console.warn(`${logPrefix} No open trade record found for ${context.symbol} when attempting close`);
   }
 
+  // Cancel TP and SL orders if they exist
+  if (openTrade) {
+    // Cancel stop loss order if it exists
+    if (openTrade.stopLossOrderId) {
+      try {
+        await AsterAPI.cancelOrder(context.symbol, openTrade.stopLossOrderId, credentials);
+        console.log(`${logPrefix} ✅ Cancelled stop loss order ${openTrade.stopLossOrderId} for ${context.symbol}`);
+      } catch (error: any) {
+        console.warn(`${logPrefix} ⚠️ Failed to cancel stop loss order ${openTrade.stopLossOrderId} for ${context.symbol}:`, error.message);
+        // Continue even if cancellation fails (order might already be filled or cancelled)
+      }
+    }
+
+    // Cancel take profit order if it exists
+    if (openTrade.takeProfitOrderId) {
+      try {
+        await AsterAPI.cancelOrder(context.symbol, openTrade.takeProfitOrderId, credentials);
+        console.log(`${logPrefix} ✅ Cancelled take profit order ${openTrade.takeProfitOrderId} for ${context.symbol}`);
+      } catch (error: any) {
+        console.warn(`${logPrefix} ⚠️ Failed to cancel take profit order ${openTrade.takeProfitOrderId} for ${context.symbol}:`, error.message);
+        // Continue even if cancellation fails (order might already be filled or cancelled)
+      }
+    }
+  }
+
   const entryTimestampSource = openTrade?.openedAt ?? context.position.entryTime;
   let minutesHeld = MIN_HOLD_MINUTES;
 
