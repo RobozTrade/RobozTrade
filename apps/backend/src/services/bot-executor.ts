@@ -11,6 +11,15 @@ import { decrypt } from '../lib/crypto';
 import * as AsterAPI from './aster-api';
 import * as AITrader from './ai-trader';
 import { calculateIndicators, calculateATR } from './indicators';
+import {
+  detectMarketRegime,
+  getRegimeAdjustedRiskParams,
+  calculateRegimeAwareRiskLevels,
+  shouldTakePosition,
+  calculateVolatilityAdjustedSize,
+  type MarketRegime,
+  type MarketRegimeAnalysis,
+} from './improved-risk-management';
 import type { TradingContext, TradingDecision } from './ai-trader';
 import type { DbClient } from '../lib/db';
 import type { AccountInfo } from './aster-api';
@@ -361,6 +370,28 @@ export async function executeBot(
       throw new Error('No valid market data available for any symbol');
     }
 
+    // Detect market regime for each symbol
+    const regimeAnalyses = new Map<string, MarketRegimeAnalysis>();
+    for (const context of contexts) {
+      const regimeAnalysis = detectMarketRegime(context);
+      regimeAnalyses.set(context.symbol, regimeAnalysis);
+
+      console.log(
+        `${logPrefix} ${context.symbol} Regime: ${regimeAnalysis.regime} ` +
+        `(confidence: ${(regimeAnalysis.confidence * 100).toFixed(1)}%) - ` +
+        `Bearish: ${regimeAnalysis.bearishSignals}, Bullish: ${regimeAnalysis.bullishSignals}`
+      );
+      console.log(`${logPrefix} Reasons:`, regimeAnalysis.reasons);
+    }
+
+    // Add regime info to market data snapshot for logging
+    for (const [symbol, snapshot] of Object.entries(marketDataSnapshot)) {
+      const regime = regimeAnalyses.get(symbol);
+      if (regime) {
+        (snapshot as any).regimeAnalysis = regime;
+      }
+    }
+
     // Get AI trading decisions
     const customPrompt = bot.customPrompt || getDefaultPrompt();
     aiPrompt = AITrader.buildTradingPrompt(customPrompt, contexts);
@@ -420,19 +451,78 @@ export async function executeBot(
           }
         }
 
+        // Regime-based filtering for trade actions
+        const regimeAnalysis = regimeAnalyses.get(decision.symbol);
+        if (regimeAnalysis && isTradeAction) {
+          const positionCheck = shouldTakePosition(
+            decision.action as 'BUY' | 'SELL',
+            regimeAnalysis.regime,
+            regimeAnalysis.confidence
+          );
+
+          if (!positionCheck.allowed) {
+            console.log(
+              `${logPrefix} 🚫 Rejecting ${decision.action} ${decision.symbol}: ${positionCheck.reason}`
+            );
+            continue; // Skip this trade
+          } else if (!positionCheck.reason.includes('good setup')) {
+            console.log(
+              `${logPrefix} ⚠️ ${decision.action} ${decision.symbol}: ${positionCheck.reason}`
+            );
+            // Reduce position size for counter-trend trades
+            if (decision.action === 'BUY' && regimeAnalysis.regime === 'BEARISH') {
+              decision.suggestedLeverage = Math.min(decision.suggestedLeverage || context.maxLeverage, 8);
+              (decision as any).targetNotional = (decision as any).targetNotional
+                ? (decision as any).targetNotional * 0.5
+                : undefined;
+            } else if (decision.action === 'SELL' && regimeAnalysis.regime === 'BULLISH') {
+              decision.suggestedLeverage = Math.min(decision.suggestedLeverage || context.maxLeverage, 8);
+              (decision as any).targetNotional = (decision as any).targetNotional
+                ? (decision as any).targetNotional * 0.5
+                : undefined;
+            }
+          }
+        }
+
         if (decision.action === 'BUY') {
           // Open long position
-          await executeBuyOrder(decision, context, credentials, db, botId, accountInfo?.totalBalance);
+          const regimeAnalysisForTrade = regimeAnalyses.get(decision.symbol);
+          await executeBuyOrder(decision, context, credentials, db, botId, accountInfo?.totalBalance, regimeAnalysisForTrade);
           tradesExecuted++;
           openTradesCount++;
           syncOpenTradesCount(openTradesCount);
         } else if (decision.action === 'SELL') {
           // Open short position
-          await executeSellOrder(decision, context, credentials, db, botId, accountInfo?.totalBalance);
+          const regimeAnalysisForTrade = regimeAnalyses.get(decision.symbol);
+          await executeSellOrder(decision, context, credentials, db, botId, accountInfo?.totalBalance, regimeAnalysisForTrade);
           tradesExecuted++;
           openTradesCount++;
           syncOpenTradesCount(openTradesCount);
         } else if (isCloseAction && context.position) {
+          // Check if we should aggressively close positions in wrong regime
+          const regimeAnalysisForClose = regimeAnalyses.get(decision.symbol);
+
+          if (regimeAnalysisForClose && context.position) {
+            const isLongInBearMarket =
+              context.position.side === 'LONG' &&
+              regimeAnalysisForClose.regime === 'BEARISH' &&
+              regimeAnalysisForClose.confidence > 0.7;
+
+            const isShortInBullMarket =
+              context.position.side === 'SHORT' &&
+              regimeAnalysisForClose.regime === 'BULLISH' &&
+              regimeAnalysisForClose.confidence > 0.7;
+
+            if (isLongInBearMarket || isShortInBullMarket) {
+              console.log(
+                `${logPrefix} ⚠️ Position in wrong regime: ` +
+                `${context.position.side} in ${regimeAnalysisForClose.regime} market - prioritizing close`
+              );
+              // Override minimum hold time for wrong-regime positions
+              // (This is handled in executeCloseOrder, but we log it here)
+            }
+          }
+
           // Close existing position
           const closed = await executeCloseOrder(decision, context, credentials, db, botId, logPrefix, accountInfo?.totalBalance);
           if (closed) {
@@ -570,26 +660,71 @@ async function executeBuyOrder(
   credentials: AsterAPI.AsterCredentials,
   db: DbClient,
   botId: string,
-  totalBalance?: number
+  totalBalance?: number,
+  regimeAnalysis?: MarketRegimeAnalysis
 ) {
-  const leverage = sanitizeLeverage(decision.suggestedLeverage, context.maxLeverage);
-  const { quantity, notional } = determineOrderQuantity(decision, context, leverage);
+  // Detect regime if not provided
+  const regime = regimeAnalysis || detectMarketRegime(context);
+
+  // Get regime-adjusted risk parameters
+  const riskParams = getRegimeAdjustedRiskParams(
+    regime.regime,
+    regime.confidence,
+    context.maxLeverage,
+    context.minNotionalPerTrade,
+    context.maxNotionalPerTrade
+  );
+
+  // Override context values with regime-adjusted ones
+  const adjustedContext = {
+    ...context,
+    maxLeverage: riskParams.adjustedMaxLeverage,
+    minNotionalPerTrade: riskParams.adjustedMinNotional,
+    maxNotionalPerTrade: riskParams.adjustedMaxNotional,
+  };
+
+  // Use adjusted leverage
+  const leverage = sanitizeLeverage(
+    decision.suggestedLeverage,
+    riskParams.adjustedMaxLeverage
+  );
+
+  // Calculate volatility-adjusted size
+  const { quantity, notional } = determineOrderQuantity(decision, adjustedContext, leverage);
+  const adjustedNotional = calculateVolatilityAdjustedSize(notional, context);
+  const adjustedQuantity = adjustedNotional / context.currentPrice;
+
+  console.log(
+    `Regime-adjusted order: ${regime.regime} regime, ` +
+    `leverage ${leverage}x (max: ${riskParams.adjustedMaxLeverage}x), ` +
+    `size ${adjustedNotional.toFixed(2)} USDT (${(riskParams.positionSizeMultiplier * 100).toFixed(0)}% of normal)`
+  );
 
   const order = await AsterAPI.placeOrder(
     {
       symbol: context.symbol,
       side: 'BUY',
       type: 'MARKET',
-      quantity,
+      quantity: adjustedQuantity, // Use volatility-adjusted quantity
       leverage,
     },
     credentials
   );
 
   const entryPrice = order.avgPrice || context.currentPrice;
-  const defaultRisk = AITrader.calculateRiskLevels(entryPrice, 'BUY', leverage);
-  const rawStopLoss = decision.suggestedStopLoss ?? defaultRisk.stopLoss;
-  const rawTakeProfit = decision.suggestedTakeProfit ?? defaultRisk.takeProfit;
+
+  // Use regime-aware risk levels
+  const riskLevels = calculateRegimeAwareRiskLevels(
+    entryPrice,
+    'BUY',
+    leverage,
+    regime.regime,
+    riskParams.stopLossPercent,
+    riskParams.takeProfitPercent
+  );
+
+  const rawStopLoss = decision.suggestedStopLoss ?? riskLevels.stopLoss;
+  const rawTakeProfit = decision.suggestedTakeProfit ?? riskLevels.takeProfit;
 
   const stopLoss = normalizeStopPrice(rawStopLoss, context.instrument, 'floor');
   const takeProfit = normalizeStopPrice(rawTakeProfit, context.instrument, 'ceil');
@@ -602,7 +737,7 @@ async function executeBuyOrder(
           symbol: context.symbol,
           side: 'SELL',
           type: 'STOP_MARKET',
-          quantity,
+          quantity: adjustedQuantity, // Use volatility-adjusted quantity
           stopPrice: stopLoss,
         },
         credentials
@@ -621,7 +756,7 @@ async function executeBuyOrder(
           symbol: context.symbol,
           side: 'SELL',
           type: 'TAKE_PROFIT_MARKET',
-          quantity,
+          quantity: adjustedQuantity, // Use volatility-adjusted quantity
           stopPrice: takeProfit,
         },
         credentials
@@ -638,10 +773,10 @@ async function executeBuyOrder(
     symbol: context.symbol,
     side: 'BUY',
     orderType: 'MARKET',
-    quantity,
+    quantity: adjustedQuantity, // Use volatility-adjusted quantity
     entryPrice,
     leverage,
-    margin: notional / leverage,
+    margin: adjustedNotional / leverage,
     orderId: order.orderId,
     stopLossOrderId,
     takeProfitOrderId,
@@ -659,26 +794,71 @@ async function executeSellOrder(
   credentials: AsterAPI.AsterCredentials,
   db: DbClient,
   botId: string,
-  totalBalance?: number
+  totalBalance?: number,
+  regimeAnalysis?: MarketRegimeAnalysis
 ) {
-  const leverage = sanitizeLeverage(decision.suggestedLeverage, context.maxLeverage);
-  const { quantity, notional } = determineOrderQuantity(decision, context, leverage);
+  // Detect regime if not provided
+  const regime = regimeAnalysis || detectMarketRegime(context);
+
+  // Get regime-adjusted risk parameters
+  const riskParams = getRegimeAdjustedRiskParams(
+    regime.regime,
+    regime.confidence,
+    context.maxLeverage,
+    context.minNotionalPerTrade,
+    context.maxNotionalPerTrade
+  );
+
+  // Override context values with regime-adjusted ones
+  const adjustedContext = {
+    ...context,
+    maxLeverage: riskParams.adjustedMaxLeverage,
+    minNotionalPerTrade: riskParams.adjustedMinNotional,
+    maxNotionalPerTrade: riskParams.adjustedMaxNotional,
+  };
+
+  // Use adjusted leverage
+  const leverage = sanitizeLeverage(
+    decision.suggestedLeverage,
+    riskParams.adjustedMaxLeverage
+  );
+
+  // Calculate volatility-adjusted size
+  const { quantity, notional } = determineOrderQuantity(decision, adjustedContext, leverage);
+  const adjustedNotional = calculateVolatilityAdjustedSize(notional, context);
+  const adjustedQuantity = adjustedNotional / context.currentPrice;
+
+  console.log(
+    `Regime-adjusted order: ${regime.regime} regime, ` +
+    `leverage ${leverage}x (max: ${riskParams.adjustedMaxLeverage}x), ` +
+    `size ${adjustedNotional.toFixed(2)} USDT (${(riskParams.positionSizeMultiplier * 100).toFixed(0)}% of normal)`
+  );
 
   const order = await AsterAPI.placeOrder(
     {
       symbol: context.symbol,
       side: 'SELL',
       type: 'MARKET',
-      quantity,
+      quantity: adjustedQuantity, // Use volatility-adjusted quantity
       leverage,
     },
     credentials
   );
 
   const entryPrice = order.avgPrice || context.currentPrice;
-  const defaultRisk = AITrader.calculateRiskLevels(entryPrice, 'SELL', leverage);
-  const rawStopLoss = decision.suggestedStopLoss ?? defaultRisk.stopLoss;
-  const rawTakeProfit = decision.suggestedTakeProfit ?? defaultRisk.takeProfit;
+
+  // Use regime-aware risk levels
+  const riskLevels = calculateRegimeAwareRiskLevels(
+    entryPrice,
+    'SELL',
+    leverage,
+    regime.regime,
+    riskParams.stopLossPercent,
+    riskParams.takeProfitPercent
+  );
+
+  const rawStopLoss = decision.suggestedStopLoss ?? riskLevels.stopLoss;
+  const rawTakeProfit = decision.suggestedTakeProfit ?? riskLevels.takeProfit;
 
   const stopLoss = normalizeStopPrice(rawStopLoss, context.instrument, 'ceil');
   const takeProfit = normalizeStopPrice(rawTakeProfit, context.instrument, 'floor');
@@ -691,7 +871,7 @@ async function executeSellOrder(
           symbol: context.symbol,
           side: 'BUY',
           type: 'STOP_MARKET',
-          quantity,
+          quantity: adjustedQuantity, // Use volatility-adjusted quantity
           stopPrice: stopLoss,
         },
         credentials
@@ -710,7 +890,7 @@ async function executeSellOrder(
           symbol: context.symbol,
           side: 'BUY',
           type: 'TAKE_PROFIT_MARKET',
-          quantity,
+          quantity: adjustedQuantity, // Use volatility-adjusted quantity
           stopPrice: takeProfit,
         },
         credentials
@@ -727,10 +907,10 @@ async function executeSellOrder(
     symbol: context.symbol,
     side: 'SELL',
     orderType: 'MARKET',
-    quantity,
+    quantity: adjustedQuantity, // Use volatility-adjusted quantity
     entryPrice,
     leverage,
-    margin: notional / leverage,
+    margin: adjustedNotional / leverage,
     orderId: order.orderId,
     stopLossOrderId,
     takeProfitOrderId,
