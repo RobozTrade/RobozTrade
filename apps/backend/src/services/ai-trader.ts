@@ -134,6 +134,29 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
   const symbolPair = ctx.symbol;
   const symbolBase = symbolPair.replace(/USDT$/i, '');
 
+  // Build numeric values map for conditional evaluation (before formatting)
+  const numericValues: Record<string, number> = {
+    current_price: ctx.currentPrice,
+    current_ema20: ctx.indicators.ema20,
+    current_ema50: ctx.indicators.ema50 ?? ctx.indicators.ema20,
+    current_macd: ctx.indicators.macd,
+    current_macd_signal: ctx.indicators.macdSignal,
+    current_macd_histogram: ctx.indicators.macdHistogram,
+    current_rsi: ctx.indicators.rsi7,
+    current_rsi7: ctx.indicators.rsi7,
+    current_rsi14: ctx.indicators.rsi14 ?? ctx.indicators.rsi7,
+    ht_ema20: ctx.higherTimeframeEma20 ?? 0,
+    ht_ema50: ctx.higherTimeframeEma50 ?? 0,
+    ht_atr3: ctx.higherTimeframeAtr3 ?? 0,
+    ht_atr14: ctx.higherTimeframeAtr14 ?? 0,
+    ht_volume_current: ctx.higherTimeframeVolume ?? 0,
+    ht_volume_average: ctx.higherTimeframeVolumeAverage ?? 0,
+    'position.unrealized_pnl': ctx.position?.unrealizedPnl ?? 0,
+  };
+
+  // First, evaluate conditional expressions like {{#if (gt var1 var2)}}
+  block = evaluateConditionals(block, numericValues, ctx.position);
+
   const symbolReplacements: Record<string, string | number | undefined> = {
     symbol: symbolPair,
     symbol_pair: symbolPair,
@@ -210,6 +233,110 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
   block = replaceTemplatePlaceholders(block, fallbackPositionReplacements);
 
   return block.trim();
+}
+
+/**
+ * Evaluate conditional expressions like {{#if (gt var1 var2)}}
+ */
+function evaluateConditionals(
+  template: string,
+  numericValues: Record<string, number>,
+  position?: Position
+): string {
+  let output = template;
+  let changed = true;
+  let iterations = 0;
+  const maxIterations = 10; // Prevent infinite loops
+
+  // Process conditionals iteratively to handle nested cases
+  while (changed && iterations < maxIterations) {
+    changed = false;
+    iterations++;
+
+    // Handle {{#if (gt var1 var2)}}...{{else}}...{{/if}}
+    // Match: {{#if (gt var1 var2)}}...{{else}}...{{/if}}
+    // or: {{#if (gt var1 var2)}}...{{/if}}
+    const conditionalRegex = /\{\{#if\s+\((\w+)\s+([^\s\)]+)\s+([^\s\)]+)\)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\}\}/;
+
+    const newOutput = output.replace(conditionalRegex, (match, operator, var1, var2, trueBlock, falseBlock = '') => {
+      // Get numeric values for variables
+      const val1 = getNumericValue(var1, numericValues, position);
+      const val2 = getNumericValue(var2, numericValues, position);
+
+      // Evaluate condition based on operator
+      let condition = false;
+      switch (operator) {
+        case 'gt':
+          condition = val1 > val2;
+          break;
+        case 'lt':
+          condition = val1 < val2;
+          break;
+        case 'gte':
+        case 'ge':
+          condition = val1 >= val2;
+          break;
+        case 'lte':
+        case 'le':
+          condition = val1 <= val2;
+          break;
+        case 'eq':
+          condition = Math.abs(val1 - val2) < 0.0001; // Floating point comparison
+          break;
+        case 'ne':
+          condition = Math.abs(val1 - val2) >= 0.0001;
+          break;
+        default:
+          console.warn(`Unknown conditional operator: ${operator}`);
+          return match; // Return original if unknown operator
+      }
+
+      if (match !== (condition ? trueBlock : falseBlock)) {
+        changed = true;
+      }
+
+      return condition ? trueBlock : falseBlock;
+    });
+
+    output = newOutput;
+  }
+
+  return output;
+}
+
+/**
+ * Get numeric value for a variable, handling both simple variables and nested properties like position.unrealized_pnl
+ */
+function getNumericValue(
+  variable: string,
+  numericValues: Record<string, number>,
+  position?: Position
+): number {
+  // Handle nested properties like position.unrealized_pnl
+  if (variable.startsWith('position.')) {
+    const prop = variable as keyof typeof numericValues;
+    if (prop in numericValues) {
+      return numericValues[prop];
+    }
+    // Fallback: try to get from position object
+    if (position && variable === 'position.unrealized_pnl') {
+      return position.unrealizedPnl ?? 0;
+    }
+    return 0;
+  }
+
+  // Handle simple variables
+  if (variable in numericValues) {
+    return numericValues[variable];
+  }
+
+  // Try to parse as number
+  const parsed = parseFloat(variable);
+  if (!isNaN(parsed)) {
+    return parsed;
+  }
+
+  return 0;
 }
 
 function replaceTemplatePlaceholders(
