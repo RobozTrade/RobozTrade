@@ -13,6 +13,8 @@ import { botPerformanceRoutes } from './routes/bot-performance';
 import { publicRoutes } from './routes/public';
 import { MarketDataWebSocket } from './services/websocket';
 import { handleScheduled, runScheduledExecution, cleanupOldBotExecutions, type Env as ScheduledEnv } from './scheduled';
+import { createDailyXPosts, getDailyBotPerformance } from './services/x-twitter-poster';
+import { getDb } from './lib/db';
 
 export { MarketDataWebSocket };
 
@@ -44,6 +46,14 @@ type Bindings = {
   // Crypto configuration
   PBKDF2_ITERATIONS?: string;  // Number as string
   APP_RUNTIME_ENV?: string;
+
+  // X/Twitter API configuration (secrets)
+  TWITTER_API_KEY?: string;
+  TWITTER_API_SECRET?: string;
+  TWITTER_ACCESS_TOKEN?: string;
+  TWITTER_ACCESS_TOKEN_SECRET?: string;
+  OPENROUTER_API_KEY?: string;  // For X/Twitter posting (can be separate from bot keys)
+  GOOGLE_API_KEY?: string;  // For Google Gemini/Imagen API image generation
 };
 
 
@@ -168,6 +178,197 @@ app.get('/api/cron/cleanup', async (c) => {
       { success: false, error: 'Failed to trigger cleanup', message: error.message },
       500
     );
+  }
+});
+
+/**
+ * Test X/Twitter posting endpoint (development only)
+ * GET /api/test/x-post
+ * Tests the daily X/Twitter posting functionality with detailed logging and error reporting
+ */
+app.get('/api/test/x-post', async (c) => {
+  try {
+    const runtimeEnv = (c.env.APP_RUNTIME_ENV || 'production').toLowerCase();
+    console.log('[X-TEST] Environment check:', { runtimeEnv, required: 'development' });
+
+    if (runtimeEnv !== 'development') {
+      console.log('[X-TEST] Access denied - not in development mode');
+      return c.json({
+        success: false,
+        error: 'Test endpoint is disabled outside development',
+        runtimeEnv,
+      }, 403);
+    }
+
+    console.log('[X-TEST] Starting X/Twitter posting test...');
+
+    // Check for required API keys
+    const requiredKeys = {
+      TWITTER_API_KEY: c.env.TWITTER_API_KEY ? '***SET***' : 'MISSING',
+      TWITTER_API_SECRET: c.env.TWITTER_API_SECRET ? '***SET***' : 'MISSING',
+      TWITTER_ACCESS_TOKEN: c.env.TWITTER_ACCESS_TOKEN ? '***SET***' : 'MISSING',
+      TWITTER_ACCESS_TOKEN_SECRET: c.env.TWITTER_ACCESS_TOKEN_SECRET ? '***SET***' : 'MISSING',
+      OPENROUTER_API_KEY: c.env.OPENROUTER_API_KEY ? '***SET***' : 'MISSING',
+      GOOGLE_API_KEY: c.env.GOOGLE_API_KEY ? '***SET***' : 'MISSING',
+    };
+
+    console.log('[X-TEST] API Keys status:', requiredKeys);
+
+    if (
+      !c.env.TWITTER_API_KEY ||
+      !c.env.TWITTER_API_SECRET ||
+      !c.env.TWITTER_ACCESS_TOKEN ||
+      !c.env.TWITTER_ACCESS_TOKEN_SECRET ||
+      !c.env.OPENROUTER_API_KEY ||
+      !c.env.GOOGLE_API_KEY
+    ) {
+      console.error('[X-TEST] Missing required API keys');
+      return c.json({
+        success: false,
+        error: 'Missing required API keys',
+        apiKeysStatus: requiredKeys,
+      }, 400);
+    }
+
+    // Get database and configuration
+    const db = getDb(c.env.DB);
+    const iterations = parseInt(c.env.PBKDF2_ITERATIONS || '100000', 10);
+
+    console.log('[X-TEST] Configuration:', {
+      pbkdf2Iterations: iterations,
+      hasDb: !!db,
+    });
+
+    // Step 1: Get daily bot performance
+    console.log('[X-TEST] Step 1: Fetching daily bot performance...');
+    let botPerformance: any = null;
+    let botPerformanceError: any = null;
+
+    try {
+      botPerformance = await getDailyBotPerformance(
+        db,
+        c.env.ENCRYPTION_KEY,
+        iterations
+      );
+      console.log('[X-TEST] Bot performance data:', {
+        topBot: botPerformance.topBot ? {
+          botId: botPerformance.topBot.botId,
+          botName: botPerformance.topBot.botName,
+          aiModel: botPerformance.topBot.aiModel,
+          dailyReturn: botPerformance.topBot.dailyReturn,
+          totalBalance: botPerformance.topBot.totalBalance,
+          tradesExecuted: botPerformance.topBot.tradesExecuted,
+        } : null,
+        leastBot: botPerformance.leastBot ? {
+          botId: botPerformance.leastBot.botId,
+          botName: botPerformance.leastBot.botName,
+          aiModel: botPerformance.leastBot.aiModel,
+          dailyReturn: botPerformance.leastBot.dailyReturn,
+          totalBalance: botPerformance.leastBot.totalBalance,
+          tradesExecuted: botPerformance.leastBot.tradesExecuted,
+        } : null,
+      });
+    } catch (error: any) {
+      botPerformanceError = error;
+      console.error('[X-TEST] Error fetching bot performance:', error);
+    }
+
+    // Step 2: Create and post X/Twitter posts
+    console.log('[X-TEST] Step 2: Creating and posting X/Twitter posts...');
+    let xPostResults: any = null;
+    let xPostError: any = null;
+
+    try {
+      xPostResults = await createDailyXPosts(
+        db,
+        c.env.ENCRYPTION_KEY,
+        iterations,
+        c.env.OPENROUTER_API_KEY,
+        c.env.GOOGLE_API_KEY,
+        c.env.TWITTER_API_KEY,
+        c.env.TWITTER_API_SECRET,
+        c.env.TWITTER_ACCESS_TOKEN,
+        c.env.TWITTER_ACCESS_TOKEN_SECRET
+      );
+      console.log('[X-TEST] X/Twitter posting results:', xPostResults);
+    } catch (error: any) {
+      xPostError = error;
+      console.error('[X-TEST] Error in X/Twitter posting:', error);
+    }
+
+    // Compile comprehensive response
+    const response = {
+      success: !botPerformanceError && !xPostError && xPostResults !== null,
+      timestamp: new Date().toISOString(),
+      environment: {
+        runtimeEnv,
+        pbkdf2Iterations: iterations,
+      },
+      apiKeysStatus: requiredKeys,
+      botPerformance: botPerformance
+        ? {
+          topBot: botPerformance.topBot,
+          leastBot: botPerformance.leastBot,
+          error: null,
+        }
+        : {
+          topBot: null,
+          leastBot: null,
+          error: botPerformanceError ? {
+            message: botPerformanceError.message,
+            stack: botPerformanceError.stack,
+          } : null,
+        },
+      xPostResults: xPostResults
+        ? {
+          topBotPost: xPostResults.topBotPost,
+          leastBotPost: xPostResults.leastBotPost,
+          error: null,
+        }
+        : null,
+      errors: {
+        botPerformanceError: botPerformanceError
+          ? {
+            message: botPerformanceError.message,
+            stack: botPerformanceError.stack,
+            name: botPerformanceError.name,
+          }
+          : null,
+        xPostError: xPostError
+          ? {
+            message: xPostError.message,
+            stack: xPostError.stack,
+            name: xPostError.name,
+          }
+          : null,
+      },
+      summary: {
+        botPerformanceFetched: !!botPerformance,
+        topBotFound: !!botPerformance?.topBot,
+        leastBotFound: !!botPerformance?.leastBot,
+        topBotPosted: xPostResults?.topBotPost?.success || false,
+        leastBotPosted: xPostResults?.leastBotPost?.success || false,
+        topBotTweetId: xPostResults?.topBotPost?.tweetId || null,
+        leastBotTweetId: xPostResults?.leastBotPost?.tweetId || null,
+      },
+    };
+
+    console.log('[X-TEST] Complete response summary:', {
+      success: response.success,
+      summary: response.summary,
+      hasErrors: !!(response.errors.botPerformanceError || response.errors.xPostError),
+    });
+
+    return c.json(response, response.success ? 200 : 500);
+  } catch (error: any) {
+    console.error('[X-TEST] Fatal error:', error);
+    return c.json({
+      success: false,
+      error: 'Fatal error in test endpoint',
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    }, 500);
   }
 });
 

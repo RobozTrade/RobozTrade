@@ -10,6 +10,7 @@ import { executeBot, type SharedMarketDataCache } from './services/bot-executor'
 import { asterRateLimiter } from './services/rate-limiter';
 import { decrypt } from './lib/crypto';
 import * as AsterAPI from './services/aster-api';
+import { createDailyXPosts } from './services/x-twitter-poster';
 
 const BOT_BATCH_SIZE = 100;
 const CRON_INTERVAL_MINUTES = 2;
@@ -129,6 +130,12 @@ export interface Env {
   ENCRYPTION_KEY: string;
   PBKDF2_ITERATIONS?: string;
   APP_RUNTIME_ENV?: string;
+  TWITTER_API_KEY?: string;
+  TWITTER_API_SECRET?: string;
+  TWITTER_ACCESS_TOKEN?: string;
+  TWITTER_ACCESS_TOKEN_SECRET?: string;
+  OPENROUTER_API_KEY?: string;
+  GOOGLE_API_KEY?: string;
 }
 
 export interface ScheduledExecutionDetail {
@@ -386,6 +393,51 @@ export async function handleScheduled(
       console.log('Running daily bot execution cleanup...');
       const cleanupResult = await cleanupOldBotExecutions(env);
       console.log(`Cleanup result: ${cleanupResult.totalDeleted} records deleted from ${cleanupResult.botsProcessed} bots`);
+    }
+
+    // Run daily X/Twitter posting at 8:00 AM UTC
+    // Post top and least performing bots from the previous day
+    if (currentHour === 8 && currentMinute < 2) {
+      console.log('Running daily X/Twitter posting...');
+
+      if (
+        env.TWITTER_API_KEY &&
+        env.TWITTER_API_SECRET &&
+        env.TWITTER_ACCESS_TOKEN &&
+        env.TWITTER_ACCESS_TOKEN_SECRET &&
+        env.OPENROUTER_API_KEY &&
+        env.GOOGLE_API_KEY
+      ) {
+        try {
+          const db = getDb(env.DB);
+          const iterations = parseInt(env.PBKDF2_ITERATIONS || '100000', 10);
+
+          const xPostResults = await createDailyXPosts(
+            db,
+            env.ENCRYPTION_KEY,
+            iterations,
+            env.OPENROUTER_API_KEY,
+            env.GOOGLE_API_KEY,
+            env.TWITTER_API_KEY,
+            env.TWITTER_API_SECRET,
+            env.TWITTER_ACCESS_TOKEN,
+            env.TWITTER_ACCESS_TOKEN_SECRET
+          );
+
+          console.log('X/Twitter posting results:', {
+            topBotPost: xPostResults.topBotPost.success
+              ? `Success: ${xPostResults.topBotPost.tweetId}`
+              : `Failed: ${xPostResults.topBotPost.error}`,
+            leastBotPost: xPostResults.leastBotPost.success
+              ? `Success: ${xPostResults.leastBotPost.tweetId}`
+              : `Failed: ${xPostResults.leastBotPost.error}`,
+          });
+        } catch (error: any) {
+          console.error('Error in daily X/Twitter posting:', error);
+        }
+      } else {
+        console.warn('X/Twitter posting skipped: Missing API credentials (need TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET, OPENROUTER_API_KEY, GOOGLE_API_KEY)');
+      }
     }
 
   } catch (error) {

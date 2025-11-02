@@ -49,10 +49,22 @@ invocation_logs = true
 # SECRETS (use `wrangler secret put`):
 #   - JWT_SECRET
 #   - ENCRYPTION_KEY
+#   - TWITTER_API_KEY (for daily X/Twitter posting)
+#   - TWITTER_API_SECRET (for daily X/Twitter posting)
+#   - TWITTER_ACCESS_TOKEN (for daily X/Twitter posting)
+#   - TWITTER_ACCESS_TOKEN_SECRET (for daily X/Twitter posting)
+#   - OPENROUTER_API_KEY (for X/Twitter posting AI text generation via AI SDK)
+#   - GOOGLE_API_KEY (for Google Gemini/Imagen API image generation)
 #
 # To set secrets in production:
 #   wrangler secret put JWT_SECRET
 #   wrangler secret put ENCRYPTION_KEY
+#   wrangler secret put TWITTER_API_KEY
+#   wrangler secret put TWITTER_API_SECRET
+#   wrangler secret put TWITTER_ACCESS_TOKEN
+#   wrangler secret put TWITTER_ACCESS_TOKEN_SECRET
+#   wrangler secret put OPENROUTER_API_KEY
+#   wrangler secret put GOOGLE_API_KEY
 # ============================================================================
 
 [vars]
