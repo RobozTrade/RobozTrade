@@ -630,6 +630,23 @@ export function BotPerformanceChart({
       {/* Legend - Only show when not in single bot mode */}
       {!selectedSingleBotId && (
         <div className="relative">
+          {/* Note about added funds - Only show for roboz team chart */}
+          {walletAddress && !showAllPublicBots && (
+            <div className="mb-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+              <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                <span className="font-medium">Note:</span> We provided extra $50 on each bot around{" "}
+                {new Date("2025-11-02T19:40:50.309Z").toLocaleString(undefined, {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                  hour12: true,
+                })}{" "}
+                ({Intl.DateTimeFormat().resolvedOptions().timeZone}) after prompt improvement.
+              </p>
+            </div>
+          )}
           <div className="flex items-center gap-2 mb-2">
             <span className="text-sm font-medium text-light-text-secondary dark:text-dark-text-secondary">
               Legend:
