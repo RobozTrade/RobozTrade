@@ -31,6 +31,7 @@ interface BotDataPoint {
 }
 
 type ChartMode = "total_pnl" | "unrealized_pnl" | "account_balance";
+type TimeRange = "all" | "1day";
 
 const BOT_COLORS = [
   "#22c55e", // green
@@ -66,7 +67,8 @@ export function BotPerformanceChart({
   const priceLineRef = useRef<{ series: ISeriesApi<"Line">; line: any } | null>(
     null
   ); // Store reference to the price line and its series
-  const [chartMode, setChartMode] = useState<ChartMode>("total_pnl");
+  const [chartMode] = useState<ChartMode>("total_pnl");
+  const [timeRange, setTimeRange] = useState<TimeRange>("all");
   const [legendScrollPosition, setLegendScrollPosition] = useState(0);
   const legendContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -121,23 +123,29 @@ export function BotPerformanceChart({
   // Fetch snapshot-based performance history for all bots
   const { data: tradeHistoryData } = useQuery({
     queryKey: showAllPublicBots
-      ? ["all-public-bot-snapshot-history", latestData]
+      ? ["all-public-bot-snapshot-history", latestData, timeRange]
       : walletAddress
-      ? ["public-bot-snapshot-history", walletAddress, latestData]
-      : ["bot-snapshot-history", latestData],
+      ? ["public-bot-snapshot-history", walletAddress, latestData, timeRange]
+      : ["bot-snapshot-history", latestData, timeRange],
     queryFn: async () => {
       if (!latestData || latestData.length === 0) return {};
 
       const historyPromises = latestData.map(async (bot) => {
+        // For "All" - use aggregated data (limit=0, no aggregate parameter or aggregate=true)
+        // For "1 Day" - use raw data (limit=1440, aggregate=false)
+        const limit = timeRange === "all" ? 0 : 1440;
+        const aggregate = timeRange === "all" ? undefined : false;
+        
         const response = showAllPublicBots
-          ? await api.getAllPublicBotSnapshotPerformanceHistory(bot.botId, 0)
+          ? await api.getAllPublicBotSnapshotPerformanceHistory(bot.botId, limit, aggregate)
           : walletAddress
           ? await api.getPublicBotSnapshotPerformanceHistory(
               walletAddress,
               bot.botId,
-              0
+              limit,
+              aggregate
             )
-          : await api.getBotSnapshotPerformanceHistory(bot.botId, 0);
+          : await api.getBotSnapshotPerformanceHistory(bot.botId, limit, aggregate);
 
         return {
           botId: bot.botId,
@@ -342,6 +350,10 @@ export function BotPerformanceChart({
       // Add small increments to handle duplicate timestamps
       const seenTimestamps = new Map<number, number>();
 
+      // Calculate time range filter
+      const now = Date.now() / 1000; // Current time in seconds
+      const oneDayAgo = now - 24 * 60 * 60; // 24 hours ago in seconds
+
       const data = dataPoints
         .map((entry: any) => {
           // Trade data has timestamp
@@ -349,6 +361,11 @@ export function BotPerformanceChart({
             typeof entry.timestamp === "number"
               ? entry.timestamp
               : new Date(entry.timestamp).getTime() / 1000;
+          
+          // Filter by time range
+          if (timeRange === "1day" && timestamp < oneDayAgo) {
+            return null;
+          }
 
           // Handle duplicate timestamps by adding milliseconds
           const count = seenTimestamps.get(timestamp) || 0;
@@ -386,7 +403,7 @@ export function BotPerformanceChart({
             value,
           };
         })
-        .filter((d: any) => !isNaN(d.value))
+        .filter((d: any) => d !== null && !isNaN(d.value))
         .sort(
           (a: any, b: any) => (a.time as number) - (b.time as number)
         ) as any[];
@@ -465,6 +482,7 @@ export function BotPerformanceChart({
     }, 100);
   }, [
     chartMode,
+    timeRange,
     tradeHistoryData,
     latestData,
     selectedBots,
@@ -501,30 +519,30 @@ export function BotPerformanceChart({
       {/* Chart Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-light-text-primary dark:text-dark-text-primary">
-          Bot Performance
+          Bot Performance P&L
         </h3>
 
-        {/* Chart Mode Toggle */}
+        {/* Time Range Toggle */}
         <div className="flex items-center gap-2 bg-white/5 dark:bg-white/5 rounded-lg p-1">
           <button
-            onClick={() => setChartMode("total_pnl")}
+            onClick={() => setTimeRange("all")}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              chartMode === "total_pnl"
+              timeRange === "all"
                 ? "bg-accent-green text-white"
                 : "text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary"
             }`}
           >
-            Total P&L
+            All
           </button>
           <button
-            onClick={() => setChartMode("account_balance")}
+            onClick={() => setTimeRange("1day")}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              chartMode === "account_balance"
+              timeRange === "1day"
                 ? "bg-accent-green text-white"
                 : "text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary"
             }`}
           >
-            Account Balance
+            1 Day
           </button>
         </div>
       </div>

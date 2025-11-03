@@ -358,10 +358,14 @@ class ApiClient {
 
   async getBotSnapshotPerformanceHistory(
     botId: string,
-    limit?: number
+    limit?: number,
+    aggregate?: boolean
   ): Promise<ApiResponse<AggregatedHistoryResponse | any[]>> {
-    const params = limit !== undefined ? `?limit=${limit}` : '';
-    return this.request(`/bot-performance/${botId}/snapshot-history${params}`, {}, true);
+    const params = new URLSearchParams();
+    if (limit !== undefined) params.append('limit', String(limit));
+    if (aggregate !== undefined) params.append('aggregate', String(aggregate));
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/bot-performance/${botId}/snapshot-history${queryString}`, {}, true);
   }
 
   async syncBotSnapshots(botId: string): Promise<ApiResponse<{
@@ -487,10 +491,14 @@ class ApiClient {
   async getPublicBotSnapshotPerformanceHistory(
     walletAddress: string,
     botId: string,
-    limit?: number
+    limit?: number,
+    aggregate?: boolean
   ): Promise<ApiResponse<AggregatedHistoryResponse | any[]>> {
-    const params = limit !== undefined ? `?limit=${limit}` : '';
-    return this.request(`/public/bot-performance/${walletAddress}/${botId}/snapshot-history${params}`);
+    const params = new URLSearchParams();
+    if (limit !== undefined) params.append('limit', String(limit));
+    if (aggregate !== undefined) params.append('aggregate', String(aggregate));
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/public/bot-performance/${walletAddress}/${botId}/snapshot-history${queryString}`);
   }
 
   async getPublicBotStatistics(walletAddress: string, botId: string): Promise<ApiResponse<BotStatistics>> {
@@ -587,10 +595,14 @@ class ApiClient {
 
   async getAllPublicBotSnapshotPerformanceHistory(
     botId: string,
-    limit?: number
+    limit?: number,
+    aggregate?: boolean
   ): Promise<ApiResponse<AggregatedHistoryResponse | any[]>> {
-    const params = limit !== undefined ? `?limit=${limit}` : '';
-    return this.request(`/public/all-bot-performance/${botId}/snapshot-history${params}`);
+    const params = new URLSearchParams();
+    if (limit !== undefined) params.append('limit', String(limit));
+    if (aggregate !== undefined) params.append('aggregate', String(aggregate));
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/public/all-bot-performance/${botId}/snapshot-history${queryString}`);
   }
 
   async getAllPublicBotStatistics(botId: string): Promise<ApiResponse<BotStatistics>> {
