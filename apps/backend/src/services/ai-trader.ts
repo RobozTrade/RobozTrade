@@ -141,6 +141,10 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
   const positionNotional = ctx.position
     ? ctx.position.quantity * ctx.position.entryPrice
     : 0;
+  // Margin = notional / leverage, or use position.margin if available
+  const positionMargin = ctx.position?.margin ?? (ctx.position && ctx.position.leverage > 0
+    ? positionNotional / ctx.position.leverage
+    : 0);
 
   const numericValues: Record<string, number> = {
     current_price: ctx.currentPrice,
@@ -160,10 +164,15 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
     ht_volume_average: ctx.higherTimeframeVolumeAverage ?? 0,
     'position.unrealized_pnl': ctx.position?.unrealizedPnl ?? 0,
     'position.notional': positionNotional,
+    'position.margin': positionMargin,
+    'position.leverage': ctx.position?.leverage ?? 0,
     'position.minutes_held': minutesHeld,
   };
 
-  // First, evaluate conditional expressions like {{#if (gt var1 var2)}}
+  // First, process multiply helpers and replace them with calculated values
+  block = processHelperFunctions(block, numericValues, ctx.position);
+
+  // Then, evaluate conditional expressions like {{#if (gt var1 var2)}}
   block = evaluateConditionals(block, numericValues, ctx.position);
 
   const symbolReplacements: Record<string, string | number | undefined> = {
@@ -215,7 +224,12 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
       return '';
     }
 
-    return replaceTemplatePlaceholders(inner, getPositionReplacements(ctx.position));
+    // Process helpers and conditionals inside the position block
+    let processedInner = processHelperFunctions(inner, numericValues, ctx.position);
+    processedInner = evaluateConditionals(processedInner, numericValues, ctx.position);
+
+    // Then replace position placeholders
+    return replaceTemplatePlaceholders(processedInner, getPositionReplacements(ctx.position));
   });
 
   const fallbackPositionReplacements = ctx.position
@@ -242,6 +256,45 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
   block = replaceTemplatePlaceholders(block, fallbackPositionReplacements);
 
   return block.trim();
+}
+
+/**
+ * Process helper functions like (multiply var value) and replace with calculated values
+ */
+function processHelperFunctions(
+  template: string,
+  numericValues: Record<string, number>,
+  position?: Position
+): string {
+  let output = template;
+  let changed = true;
+  let iterations = 0;
+  const maxIterations = 10;
+
+  // Process multiply helpers: (multiply var value)
+  while (changed && iterations < maxIterations) {
+    changed = false;
+    iterations++;
+
+    // Match (multiply varName value) - handles nested parentheses properly
+    // Pattern: (multiply followed by variable name and number, can include negative signs)
+    const multiplyRegex = /\(multiply\s+([\w\.]+)\s+([-+]?[\d.]+)\)/g;
+
+    output = output.replace(multiplyRegex, (match, varName, multiplierStr) => {
+      const multiplier = parseFloat(multiplierStr);
+      if (isNaN(multiplier)) {
+        return match; // Return original if can't parse
+      }
+
+      const varValue = getNumericValue(varName, numericValues, position);
+      const result = varValue * multiplier;
+
+      changed = true;
+      return String(result);
+    });
+  }
+
+  return output;
 }
 
 /**
@@ -322,15 +375,33 @@ function getNumericValue(
   numericValues: Record<string, number>,
   position?: Position
 ): number {
-  // Handle nested properties like position.unrealized_pnl
+  // Handle nested properties like position.unrealized_pnl, position.notional, etc.
   if (variable.startsWith('position.')) {
-    const prop = variable as keyof typeof numericValues;
-    if (prop in numericValues) {
-      return numericValues[prop];
+    // First check numericValues map (where we pre-calculate values)
+    if (variable in numericValues) {
+      return numericValues[variable];
     }
     // Fallback: try to get from position object
-    if (position && variable === 'position.unrealized_pnl') {
-      return position.unrealizedPnl ?? 0;
+    if (position) {
+      if (variable === 'position.unrealized_pnl') {
+        return position.unrealizedPnl ?? 0;
+      }
+      if (variable === 'position.notional') {
+        return position.quantity * position.entryPrice;
+      }
+      if (variable === 'position.margin') {
+        // Use position.margin if available, otherwise calculate: notional / leverage
+        if (position.margin !== undefined) {
+          return position.margin;
+        }
+        const notional = position.quantity * position.entryPrice;
+        return position.leverage > 0 ? notional / position.leverage : 0;
+      }
+      if (variable === 'position.minutes_held') {
+        return position.entryTime
+          ? Math.floor((Date.now() - new Date(position.entryTime).getTime()) / 60000)
+          : 0;
+      }
     }
     return 0;
   }
