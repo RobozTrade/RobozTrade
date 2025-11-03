@@ -189,6 +189,7 @@ export const PROMPT_TEMPLATE_VARIABLES = [
   { name: '{{ht_volume_average}}', description: 'Average 4-hour volume' },
   { name: '{{ht_macd_series}}', description: '4-hour MACD series' },
   { name: '{{ht_rsi14_series}}', description: '4-hour RSI(14) series' },
+  { name: '{{position.side}}', description: 'Current position side (BUY or SELL)' },
   { name: '{{position.quantity}}', description: 'Current position quantity' },
   { name: '{{position.entry_price}}', description: 'Position entry price' },
   { name: '{{position.unrealized_pnl}}', description: 'Unrealized profit/loss' },

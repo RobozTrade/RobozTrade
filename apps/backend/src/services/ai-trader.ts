@@ -135,6 +135,13 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
   const symbolBase = symbolPair.replace(/USDT$/i, '');
 
   // Build numeric values map for conditional evaluation (before formatting)
+  const minutesHeld = ctx.position?.entryTime
+    ? Math.floor((Date.now() - new Date(ctx.position.entryTime).getTime()) / 60000)
+    : 0;
+  const positionNotional = ctx.position
+    ? ctx.position.quantity * ctx.position.entryPrice
+    : 0;
+
   const numericValues: Record<string, number> = {
     current_price: ctx.currentPrice,
     current_ema20: ctx.indicators.ema20,
@@ -152,6 +159,8 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
     ht_volume_current: ctx.higherTimeframeVolume ?? 0,
     ht_volume_average: ctx.higherTimeframeVolumeAverage ?? 0,
     'position.unrealized_pnl': ctx.position?.unrealizedPnl ?? 0,
+    'position.notional': positionNotional,
+    'position.minutes_held': minutesHeld,
   };
 
   // First, evaluate conditional expressions like {{#if (gt var1 var2)}}
@@ -256,12 +265,13 @@ function evaluateConditionals(
     // Handle {{#if (gt var1 var2)}}...{{else}}...{{/if}}
     // Match: {{#if (gt var1 var2)}}...{{else}}...{{/if}}
     // or: {{#if (gt var1 var2)}}...{{/if}}
-    const conditionalRegex = /\{\{#if\s+\((\w+)\s+([^\s\)]+)\s+([^\s\)]+)\)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\}\}/;
+    // Also supports nested helpers like (gt var1 (multiply var2 0.02))
+    const conditionalRegex = /\{\{#if\s+\((\w+)\s+([^\s\)]+(?:\s+[^\s\)]+)*)\s+([^\s\)]+(?:\s+[^\s\)]+)*)\)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\}\}/;
 
-    const newOutput = output.replace(conditionalRegex, (match, operator, var1, var2, trueBlock, falseBlock = '') => {
-      // Get numeric values for variables
-      const val1 = getNumericValue(var1, numericValues, position);
-      const val2 = getNumericValue(var2, numericValues, position);
+    const newOutput = output.replace(conditionalRegex, (match, operator, var1Str, var2Str, trueBlock, falseBlock = '') => {
+      // Get numeric values for variables, handling nested expressions
+      const val1 = getNumericValueWithHelpers(var1Str, numericValues, position);
+      const val2 = getNumericValueWithHelpers(var2Str, numericValues, position);
 
       // Evaluate condition based on operator
       let condition = false;
@@ -337,6 +347,31 @@ function getNumericValue(
   }
 
   return 0;
+}
+
+/**
+ * Get numeric value for a variable, with support for helper functions like multiply
+ */
+function getNumericValueWithHelpers(
+  variable: string,
+  numericValues: Record<string, number>,
+  position?: Position
+): number {
+  // Check if this is a helper function call like (multiply var 0.02)
+  const helperMatch = variable.match(/^\((\w+)\s+(\S+)\s+(\S+)\)$/);
+  if (helperMatch) {
+    const [, helper, varName, value] = helperMatch;
+    if (helper === 'multiply') {
+      const varValue = getNumericValue(varName, numericValues, position);
+      const multiplier = parseFloat(value);
+      if (!isNaN(multiplier)) {
+        return varValue * multiplier;
+      }
+    }
+  }
+
+  // Not a helper, use regular numeric value lookup
+  return getNumericValue(variable, numericValues, position);
 }
 
 function replaceTemplatePlaceholders(
@@ -806,56 +841,79 @@ export async function getDecisionsFromPrompt(
     try {
       const { text } = await generateText({
         model: openrouter(aiModel),
-        system: `You are a PATIENT and STRATEGIC cryptocurrency futures trader who values position development over rapid trading.
+        system: `You are a PATIENT cryptocurrency futures trader who prioritizes high-quality setups over frequent trading.
 
-CRITICAL TRADING RULES:
-1. MINIMUM HOLD TIME: Only close positions if:
-   - Position held >30 minutes AND technical signals clearly reversed, OR
-   - Stop loss/take profit levels reached, OR
-   - Significant adverse market event (>3% move against position)
+CORE TRADING PHILOSOPHY:
+1. **REGIME AWARENESS**: Use 4h timeframe to identify market regime (BEARISH/BULLISH/SIDEWAYS), then trade WITH the trend
+2. **ENTRY TIMING**: Wait for bounces (in bearish) or dips (in bullish) - don't chase price movements
+3. **POSITION DEVELOPMENT**: Hold positions >60 minutes to let thesis develop. Early exits waste setup opportunities
+4. **PROFIT TAKING**: Lock in +2-3% gains consistently rather than waiting for 10%+ home runs
+5. **STOP LOSSES**: Cut losses at -2-3% maximum. No hoping for recovery
 
-2. TRADING COSTS: Each trade incurs ~0.05% in fees. Frequent trading erodes profits. Quality over quantity.
+POSITION MANAGEMENT RULES:
+- HOLD positions until: (1) Time >60min AND thesis invalidated, OR (2) Stop/target hit, OR (3) PnL <-3% or >+3%
+- CLOSE positions when: (1) 4h trend reversed (EMA20 crossed opposite EMA50), OR (2) PnL outside -3% to +3% range
+- AVOID flip-flopping: If you close a position, need strong conviction before reopening
+- TRADING COSTS: Each trade costs 0.05% in fees. Frequent trading erodes profits
 
-3. POSITION MANAGEMENT: Let winning positions run. Cut losing positions quickly, but give trades time to develop their thesis.
+INVALIDATION CONDITIONS (CRITICAL):
+When specifying "invalidation_condition", ALWAYS use 4h timeframe indicators:
+✅ GOOD: "4h EMA20 crosses above 4h EMA50" | "4h MACD crosses zero" | "Price closes above/below 4h EMA50"
+❌ BAD: "RSI(7) rises above 50" (too sensitive) | "15m EMA cross" (whipsaws) | Price movements (normal volatility)
 
-4. AVOID FLIP-FLOPPING: Don't reverse positions rapidly. If you close a position, you should have strong conviction before reopening.
+Use 4h timeframe to detect true trend changes. Short-term 15m indicators create false invalidations.
 
-5. LEVERAGE & NOTIONAL: Remember that NOTIONAL = MARGIN * LEVERAGE. With the available balance and leverage, you can control much larger positions than the cash balance alone.
+REGIME-BASED TRADING:
+- **BEARISH** (4h EMA20<EMA50): Favor SHORTS at resistance bounces | 5-8x leverage | 60-80% size | 2% stops
+- **BULLISH** (4h EMA20>EMA50): Favor LONGS at support dips | 8-12x leverage | 80-100% size | 2.5% stops
+- **SIDEWAYS**: Reduce activity 70% | Only extreme RSI setups | 3-5x leverage | 40-60% size
 
-RESPONSE FORMAT REQUIREMENTS:
-You MUST respond with valid JSON ONLY - no markdown code blocks, no explanations outside JSON.
+DECISION PRIORITIES:
+1. Existing positions: Check if (a) held >60min, (b) PnL >+2% or <-2%, (c) 4h trend reversed → prioritize CLOSE/HOLD over new entries
+2. No positions: Identify 4h regime → wait for entry timing (bounce/dip) → verify RSI confirmation → size appropriately
+3. Don't chase: If price already moved, output HOLD and wait for next setup
 
-Structure:
+JSON RESPONSE FORMAT (CRITICAL):
 {
-  "summary": "Brief market overview",
+  "market_regime": "BEARISH|BULLISH|SIDEWAYS",
+  "regime_confidence": 0.80,
+  "summary": "Brief market overview based on 4h analysis",
   "decisions": [
     {
       "symbol": "BTCUSDT",
-      "action": "BUY" | "SELL" | "HOLD" | "CLOSE",
-      "target_notional": 200,
-      "leverage": 10,
-      "stop_loss": 42000,
-      "take_profit": 46000,
+      "action": "BUY|SELL|HOLD|CLOSE",
+      "target_notional": 150,
+      "leverage": 8,
+      "stop_loss": 109000,
+      "take_profit": 112000,
       "confidence": 0.75,
-      "reasoning": "Detailed reasoning",
-      "invalidation_condition": "Specific conditions"
+      "reasoning": "1.REGIME: [4h bearish/bullish] 2.SETUP: [bounce/dip ready?] 3.TIMING: [why now] 4.SIZE: [why this %]",
+      "invalidation_condition": "4h EMA20 crosses above 4h EMA50"
     }
   ]
 }
 
-CRITICAL JSON RULES:
-- NO markdown code blocks (no \`\`\`json or \`\`\`)
-- Use double quotes for strings
-- Numbers must be raw numbers, not strings
-- Actions: "BUY", "SELL", "HOLD", "CLOSE" (uppercase)
-- Confidence: 0-1 decimal (e.g., 0.75)
-- target_notional is TOTAL POSITION SIZE in USDT (not margin, not quantity)
+JSON RULES:
+- NO markdown code blocks (no \`\`\`json)
+- Pure JSON only - no explanations outside JSON structure
+- Actions must be uppercase: "BUY", "SELL", "HOLD", "CLOSE"
+- target_notional = total position size in USDT (system calculates margin as target_notional/leverage)
+- leverage = integer (5, 8, 10, etc.)
+- stop_loss/take_profit = price levels in USDT
+- confidence = 0-1 decimal (0.75 = 75% confidence)
+- invalidation_condition = REQUIRED for BUY/SELL, use 4h timeframe only
 
-IMPORTANT: target_notional should be the desired position size in USDT (e.g., 150 means $150 worth of the asset), NOT the quantity of coins. This is the NOTIONAL value (total position size), and the system will calculate the required MARGIN by dividing by leverage.
+CRITICAL REMINDERS:
+⏰ If position <60 minutes old with -1% < PnL < +1%: strongly prefer HOLD over CLOSE
+📊 Use 4h timeframe for regime and invalidation, 15m only for entry timing
+⛔ Never use RSI(7) or 15m crosses for invalidation conditions
+💰 Take profits at +2-3%, don't wait for perfect 10%+ moves
+🛑 Cut losses at -2-3%, don't hope price recovers
+🎯 2-3 quality trades per day > 10 mediocre trades
 
-Include an "summary" field for a concise narrative of your outlook and an optional "analysis" field capturing your thinking process.`,
+Your goal: Maximize risk-adjusted returns through selective, high-probability trades aligned with 4h regime.`,
         prompt,
-        temperature: 0.4,
+        temperature: 0.2,
         maxRetries: 0,
       });
 
