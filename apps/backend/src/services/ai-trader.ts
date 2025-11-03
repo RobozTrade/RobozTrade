@@ -141,10 +141,11 @@ function renderSymbolBlock(blockTemplate: string, ctx: TradingContext): string {
   const positionNotional = ctx.position
     ? ctx.position.quantity * ctx.position.entryPrice
     : 0;
-  // Margin = notional / leverage, or use position.margin if available
-  const positionMargin = ctx.position?.margin ?? (ctx.position && ctx.position.leverage > 0
+  // Always calculate margin from notional and leverage for consistency
+  // Margin = notional / leverage (this is the actual capital invested)
+  const positionMargin = ctx.position && ctx.position.leverage > 0
     ? positionNotional / ctx.position.leverage
-    : 0);
+    : 0;
 
   const numericValues: Record<string, number> = {
     current_price: ctx.currentPrice,
@@ -390,10 +391,8 @@ function getNumericValue(
         return position.quantity * position.entryPrice;
       }
       if (variable === 'position.margin') {
-        // Use position.margin if available, otherwise calculate: notional / leverage
-        if (position.margin !== undefined) {
-          return position.margin;
-        }
+        // Always calculate margin from notional and leverage for consistency
+        // Margin = notional / leverage (this is the actual capital invested)
         const notional = position.quantity * position.entryPrice;
         return position.leverage > 0 ? notional / position.leverage : 0;
       }
