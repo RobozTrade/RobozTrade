@@ -850,6 +850,16 @@ export default function PublicDashboard({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-4 sm:space-y-6">
+      <div className="w-full flex justify-center">
+      <ins
+        className="adsbygoogle"
+        style={{ display: "block" }}
+        data-ad-client="ca-pub-1360110680078138"
+        data-ad-slot="7869512073"
+        data-ad-format="auto"
+        data-full-width-responsive="true"
+      ></ins>
+      </div>
       {/* Navigation Tabs */}
       <div className="flex justify-center">
         <div className="inline-flex rounded-xl backdrop-blur-xl bg-white/10 dark:bg-black/10 border border-white/20 dark:border-white/10 p-1">
