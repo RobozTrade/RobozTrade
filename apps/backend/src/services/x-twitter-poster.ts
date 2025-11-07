@@ -112,6 +112,20 @@ export async function getDailyBotPerformance(
                     .limit(1)
                     .get();
 
+                const totalTradesYesterday = await db
+                    .select({
+                        totalTrades: sql<number>`COALESCE(SUM(${botExecutions.tradesExecuted}), 0)`
+                    })
+                    .from(botExecutions)
+                    .where(
+                        and(
+                            eq(botExecutions.botId, bot.id),
+                            sql`${botExecutions.executionTime} >= ${yesterdayTimestamp}`,
+                            sql`${botExecutions.executionTime} < ${todayTimestamp}`
+                        )
+                    )
+                    .get();
+
                 if (!lastExecutionYesterday) {
                     return null;
                 }
@@ -129,7 +143,7 @@ export async function getDailyBotPerformance(
                     unrealizedPnl: lastExecutionYesterday.unrealizedPnl,
                     accountBalance: lastExecutionYesterday.accountBalance,
                     dailyReturn,
-                    tradesExecuted: lastExecutionYesterday.tradesExecuted ?? 0,
+                    tradesExecuted: Number(totalTradesYesterday?.totalTrades ?? 0),
                     userId: bot.userId,
                 };
             })
@@ -172,6 +186,14 @@ export async function getDailyBotPerformance(
                         .limit(1)
                         .get();
 
+                    const totalTradesAllTime = await db
+                        .select({
+                            totalTrades: sql<number>`COALESCE(SUM(${botExecutions.tradesExecuted}), 0)`
+                        })
+                        .from(botExecutions)
+                        .where(eq(botExecutions.botId, bot.id))
+                        .get();
+
                     if (!lastExecution) {
                         return null;
                     }
@@ -189,7 +211,7 @@ export async function getDailyBotPerformance(
                         unrealizedPnl: lastExecution.unrealizedPnl,
                         accountBalance: lastExecution.accountBalance,
                         dailyReturn: allTimeReturn, // Using dailyReturn field for all-time return
-                        tradesExecuted: lastExecution.tradesExecuted ?? 0,
+                        tradesExecuted: Number(totalTradesAllTime?.totalTrades ?? 0),
                         userId: bot.userId,
                     };
                 })
