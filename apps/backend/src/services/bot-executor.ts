@@ -482,6 +482,14 @@ export async function executeBot(
                 : undefined;
             }
           }
+
+          const entryValidation = validateEntryRules(decision, context, regimeAnalysis);
+          if (!entryValidation.allowed) {
+            console.log(
+              `${logPrefix} 🚫 Entry rule block for ${decision.action} ${decision.symbol}: ${entryValidation.reason}`
+            );
+            continue;
+          }
         }
 
         if (decision.action === 'BUY') {
@@ -654,6 +662,157 @@ export async function executeBot(
 }
 
 // Helper functions for executing different order types
+function getRecentValues(series: number[] | undefined, count = 5): number[] {
+  if (!series || series.length === 0) {
+    return [];
+  }
+  return series
+    .slice(-count)
+    .map(value => Number.isFinite(value) ? value : NaN)
+    .filter(value => Number.isFinite(value)) as number[];
+}
+
+function validateEntryRules(
+  decision: TradingDecision,
+  context: TradingContext,
+  regimeAnalysis?: MarketRegimeAnalysis
+): { allowed: boolean; reason?: string } {
+  if (decision.action !== 'BUY' && decision.action !== 'SELL') {
+    return { allowed: true };
+  }
+
+  const currentRsi14 = Number.isFinite(context.indicators.rsi14)
+    ? context.indicators.rsi14
+    : context.indicators.rsi7;
+  const rsiSeries = context.indicators.rsi14Series?.length
+    ? context.indicators.rsi14Series
+    : context.indicators.rsi7Series;
+  const recentRsiRaw = getRecentValues(rsiSeries, 8);
+  const seriesContainsCurrent = currentRsi14 !== undefined &&
+    recentRsiRaw.length > 0 &&
+    Math.abs(recentRsiRaw[recentRsiRaw.length - 1] - currentRsi14) < 0.5;
+  const historicalRsi = seriesContainsCurrent ? recentRsiRaw.slice(0, -1) : recentRsiRaw;
+  const priorRsi = historicalRsi.length > 0 ? historicalRsi[historicalRsi.length - 1] : undefined;
+  const priorPeak = historicalRsi.length > 0 ? Math.max(...historicalRsi) : undefined;
+  const priorTrough = historicalRsi.length > 0 ? Math.min(...historicalRsi) : undefined;
+
+  const macdSeries = context.higherTimeframeMacdSeries;
+  const latestMacd = macdSeries && macdSeries.length > 0
+    ? macdSeries[macdSeries.length - 1]
+    : undefined;
+  const prevMacd = macdSeries && macdSeries.length > 1
+    ? macdSeries[macdSeries.length - 2]
+    : undefined;
+
+  if (decision.action === 'SELL') {
+    if (priorPeak === undefined || priorPeak < 60) {
+      return {
+        allowed: false,
+        reason: '15m RSI never reached 60+ during bounce - rule prevents early short entry',
+      };
+    }
+
+    if (currentRsi14 === undefined) {
+      return {
+        allowed: false,
+        reason: 'Missing RSI data to confirm short setup',
+      };
+    }
+
+    if (priorRsi !== undefined && currentRsi14 >= priorRsi) {
+      return {
+        allowed: false,
+        reason: `RSI (${currentRsi14.toFixed(1)}) has not turned down from the bounce high (${priorRsi.toFixed(1)})`,
+      };
+    }
+
+    if (currentRsi14 > 58) {
+      return {
+        allowed: false,
+        reason: `RSI (${currentRsi14.toFixed(1)}) still elevated >58 - short requires clear rollover`,
+      };
+    }
+
+    if (latestMacd !== undefined && prevMacd !== undefined && latestMacd > 0 && latestMacd >= prevMacd) {
+      return {
+        allowed: false,
+        reason: `4h MACD rising (${prevMacd.toFixed(1)} → ${latestMacd.toFixed(1)}) - momentum filter blocks counter-trend short`,
+      };
+    }
+
+    if (context.higherTimeframeEma50) {
+      const emaDistance = (context.currentPrice - context.higherTimeframeEma50) / context.higherTimeframeEma50;
+      if (emaDistance > 0.015 && (priorPeak ?? 0) < 65) {
+        return {
+          allowed: false,
+          reason: `Price ${(emaDistance * 100).toFixed(2)}% above 4h EMA50 without extreme RSI spike - wait for deeper mean reversion`,
+        };
+      }
+    }
+
+    if (regimeAnalysis?.transitioningTowards === 'BULLISH' && (regimeAnalysis?.confidence ?? 0) < 0.75) {
+      return {
+        allowed: false,
+        reason: 'Regime model signaling bullish transition - skip new short entries',
+      };
+    }
+  } else if (decision.action === 'BUY') {
+    if (priorTrough === undefined || priorTrough > 40) {
+      return {
+        allowed: false,
+        reason: '15m RSI failed to print sub-40 oversold reading - long entry lacks required dip',
+      };
+    }
+
+    if (currentRsi14 === undefined) {
+      return {
+        allowed: false,
+        reason: 'Missing RSI data to confirm long setup',
+      };
+    }
+
+    if (priorRsi !== undefined && currentRsi14 <= priorRsi) {
+      return {
+        allowed: false,
+        reason: `RSI (${currentRsi14.toFixed(1)}) has not turned up from oversold low (${priorRsi.toFixed(1)})`,
+      };
+    }
+
+    if (currentRsi14 < 42) {
+      return {
+        allowed: false,
+        reason: `RSI (${currentRsi14.toFixed(1)}) still sub-42 - allow momentum to confirm before longing`,
+      };
+    }
+
+    if (latestMacd !== undefined && prevMacd !== undefined && latestMacd < 0 && latestMacd <= prevMacd) {
+      return {
+        allowed: false,
+        reason: `4h MACD negative and falling (${prevMacd.toFixed(1)} → ${latestMacd.toFixed(1)}) - momentum filter blocks counter-trend long`,
+      };
+    }
+
+    if (context.higherTimeframeEma50) {
+      const emaDistance = (context.higherTimeframeEma50 - context.currentPrice) / context.higherTimeframeEma50;
+      if (emaDistance > 0.015 && (priorTrough ?? 0) > 35) {
+        return {
+          allowed: false,
+          reason: `Price ${(emaDistance * 100).toFixed(2)}% below 4h EMA50 without capitulation RSI - wait for stronger base`,
+        };
+      }
+    }
+
+    if (regimeAnalysis?.transitioningTowards === 'BEARISH' && (regimeAnalysis?.confidence ?? 0) < 0.75) {
+      return {
+        allowed: false,
+        reason: 'Regime model signaling bearish transition - skip new long entries',
+      };
+    }
+  }
+
+  return { allowed: true };
+}
+
 async function executeBuyOrder(
   decision: TradingDecision,
   context: TradingContext,

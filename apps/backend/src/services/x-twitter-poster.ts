@@ -520,13 +520,8 @@ export async function generateTweetText(
             model: openrouter('google/gemini-2.5-flash'),
             system: 'You are a social media content creator for a cryptocurrency AI trading platform. Create engaging, authentic, and professional Twitter/X posts.',
             prompt: `Create an engaging Twitter/X post for a ${isTopPerformer ? 'top performing' : 'least performing'} AI trading bot.
-
-Bot Details:
-- Name: ${botData.botName}
-- AI Model: ${botData.aiModel || 'Unknown'}
-- Daily Return: ${returnText}
-- Balance: ${balanceText} USDT
-- Trades Executed: ${botData.tradesExecuted}
+Platform: RobozTrade
+Website: https://roboz.trade
 
 Requirements:
 - Keep it under 280 characters (Twitter limit)

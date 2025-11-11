@@ -11,9 +11,10 @@ export type MarketRegime = 'BULLISH' | 'BEARISH' | 'SIDEWAYS';
 export interface MarketRegimeAnalysis {
     regime: MarketRegime;
     confidence: number; // 0-1, how confident we are in this regime
-    bearishSignals: number; // count of bearish indicators
-    bullishSignals: number; // count of bullish indicators
+    bearishSignals: number; // weighted count of bearish indicators
+    bullishSignals: number; // weighted count of bullish indicators
     reasons: string[];
+    transitioningTowards?: Exclude<MarketRegime, 'SIDEWAYS'> | null;
 }
 
 /**
@@ -26,47 +27,67 @@ export function detectMarketRegime(
     let bearishSignals = 0;
     let bullishSignals = 0;
     const reasons: string[] = [];
+    const bearishFactors = new Set<string>();
+    const bullishFactors = new Set<string>();
+
+    const addSignal = (
+        direction: 'bearish' | 'bullish',
+        weight: number,
+        reason: string,
+        factor: string
+    ) => {
+        if (direction === 'bearish') {
+            bearishSignals += weight;
+            bearishFactors.add(factor);
+        } else {
+            bullishSignals += weight;
+            bullishFactors.add(factor);
+        }
+        reasons.push(reason);
+    };
 
     // 1. Check 4h EMA alignment (strongest signal)
     if (context.higherTimeframeEma20 && context.higherTimeframeEma50) {
         if (context.higherTimeframeEma20 < context.higherTimeframeEma50) {
-            bearishSignals += 2; // Double weight for higher timeframe
-            reasons.push('4h death cross active (EMA20 < EMA50)');
+            addSignal('bearish', 2, '4h death cross active (EMA20 < EMA50)', 'ema_trend');
         } else {
-            bullishSignals += 2;
-            reasons.push('4h golden cross active (EMA20 > EMA50)');
+            addSignal('bullish', 2, '4h golden cross active (EMA20 > EMA50)', 'ema_trend');
         }
     }
 
     // 2. Check current price vs 4h EMA50
     if (context.higherTimeframeEma50) {
         if (context.currentPrice < context.higherTimeframeEma50) {
-            bearishSignals++;
-            reasons.push(`Price below 4h EMA50 (${context.currentPrice.toFixed(2)} < ${context.higherTimeframeEma50.toFixed(2)})`);
+            addSignal(
+                'bearish',
+                1,
+                `Price below 4h EMA50 (${context.currentPrice.toFixed(2)} < ${context.higherTimeframeEma50.toFixed(2)})`,
+                'price_vs_ema'
+            );
         } else {
-            bullishSignals++;
-            reasons.push(`Price above 4h EMA50 (${context.currentPrice.toFixed(2)} > ${context.higherTimeframeEma50.toFixed(2)})`);
+            addSignal(
+                'bullish',
+                1,
+                `Price above 4h EMA50 (${context.currentPrice.toFixed(2)} > ${context.higherTimeframeEma50.toFixed(2)})`,
+                'price_vs_ema'
+            );
         }
     }
 
     // 3. Check 15m trend direction
     if (context.indicators.ema20 < context.indicators.ema50) {
-        bearishSignals++;
-        reasons.push('15m death cross (short-term trend down)');
+        addSignal('bearish', 1, '15m death cross (short-term trend down)', 'short_term_trend');
     } else {
-        bullishSignals++;
-        reasons.push('15m golden cross (short-term trend up)');
+        addSignal('bullish', 1, '15m golden cross (short-term trend up)', 'short_term_trend');
     }
 
     // 4. Check RSI levels on 4h
     if (context.higherTimeframeRsi14Series && context.higherTimeframeRsi14Series.length > 0) {
         const latestRsi = context.higherTimeframeRsi14Series[context.higherTimeframeRsi14Series.length - 1];
         if (latestRsi < 45) {
-            bearishSignals++;
-            reasons.push(`4h RSI bearish (${latestRsi.toFixed(1)} < 45)`);
+            addSignal('bearish', 1, `4h RSI bearish (${latestRsi.toFixed(1)} < 45)`, 'rsi');
         } else if (latestRsi > 55) {
-            bullishSignals++;
-            reasons.push(`4h RSI bullish (${latestRsi.toFixed(1)} > 55)`);
+            addSignal('bullish', 1, `4h RSI bullish (${latestRsi.toFixed(1)} > 55)`, 'rsi');
         }
     }
 
@@ -76,21 +97,38 @@ export function detectMarketRegime(
         const prevMacd = context.higherTimeframeMacdSeries[context.higherTimeframeMacdSeries.length - 2];
 
         if (latestMacd < 0 && latestMacd < prevMacd) {
-            bearishSignals++;
-            reasons.push('4h MACD negative and declining');
+            addSignal('bearish', 1, '4h MACD negative and declining', 'macd');
         } else if (latestMacd > 0 && latestMacd > prevMacd) {
-            bullishSignals++;
-            reasons.push('4h MACD positive and rising');
+            addSignal('bullish', 1, '4h MACD positive and rising', 'macd');
+        }
+
+        if (context.higherTimeframeEma20 && context.higherTimeframeEma50) {
+            const emaBearish = context.higherTimeframeEma20 < context.higherTimeframeEma50;
+            const macdBullish = latestMacd > 0 && latestMacd > prevMacd;
+            const macdBearish = latestMacd < 0 && latestMacd < prevMacd;
+            if (emaBearish && macdBullish) {
+                reasons.push('⚠️ MACD diverging from bearish EMA trend - possible bullish transition');
+            } else if (!emaBearish && macdBearish) {
+                reasons.push('⚠️ MACD diverging from bullish EMA trend - possible bearish transition');
+            }
         }
     }
 
     // 6. Check funding rate (sentiment indicator)
     if (context.marketData.fundingRate < -0.01) { // Negative funding = bearish sentiment
-        bearishSignals++;
-        reasons.push(`Negative funding rate (${context.marketData.fundingRate.toFixed(4)}%) - shorts paying longs`);
+        addSignal(
+            'bearish',
+            1,
+            `Negative funding rate (${context.marketData.fundingRate.toFixed(4)}%) - shorts paying longs`,
+            'funding'
+        );
     } else if (context.marketData.fundingRate > 0.01) {
-        bullishSignals++;
-        reasons.push(`Positive funding rate (${context.marketData.fundingRate.toFixed(4)}%) - longs paying shorts`);
+        addSignal(
+            'bullish',
+            1,
+            `Positive funding rate (${context.marketData.fundingRate.toFixed(4)}%) - longs paying shorts`,
+            'funding'
+        );
     }
 
     // 7. Check recent price action pattern (higher highs/lower lows)
@@ -105,31 +143,69 @@ export function detectMarketRegime(
         const secondLow = Math.min(...secondHalf);
 
         if (secondHigh < firstHigh && secondLow < firstLow) {
-            bearishSignals++;
-            reasons.push('Lower highs and lower lows pattern');
+            addSignal('bearish', 1, 'Lower highs and lower lows pattern', 'market_structure');
         } else if (secondHigh > firstHigh && secondLow > firstLow) {
-            bullishSignals++;
-            reasons.push('Higher highs and higher lows pattern');
+            addSignal('bullish', 1, 'Higher highs and higher lows pattern', 'market_structure');
         }
     }
 
     // Determine regime
     let regime: MarketRegime;
     let confidence: number;
+    let transitioningTowards: MarketRegimeAnalysis['transitioningTowards'] = null;
 
     const totalSignals = bearishSignals + bullishSignals;
     const bearishRatio = totalSignals > 0 ? bearishSignals / totalSignals : 0;
     const bullishRatio = totalSignals > 0 ? bullishSignals / totalSignals : 0;
+    const uniqueBearish = bearishFactors.size;
+    const uniqueBullish = bullishFactors.size;
+    const signalGap = Math.abs(bearishSignals - bullishSignals);
+    const uniqueGap = Math.abs(uniqueBearish - uniqueBullish);
 
-    if (bearishSignals >= 3 && bearishRatio > 0.6) {
+    const hasBearishMajority =
+        uniqueBearish >= 3 && bearishSignals >= bullishSignals && bearishRatio >= 0.55;
+    const hasBullishMajority =
+        uniqueBullish >= 3 && bullishSignals >= bearishSignals && bullishRatio >= 0.55;
+
+    if (hasBearishMajority) {
         regime = 'BEARISH';
-        confidence = Math.min(bearishRatio, 0.95);
-    } else if (bullishSignals >= 3 && bullishRatio > 0.6) {
+        confidence = Math.min(Math.max(bearishRatio, 0.55 + signalGap * 0.05), 0.95);
+    } else if (hasBullishMajority) {
         regime = 'BULLISH';
-        confidence = Math.min(bullishRatio, 0.95);
+        confidence = Math.min(Math.max(bullishRatio, 0.55 + signalGap * 0.05), 0.95);
     } else {
         regime = 'SIDEWAYS';
-        confidence = 1 - Math.abs(bearishRatio - 0.5) * 2; // Lower confidence when unclear
+        confidence = totalSignals === 0 ? 0.3 : 1 - Math.min(Math.abs(bearishRatio - 0.5) * 2, 0.8);
+    }
+
+    if (regime === 'BEARISH' && uniqueBullish >= 2) {
+        reasons.push('Conflict: multiple bullish signals detected during bearish regime - downgrading confidence');
+        if (signalGap <= 1 || bullishRatio >= 0.45) {
+            regime = 'SIDEWAYS';
+            transitioningTowards = 'BULLISH';
+            confidence = Math.min(confidence, 0.55);
+        } else {
+            confidence = Math.min(confidence, 0.65);
+        }
+    } else if (regime === 'BULLISH' && uniqueBearish >= 2) {
+        reasons.push('Conflict: multiple bearish signals detected during bullish regime - downgrading confidence');
+        if (signalGap <= 1 || bearishRatio >= 0.45) {
+            regime = 'SIDEWAYS';
+            transitioningTowards = 'BEARISH';
+            confidence = Math.min(confidence, 0.55);
+        } else {
+            confidence = Math.min(confidence, 0.65);
+        }
+    } else if (regime === 'SIDEWAYS') {
+        if (uniqueBearish >= 2 && uniqueBearish > uniqueBullish) {
+            transitioningTowards = 'BEARISH';
+        } else if (uniqueBullish >= 2 && uniqueBullish > uniqueBearish) {
+            transitioningTowards = 'BULLISH';
+        }
+    }
+
+    if (totalSignals === 0) {
+        reasons.push('Insufficient higher timeframe data - defaulting to sideways/low confidence');
     }
 
     return {
@@ -138,6 +214,7 @@ export function detectMarketRegime(
         bearishSignals,
         bullishSignals,
         reasons,
+        transitioningTowards,
     };
 }
 
@@ -166,7 +243,8 @@ export function getRegimeAdjustedRiskParams(
     if (regime === 'BEARISH') {
         // More conservative in bear markets
         adjustedMaxLeverage = Math.floor(baseMaxLeverage * 0.5); // Use 50% of max leverage
-        adjustedMaxLeverage = Math.max(adjustedMaxLeverage, 5); // Minimum 5x
+        adjustedMaxLeverage = Math.min(adjustedMaxLeverage, 8); // Cap aggressive shorts
+        adjustedMaxLeverage = Math.max(adjustedMaxLeverage, 4); // Minimum 4x to allow flexibility
         stopLossPercent = 0.015; // Tighter 1.5% stop
         takeProfitPercent = 0.03; // Quicker 3% target
         positionSizeMultiplier = 0.6; // Use 60% of normal size
@@ -178,7 +256,8 @@ export function getRegimeAdjustedRiskParams(
         positionSizeMultiplier = 1.0; // Full size
     } else {
         // SIDEWAYS - very conservative
-        adjustedMaxLeverage = Math.floor(baseMaxLeverage * 0.4); // Use 40% of max leverage
+        adjustedMaxLeverage = Math.floor(baseMaxLeverage * 0.35); // Use 35% of max leverage
+        adjustedMaxLeverage = Math.min(adjustedMaxLeverage, 5); // Cap leverage in chop
         adjustedMaxLeverage = Math.max(adjustedMaxLeverage, 3); // Minimum 3x
         stopLossPercent = 0.015; // Tight 1.5% stop
         takeProfitPercent = 0.02; // Quick 2% target (scalping)
@@ -187,7 +266,14 @@ export function getRegimeAdjustedRiskParams(
 
     // Adjust confidence - lower size further if regime confidence is low
     if (regimeConfidence < 0.7) {
+        adjustedMaxLeverage = Math.min(adjustedMaxLeverage, regime === 'SIDEWAYS' ? 4 : 5);
         positionSizeMultiplier *= 0.8; // Further reduce by 20% if uncertain
+    }
+    if (regimeConfidence < 0.5) {
+        adjustedMaxLeverage = Math.min(adjustedMaxLeverage, 4);
+        positionSizeMultiplier *= 0.8;
+        stopLossPercent *= 0.9; // Tighten stops an additional 10%
+        takeProfitPercent *= 0.9; // Take profit sooner when uncertain
     }
 
     const adjustedMinNotional = baseMinNotional; // Keep minimum the same
