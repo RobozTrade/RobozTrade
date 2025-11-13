@@ -152,6 +152,7 @@ export const botExecutions = sqliteTable('bot_executions', {
   errors: text('errors', { mode: 'json' }), // any errors encountered
   executionDuration: integer('execution_duration'), // milliseconds
   status: text('status').notNull(), // 'SUCCESS', 'PARTIAL', 'FAILED'
+  systemDecisions: text('system_decisions', { mode: 'json' }),
 });
 
 // Position snapshots for tracking

@@ -175,7 +175,13 @@ export function detectMarketRegime(
         confidence = Math.min(Math.max(bullishRatio, 0.55 + signalGap * 0.05), 0.95);
     } else {
         regime = 'SIDEWAYS';
-        confidence = totalSignals === 0 ? 0.3 : 1 - Math.min(Math.abs(bearishRatio - 0.5) * 2, 0.8);
+        if (totalSignals === 0) {
+            confidence = 0.3;
+        } else {
+            const directionalImbalance = Math.abs(bearishRatio - 0.5);
+            // Keep sideways confidence modest when signals are balanced to avoid over-filtering trades
+            confidence = 0.4 + Math.min(directionalImbalance * 1.2, 0.25);
+        }
     }
 
     if (regime === 'BEARISH' && uniqueBullish >= 2) {
@@ -351,10 +357,16 @@ export function shouldTakePosition(
 ): { allowed: boolean; reason: string } {
     // In sideways markets, be very selective
     if (regime === 'SIDEWAYS') {
-        if (regimeConfidence > 0.6) {
+        if (regimeConfidence >= 0.75) {
             return {
                 allowed: false,
-                reason: 'Sideways market detected - waiting for clear directional move',
+                reason: 'Sideways market detected with high conviction - standing aside until momentum breaks',
+            };
+        }
+        if (regimeConfidence >= 0.55) {
+            return {
+                allowed: true,
+                reason: 'Choppy sideways regime - proceed with reduced size and quick targets',
             };
         }
         // If confidence is low in sideways, might be transitioning - allow small trades

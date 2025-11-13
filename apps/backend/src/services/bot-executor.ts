@@ -35,6 +35,7 @@ export interface BotExecutionResult {
   aiThinking?: string | null;
   aiRuntimeMs?: number | null;
   aiInvocations?: number | null;
+  systemDecisions?: SystemDecisionRecord[];
 }
 
 /**
@@ -45,6 +46,46 @@ export interface SharedMarketDataCache {
   marketData: Map<string, AsterAPI.MarketData>;
   intradayCandles: Map<string, AsterAPI.Candle[]>;
   higherTimeframeCandles: Map<string, AsterAPI.Candle[]>;
+}
+
+type DecisionOutcome = 'EXECUTED' | 'BLOCKED' | 'SKIPPED' | 'NO_ACTION' | 'ERROR';
+
+type DecisionFilterStage =
+  | 'CONFIDENCE'
+  | 'REGIME'
+  | 'ENTRY_RULES'
+  | 'CAPACITY'
+  | 'HOLD_RULE'
+  | 'ERROR';
+
+type DecisionFilterStatus = 'BLOCKED' | 'WARN' | 'PASSED';
+
+interface DecisionFilterInsight {
+  stage: DecisionFilterStage;
+  status: DecisionFilterStatus;
+  detail: string;
+}
+
+interface SystemDecisionRecord {
+  symbol: string;
+  aiAction: TradingDecision['action'];
+  systemAction: TradingDecision['action'] | 'SKIP' | 'NONE';
+  outcome: DecisionOutcome;
+  outcomeReason?: string;
+  additionalReasons: string[];
+  filters: DecisionFilterInsight[];
+  regime?: {
+    regime: MarketRegime;
+    confidence: number;
+    reasons: string[];
+    transitioningTowards: MarketRegimeAnalysis['transitioningTowards'] | null;
+  };
+}
+
+interface CloseOrderResult {
+  closed: boolean;
+  reason?: string;
+  notes: string[];
 }
 
 /**
@@ -68,6 +109,7 @@ export async function executeBot(
   let aiInvocations: number | null = null;
   let accountInfo: AccountInfo | null = null;
   let totalExposure = 0;
+  const systemDecisionRecords: SystemDecisionRecord[] = [];
 
   try {
     // Fetch bot configuration
@@ -422,37 +464,110 @@ export async function executeBot(
     );
 
     for (const decision of sortedDecisions) {
+      const context = contexts.find(ctx => ctx.symbol === decision.symbol);
+      const regimeAnalysis = regimeAnalyses.get(decision.symbol);
+      const systemDecision: SystemDecisionRecord = {
+        symbol: decision.symbol,
+        aiAction: decision.action,
+        systemAction: decision.action,
+        outcome: 'NO_ACTION',
+        outcomeReason: undefined,
+        additionalReasons: [],
+        filters: [],
+        regime: regimeAnalysis
+          ? {
+            regime: regimeAnalysis.regime,
+            confidence: regimeAnalysis.confidence,
+            reasons: regimeAnalysis.reasons,
+            transitioningTowards: regimeAnalysis.transitioningTowards ?? null,
+          }
+          : undefined,
+      };
+      let decisionRecorded = false;
+      const finalizeDecision = (overrides?: Partial<SystemDecisionRecord>) => {
+        if (overrides) {
+          Object.assign(systemDecision, overrides);
+        }
+        if (systemDecision.outcome === 'NO_ACTION' && systemDecision.systemAction === 'SKIP') {
+          systemDecision.outcome = 'SKIPPED';
+        }
+        if (!decisionRecorded) {
+          systemDecisionRecords.push({
+            ...systemDecision,
+            additionalReasons: [...systemDecision.additionalReasons],
+            filters: [...systemDecision.filters],
+            regime: systemDecision.regime
+              ? {
+                ...systemDecision.regime,
+                reasons: [...systemDecision.regime.reasons],
+              }
+              : undefined,
+          });
+          decisionRecorded = true;
+        }
+      };
+
       try {
-        const context = contexts.find(ctx => ctx.symbol === decision.symbol);
-        if (!context) continue;
+        if (!context) {
+          console.log(`${logPrefix} Skipping ${decision.symbol} - no market context available`);
+          systemDecision.additionalReasons.push('Missing market context');
+          finalizeDecision({
+            systemAction: 'SKIP',
+            outcome: 'BLOCKED',
+            outcomeReason: 'Missing market context for symbol',
+          });
+          continue;
+        }
 
         const isCloseAction = decision.action === 'CLOSE';
         const isTradeAction = decision.action === 'BUY' || decision.action === 'SELL';
 
         if (isTradeAction && decision.confidence < 0.65) {
-          console.log(
-            `${logPrefix} Skipping ${decision.symbol} - low confidence: ${decision.confidence}`
-          );
+          const reason = `Confidence ${decision.confidence.toFixed(2)} below threshold 0.65`;
+          console.log(`${logPrefix} Skipping ${decision.symbol} - ${reason}`);
+          systemDecision.filters.push({
+            stage: 'CONFIDENCE',
+            status: 'BLOCKED',
+            detail: reason,
+          });
+          finalizeDecision({
+            systemAction: 'SKIP',
+            outcome: 'BLOCKED',
+            outcomeReason: reason,
+          });
           continue;
         }
 
         if (decision.action === 'HOLD') {
           console.log(`${logPrefix} Holding ${decision.symbol} - no action required`);
+          systemDecision.additionalReasons.push('AI requested HOLD');
+          finalizeDecision({
+            systemAction: 'HOLD',
+            outcome: 'NO_ACTION',
+            outcomeReason: 'AI requested HOLD; system kept position unchanged',
+          });
           continue;
         }
 
         if (isTradeAction) {
           const maxOpenTrades = context.maxOpenTrades ?? maxOpenTradesConfigured;
           if (openTradesCount >= maxOpenTrades) {
-            console.log(
-              `${logPrefix} Skipping ${decision.symbol} - open trades limit reached (${openTradesCount}/${maxOpenTrades})`
-            );
+            const reason = `Open trades limit reached (${openTradesCount}/${maxOpenTrades})`;
+            console.log(`${logPrefix} Skipping ${decision.symbol} - ${reason}`);
+            systemDecision.filters.push({
+              stage: 'CAPACITY',
+              status: 'BLOCKED',
+              detail: reason,
+            });
+            finalizeDecision({
+              systemAction: 'SKIP',
+              outcome: 'BLOCKED',
+              outcomeReason: reason,
+            });
             continue;
           }
         }
 
-        // Regime-based filtering for trade actions
-        const regimeAnalysis = regimeAnalyses.get(decision.symbol);
         if (regimeAnalysis && isTradeAction) {
           const positionCheck = shouldTakePosition(
             decision.action as 'BUY' | 'SELL',
@@ -464,50 +579,99 @@ export async function executeBot(
             console.log(
               `${logPrefix} 🚫 Rejecting ${decision.action} ${decision.symbol}: ${positionCheck.reason}`
             );
-            continue; // Skip this trade
-          } else if (!positionCheck.reason.includes('good setup')) {
+            systemDecision.filters.push({
+              stage: 'REGIME',
+              status: 'BLOCKED',
+              detail: positionCheck.reason,
+            });
+            finalizeDecision({
+              systemAction: 'SKIP',
+              outcome: 'BLOCKED',
+              outcomeReason: positionCheck.reason,
+            });
+            continue;
+          }
+
+          if (!positionCheck.reason.includes('good setup')) {
             console.log(
               `${logPrefix} ⚠️ ${decision.action} ${decision.symbol}: ${positionCheck.reason}`
             );
+            systemDecision.filters.push({
+              stage: 'REGIME',
+              status: 'WARN',
+              detail: positionCheck.reason,
+            });
+            systemDecision.additionalReasons.push(positionCheck.reason);
+
             // Reduce position size for counter-trend trades
+            const reductionReason: string[] = [];
             if (decision.action === 'BUY' && regimeAnalysis.regime === 'BEARISH') {
               decision.suggestedLeverage = Math.min(decision.suggestedLeverage || context.maxLeverage, 8);
-              (decision as any).targetNotional = (decision as any).targetNotional
-                ? (decision as any).targetNotional * 0.5
-                : undefined;
+              if ((decision as any).targetNotional) {
+                (decision as any).targetNotional *= 0.5;
+                reductionReason.push('target size reduced 50%');
+              }
             } else if (decision.action === 'SELL' && regimeAnalysis.regime === 'BULLISH') {
               decision.suggestedLeverage = Math.min(decision.suggestedLeverage || context.maxLeverage, 8);
-              (decision as any).targetNotional = (decision as any).targetNotional
-                ? (decision as any).targetNotional * 0.5
-                : undefined;
+              if ((decision as any).targetNotional) {
+                (decision as any).targetNotional *= 0.5;
+                reductionReason.push('target size reduced 50%');
+              }
+            }
+            if (reductionReason.length > 0) {
+              systemDecision.additionalReasons.push(`Risk controls adjusted trade: ${reductionReason.join(', ')}`);
             }
           }
 
           const entryValidation = validateEntryRules(decision, context, regimeAnalysis);
           if (!entryValidation.allowed) {
+            const reason = entryValidation.reason ?? 'Entry validation failed';
             console.log(
-              `${logPrefix} 🚫 Entry rule block for ${decision.action} ${decision.symbol}: ${entryValidation.reason}`
+              `${logPrefix} 🚫 Entry rule block for ${decision.action} ${decision.symbol}: ${reason}`
             );
+            systemDecision.filters.push({
+              stage: 'ENTRY_RULES',
+              status: 'BLOCKED',
+              detail: reason,
+            });
+            finalizeDecision({
+              systemAction: 'SKIP',
+              outcome: 'BLOCKED',
+              outcomeReason: reason,
+            });
             continue;
+          } else if (entryValidation.reason) {
+            systemDecision.filters.push({
+              stage: 'ENTRY_RULES',
+              status: 'PASSED',
+              detail: entryValidation.reason,
+            });
           }
         }
 
         if (decision.action === 'BUY') {
-          // Open long position
           const regimeAnalysisForTrade = regimeAnalyses.get(decision.symbol);
           await executeBuyOrder(decision, context, credentials, db, botId, accountInfo?.totalBalance, regimeAnalysisForTrade);
           tradesExecuted++;
           openTradesCount++;
           syncOpenTradesCount(openTradesCount);
+          finalizeDecision({
+            systemAction: 'BUY',
+            outcome: 'EXECUTED',
+            outcomeReason: 'Buy order executed successfully',
+          });
         } else if (decision.action === 'SELL') {
-          // Open short position
           const regimeAnalysisForTrade = regimeAnalyses.get(decision.symbol);
           await executeSellOrder(decision, context, credentials, db, botId, accountInfo?.totalBalance, regimeAnalysisForTrade);
           tradesExecuted++;
           openTradesCount++;
           syncOpenTradesCount(openTradesCount);
+          finalizeDecision({
+            systemAction: 'SELL',
+            outcome: 'EXECUTED',
+            outcomeReason: 'Sell order executed successfully',
+          });
         } else if (isCloseAction && context.position) {
-          // Check if we should aggressively close positions in wrong regime
           const regimeAnalysisForClose = regimeAnalyses.get(decision.symbol);
 
           if (regimeAnalysisForClose && context.position) {
@@ -526,26 +690,68 @@ export async function executeBot(
                 `${logPrefix} ⚠️ Position in wrong regime: ` +
                 `${context.position.side} in ${regimeAnalysisForClose.regime} market - prioritizing close`
               );
-              // Override minimum hold time for wrong-regime positions
-              // (This is handled in executeCloseOrder, but we log it here)
+              systemDecision.additionalReasons.push(
+                `Position misaligned with regime (${regimeAnalysisForClose.regime}); prioritizing close`
+              );
             }
           }
 
-          // Close existing position
-          const closed = await executeCloseOrder(decision, context, credentials, db, botId, logPrefix, accountInfo?.totalBalance);
-          if (closed) {
+          const closeResult = await executeCloseOrder(
+            decision,
+            context,
+            credentials,
+            db,
+            botId,
+            logPrefix,
+            accountInfo?.totalBalance
+          );
+          if (closeResult.closed) {
             tradesExecuted++;
             openTradesCount = Math.max(openTradesCount - 1, 0);
             syncOpenTradesCount(openTradesCount);
+            systemDecision.additionalReasons.push(...closeResult.notes);
+            finalizeDecision({
+              systemAction: 'CLOSE',
+              outcome: 'EXECUTED',
+              outcomeReason: closeResult.reason ?? 'Position closed',
+            });
+          } else {
+            systemDecision.filters.push({
+              stage: 'HOLD_RULE',
+              status: 'BLOCKED',
+              detail: closeResult.reason ?? 'Close conditions not met',
+            });
+            systemDecision.additionalReasons.push(...closeResult.notes);
+            finalizeDecision({
+              systemAction: 'HOLD',
+              outcome: 'BLOCKED',
+              outcomeReason: closeResult.reason ?? 'Close skipped by system rules',
+            });
           }
         } else if (isCloseAction && !context.position) {
           console.log(`${logPrefix} Skipping ${decision.symbol} close - no open position`);
+          finalizeDecision({
+            systemAction: 'HOLD',
+            outcome: 'NO_ACTION',
+            outcomeReason: 'No open position to close',
+          });
+        } else {
+          finalizeDecision();
         }
-        // HOLD - do nothing
-
       } catch (error: any) {
         errors.push(`Error executing trade for ${decision.symbol}: ${error.message}`);
         console.error(`Error executing trade for ${decision.symbol}:`, error);
+        systemDecision.filters.push({
+          stage: 'ERROR',
+          status: 'BLOCKED',
+          detail: error.message ?? 'Unknown execution error',
+        });
+        systemDecision.additionalReasons.push('System encountered an execution error');
+        finalizeDecision({
+          systemAction: 'SKIP',
+          outcome: 'ERROR',
+          outcomeReason: error.message ?? 'Unknown execution error',
+        });
       }
     }
 
@@ -570,6 +776,7 @@ export async function executeBot(
       errors: errors.length > 0 ? errors : null,
       executionDuration: Date.now() - startTime,
       status: errors.length === 0 ? 'SUCCESS' : tradesExecuted > 0 ? 'PARTIAL' : 'FAILED',
+      systemDecisions: systemDecisionRecords,
     });
 
     // Update position snapshots
@@ -613,6 +820,7 @@ export async function executeBot(
       aiThinking,
       aiRuntimeMs,
       aiInvocations,
+      systemDecisions: systemDecisionRecords,
     };
 
   } catch (error: any) {
@@ -757,10 +965,10 @@ function validateEntryRules(
       };
     }
   } else if (decision.action === 'BUY') {
-    if (priorTrough === undefined || priorTrough > 40) {
+    if (priorTrough === undefined || priorTrough > 45) {
       return {
         allowed: false,
-        reason: '15m RSI failed to print sub-40 oversold reading - long entry lacks required dip',
+        reason: '15m RSI failed to print sub-45 oversold reading - long entry lacks required dip',
       };
     }
 
@@ -771,17 +979,17 @@ function validateEntryRules(
       };
     }
 
-    if (priorRsi !== undefined && currentRsi14 <= priorRsi) {
+    if (priorRsi !== undefined && currentRsi14 <= priorRsi + 0.2) {
       return {
         allowed: false,
-        reason: `RSI (${currentRsi14.toFixed(1)}) has not turned up from oversold low (${priorRsi.toFixed(1)})`,
+        reason: `RSI (${currentRsi14.toFixed(1)}) needs a clearer turn up from oversold low (${priorRsi.toFixed(1)})`,
       };
     }
 
-    if (currentRsi14 < 42) {
+    if (currentRsi14 < 40) {
       return {
         allowed: false,
-        reason: `RSI (${currentRsi14.toFixed(1)}) still sub-42 - allow momentum to confirm before longing`,
+        reason: `RSI (${currentRsi14.toFixed(1)}) still sub-40 - allow momentum to confirm before longing`,
       };
     }
 
@@ -1093,7 +1301,7 @@ async function executeCloseOrder(
   botId: string,
   logPrefix: string,
   totalBalance?: number
-): Promise<boolean> {
+): Promise<CloseOrderResult> {
   if (!context.position) {
     throw new Error(`No position to close for ${context.symbol}`);
   }
@@ -1117,8 +1325,11 @@ async function executeCloseOrder(
     .limit(1)
     .get();
 
+  const notes: string[] = [];
+
   if (!openTrade) {
     console.warn(`${logPrefix} No open trade record found for ${context.symbol} when attempting close`);
+    notes.push('Open trade history record missing; relying on live position data');
   }
 
   // Cancel TP and SL orders if they exist
@@ -1174,11 +1385,21 @@ async function executeCloseOrder(
         `position only ${minutesHeld} minutes old (min: ${MIN_HOLD_MINUTES}), ` +
         `PnL: ${pnlPercent.toFixed(2)}% (not emergency loss)`
       );
-      return false; // Skip this close action
+      return {
+        closed: false,
+        reason: `Minimum hold ${MIN_HOLD_MINUTES} minutes not met`,
+        notes: [
+          `Position age ${minutesHeld}m < ${MIN_HOLD_MINUTES}m hold requirement`,
+          `PnL ${pnlPercent.toFixed(2)}% above emergency threshold`,
+        ],
+      };
     } else {
       console.log(
         `${logPrefix} ⚠️ Allowing emergency close for ${context.symbol}: ` +
         `${minutesHeld} min old with ${pnlPercent.toFixed(2)}% loss`
+      );
+      notes.push(
+        `Emergency close permitted: age ${minutesHeld}m, PnL ${pnlPercent.toFixed(2)}%`
       );
     }
   }
@@ -1196,7 +1417,12 @@ async function executeCloseOrder(
       `${logPrefix} Unable to compute realized PnL for ${context.symbol}: invalid entryPrice (${entryPrice}) or quantity (${quantity})`
     );
     context.position = undefined;
-    return true;
+    notes.push('Position closed but insufficient data to calculate realized PnL');
+    return {
+      closed: true,
+      reason: 'Position closed (synthetic trade record created)',
+      notes,
+    };
   }
 
   let realizedPnl: number;
@@ -1256,13 +1482,19 @@ async function executeCloseOrder(
       openedAt: entryTimestampSource ? new Date(entryTimestampSource) : new Date(Date.now() - MIN_HOLD_MINUTES * 60000),
       closedAt,
     });
+    notes.push('Created synthetic trade record for missing open trade');
   }
 
   await updateBotMetrics(db, botId, realizedPnl);
 
   context.position = undefined;
 
-  return true;
+  notes.push('Position closed successfully');
+  return {
+    closed: true,
+    reason: 'Position closed',
+    notes,
+  };
 }
 
 async function updateBotMetrics(

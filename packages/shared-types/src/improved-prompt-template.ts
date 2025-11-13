@@ -124,6 +124,7 @@ TRADING RULES
 🔄 SIDEWAYS MARKET RULES:
 • REDUCE ACTIVITY: Only trade clear setups
 • MEAN REVERSION: Fade extremes (buy oversold, sell overbought)
+• LOOK BOTH WAYS: Prioritise quick longs after RSI flushes (<40) AND quick shorts after spikes (>70)
 • SMALL SIZE: Use 40-60% of normal size
 • QUICK PROFITS: Take 1-2% profits quickly
 

@@ -138,6 +138,67 @@ const formatRuntime = (runtimeMs: number | null | undefined): string => {
   return `${minutes.toFixed(1)}m`;
 };
 
+const clampConfidence = (value: number): number =>
+  Math.max(0, Math.min(value, 1));
+
+const normalizeConfidenceValue = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    return value > 1 ? clampConfidence(value / 100) : clampConfidence(value);
+  }
+  if (typeof value === "string") {
+    const cleaned = value.trim().replace(/[%\s]+$/g, "");
+    if (!cleaned) return null;
+    const parsed = Number(cleaned);
+    if (!Number.isFinite(parsed)) return null;
+    return parsed > 1 ? clampConfidence(parsed / 100) : clampConfidence(parsed);
+  }
+  return null;
+};
+
+const formatConfidencePercent = (
+  confidence: number | null | undefined
+): string => {
+  if (confidence === null || confidence === undefined) {
+    return "—";
+  }
+  return `${Math.round(clampConfidence(confidence) * 100)}%`;
+};
+
+const getDecisionBadgeClasses = (action: string): string => {
+  const normalized = action.toUpperCase();
+  if (normalized === "BUY" || normalized === "LONG") {
+    return "bg-accent-green/20 text-accent-green";
+  }
+  if (normalized === "SELL" || normalized === "SHORT") {
+    return "bg-accent-red/20 text-accent-red";
+  }
+  if (normalized === "CLOSE") {
+    return "bg-accent-blue/20 text-accent-blue";
+  }
+  return "bg-light-text-tertiary/20 text-light-text-tertiary dark:bg-dark-text-tertiary/20 dark:text-dark-text-tertiary";
+};
+
+const getSystemOutcomeBadgeClasses = (
+  outcome: string | null | undefined
+): string => {
+  if (!outcome) {
+    return "bg-light-text-tertiary/20 text-light-text-tertiary dark:bg-dark-text-tertiary/20 dark:text-dark-text-tertiary";
+  }
+  switch (outcome.toUpperCase()) {
+    case "EXECUTED":
+      return "bg-accent-green/20 text-accent-green";
+    case "BLOCKED":
+    case "ERROR":
+      return "bg-accent-red/20 text-accent-red";
+    case "SKIPPED":
+      return "bg-amber-500/20 text-amber-500 dark:bg-amber-400/20 dark:text-amber-300";
+    default:
+      return "bg-light-text-tertiary/20 text-light-text-tertiary dark:bg-dark-text-tertiary/20 dark:text-dark-text-tertiary";
+  }
+};
+
 const extractSummary = (aiResponse: string | null | undefined): string => {
   if (!aiResponse) return "No AI summary available.";
 
@@ -253,6 +314,7 @@ interface BotExecutionEntry {
   aiResponse?: string | null;
   aiThinking?: string | null;
   aiDecisions?: any;
+  systemDecisions?: any;
   symbolsProcessed?: string[];
   status?: string;
   totalBalance?: number | null;
@@ -264,6 +326,28 @@ interface BotExecutionEntry {
 
 interface PublicDashboardProps {
   walletAddress: string;
+}
+
+interface SystemDecisionView {
+  symbol: string;
+  systemAction: string;
+  outcome: string;
+  outcomeReason?: string | null;
+  additionalReasons: string[];
+  filters: Array<{
+    stage: string;
+    status: string;
+    detail: string;
+  }>;
+}
+
+interface AIDecisionView {
+  symbol: string;
+  action: string;
+  confidence: number | null;
+  reasoning?: string | null;
+  analysis?: string | null;
+  system?: SystemDecisionView | null;
 }
 
 export default function PublicDashboard({
@@ -679,13 +763,9 @@ export default function PublicDashboard({
     balance: number | null | undefined;
     exposure: number | null | undefined;
     tradesExecuted: number | null | undefined;
-    decisions: Array<{
-      symbol: string;
-      action: string;
-      confidence: number | null;
-      reasoning?: string | null;
-      analysis?: string | null;
-    }>;
+    decisions: AIDecisionView[];
+    primarySystemDecision: SystemDecisionView | null;
+    systemDecisions: SystemDecisionView[];
   }
 
   const filteredTranscripts = useMemo<BotTranscriptEntry[]>(() => {
@@ -721,14 +801,82 @@ export default function PublicDashboard({
       const aiModel = bot?.aiModel ?? null;
       const color = colorByBotId.get(exec.botId) ?? "#007aff";
 
+      // Parse system decisions
+      const parsedSystemDecisions: SystemDecisionView[] = (() => {
+        if (!exec.systemDecisions) return [];
+        try {
+          const raw =
+            typeof exec.systemDecisions === "string"
+              ? JSON.parse(exec.systemDecisions)
+              : exec.systemDecisions;
+          if (!Array.isArray(raw)) return [];
+          return raw
+            .map((record: any) => ({
+              symbol: record?.symbol ?? "Unknown",
+              systemAction:
+                typeof record?.systemAction === "string"
+                  ? record.systemAction
+                  : typeof record?.finalAction === "string"
+                  ? record.finalAction
+                  : "NONE",
+              outcome:
+                typeof record?.outcome === "string"
+                  ? record.outcome
+                  : "NO_ACTION",
+              outcomeReason:
+                typeof record?.outcomeReason === "string"
+                  ? record.outcomeReason
+                  : null,
+              additionalReasons: Array.isArray(record?.additionalReasons)
+                ? record.additionalReasons.filter(
+                    (reason: unknown): reason is string =>
+                      typeof reason === "string"
+                  )
+                : [],
+              filters: Array.isArray(record?.filters)
+                ? record.filters
+                    .filter(
+                      (filter: unknown): filter is Record<string, unknown> =>
+                        !!filter &&
+                        typeof filter === "object" &&
+                        "stage" in filter &&
+                        "status" in filter
+                    )
+                    .map((filter: Record<string, unknown>) => ({
+                      stage:
+                        typeof filter.stage === "string"
+                          ? filter.stage
+                          : "UNKNOWN",
+                      status:
+                        typeof filter.status === "string"
+                          ? filter.status.toUpperCase()
+                          : "PASSED",
+                      detail:
+                        typeof filter.detail === "string"
+                          ? filter.detail
+                          : "No detail provided",
+                    }))
+                : [],
+            }))
+            .map((decision) => ({
+              ...decision,
+              systemAction: decision.systemAction.toUpperCase(),
+              outcome: decision.outcome.toUpperCase(),
+            }));
+        } catch {
+          return [];
+        }
+      })();
+
+      const systemDecisionMap = new Map<string, SystemDecisionView>();
+      for (const record of parsedSystemDecisions) {
+        if (!systemDecisionMap.has(record.symbol)) {
+          systemDecisionMap.set(record.symbol, record);
+        }
+      }
+
       // Parse AI decisions from aiDecisions field
-      let decisions: Array<{
-        symbol: string;
-        action: string;
-        confidence: number | null;
-        reasoning?: string | null;
-        analysis?: string | null;
-      }> = [];
+      let decisions: AIDecisionView[] = [];
 
       if (exec.aiDecisions) {
         try {
@@ -737,18 +885,49 @@ export default function PublicDashboard({
               ? JSON.parse(exec.aiDecisions)
               : exec.aiDecisions;
           if (Array.isArray(parsed)) {
-            decisions = parsed.map((d: any) => ({
-              symbol: d.symbol ?? "Unknown",
-              action: d.action ?? "HOLD",
-              confidence: d.confidence ?? null,
-              reasoning: d.reasoning ?? null,
-              analysis: d.analysis ?? null,
-            }));
+            decisions = parsed.map((d: any) => {
+              const symbol = d.symbol ?? "Unknown";
+              const system = systemDecisionMap.get(symbol) ?? null;
+              if (system) {
+                systemDecisionMap.delete(symbol);
+              }
+              return {
+                symbol,
+                action: d.action ?? "HOLD",
+                confidence: normalizeConfidenceValue(
+                  d.confidence ?? d.Confidence ?? null
+                ),
+                reasoning: d.reasoning ?? null,
+                analysis: d.analysis ?? null,
+                system,
+              };
+            });
           }
         } catch (e) {
           // Ignore parse errors
         }
       }
+
+      // Add system-only entries that didn't have AI decisions
+      if (systemDecisionMap.size > 0) {
+        const remaining = Array.from(systemDecisionMap.values()).map(
+          (system) => ({
+            symbol: system.symbol,
+            action: system.systemAction ?? "HOLD",
+            confidence: null,
+            reasoning:
+              system.outcomeReason ??
+              system.additionalReasons[0] ??
+              "System decision",
+            analysis: null,
+            system,
+          })
+        );
+        decisions = [...decisions, ...remaining];
+      }
+
+      const primarySystemDecision =
+        parsedSystemDecisions.length > 0 ? parsedSystemDecisions[0] : null;
 
       return {
         id: exec.id,
@@ -766,6 +945,8 @@ export default function PublicDashboard({
         exposure: exec.unrealizedPnl,
         tradesExecuted: null,
         decisions,
+        primarySystemDecision,
+        systemDecisions: parsedSystemDecisions,
       };
     });
   }, [
@@ -1348,33 +1529,15 @@ export default function PublicDashboard({
                                                   {decision.symbol}
                                                 </span>
                                                 <span
-                                                  className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                                    decision.action === "BUY" ||
-                                                    decision.action === "LONG"
-                                                      ? "bg-accent-green/20 text-accent-green"
-                                                      : decision.action ===
-                                                          "SELL" ||
-                                                        decision.action ===
-                                                          "SHORT"
-                                                      ? "bg-accent-red/20 text-accent-red"
-                                                      : decision.action ===
-                                                        "CLOSE"
-                                                      ? "bg-accent-blue/20 text-accent-blue"
-                                                      : "bg-light-text-tertiary/20 text-light-text-tertiary dark:bg-dark-text-tertiary/20 dark:text-dark-text-tertiary"
-                                                  }`}
+                                                  className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getDecisionBadgeClasses(
+                                                    decision.action
+                                                  )}`}
                                                 >
                                                   {decision.action}
                                                 </span>
                                               </div>
                                               <div className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
-                                                CONF{" "}
-                                                {decision.confidence !== null &&
-                                                decision.confidence !==
-                                                  undefined
-                                                  ? `${(
-                                                      decision.confidence * 100
-                                                    ).toFixed(0)}%`
-                                                  : "—"}
+                                                CONF {formatConfidencePercent(decision.confidence)}
                                               </div>
                                             </div>
 
@@ -1392,6 +1555,63 @@ export default function PublicDashboard({
                                                 <p className="text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line">
                                                   {decision.analysis}
                                                 </p>
+                                              </div>
+                                            )}
+                                            {decision.system && (
+                                              <div className="text-xs space-y-1 border-t border-white/10 pt-2 mt-2">
+                                                <p className="font-semibold text-light-text-primary dark:text-dark-text-primary">
+                                                  System Decision
+                                                </p>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                  <span
+                                                    className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getDecisionBadgeClasses(
+                                                      decision.system.systemAction
+                                                    )}`}
+                                                  >
+                                                    {decision.system.systemAction}
+                                                  </span>
+                                                  <span
+                                                    className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getSystemOutcomeBadgeClasses(
+                                                      decision.system.outcome
+                                                    )}`}
+                                                  >
+                                                    {decision.system.outcome}
+                                                  </span>
+                                                </div>
+                                                {decision.system.outcomeReason && (
+                                                  <p className="text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line">
+                                                    {decision.system.outcomeReason}
+                                                  </p>
+                                                )}
+                                                {decision.system.additionalReasons.length >
+                                                  0 && (
+                                                  <ul className="list-disc list-inside text-light-text-secondary dark:text-dark-text-secondary space-y-0.5">
+                                                    {decision.system.additionalReasons.map(
+                                                      (note, noteIndex) => (
+                                                        <li
+                                                          key={`${entry.id}-system-note-${index}-${noteIndex}`}
+                                                        >
+                                                          {note}
+                                                        </li>
+                                                      )
+                                                    )}
+                                                  </ul>
+                                                )}
+                                                {decision.system.filters.length >
+                                                  0 && (
+                                                  <ul className="list-disc list-inside text-light-text-secondary dark:text-dark-text-secondary space-y-0.5">
+                                                    {decision.system.filters.map(
+                                                      (filter, filterIndex) => (
+                                                        <li
+                                                          key={`${entry.id}-system-filter-${index}-${filterIndex}`}
+                                                        >
+                                                          [{filter.stage}] {filter.status}:{" "}
+                                                          {filter.detail}
+                                                        </li>
+                                                      )
+                                                    )}
+                                                  </ul>
+                                                )}
                                               </div>
                                             )}
                                           </div>
@@ -1928,6 +2148,35 @@ export default function PublicDashboard({
                                 </div>
                               </div>
 
+                              {entry.primarySystemDecision && (
+                                <div className="flex flex-wrap items-center gap-2 text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
+                                  <span className="flex items-center gap-1">
+                                    <span className="font-semibold text-light-text-primary dark:text-dark-text-primary">
+                                      System:
+                                    </span>
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full font-semibold ${getDecisionBadgeClasses(
+                                        entry.primarySystemDecision.systemAction
+                                      )}`}
+                                    >
+                                      {entry.primarySystemDecision.systemAction}
+                                    </span>
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full font-semibold ${getSystemOutcomeBadgeClasses(
+                                        entry.primarySystemDecision.outcome
+                                      )}`}
+                                    >
+                                      {entry.primarySystemDecision.outcome}
+                                    </span>
+                                    {entry.primarySystemDecision.outcomeReason && (
+                                      <span>
+                                        {entry.primarySystemDecision.outcomeReason}
+                                      </span>
+                                    )}
+                                  </span>
+                                </div>
+                              )}
+
                               <p className="text-sm leading-relaxed whitespace-pre-line text-light-text-primary dark:text-dark-text-primary">
                                 {entry.message}
                               </p>
@@ -2009,33 +2258,15 @@ export default function PublicDashboard({
                                                   {decision.symbol}
                                                 </span>
                                                 <span
-                                                  className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                                    decision.action === "BUY" ||
-                                                    decision.action === "LONG"
-                                                      ? "bg-accent-green/20 text-accent-green"
-                                                      : decision.action ===
-                                                          "SELL" ||
-                                                        decision.action ===
-                                                          "SHORT"
-                                                      ? "bg-accent-red/20 text-accent-red"
-                                                      : decision.action ===
-                                                        "CLOSE"
-                                                      ? "bg-accent-blue/20 text-accent-blue"
-                                                      : "bg-light-text-tertiary/20 text-light-text-tertiary dark:bg-dark-text-tertiary/20 dark:text-dark-text-tertiary"
-                                                  }`}
+                                                  className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getDecisionBadgeClasses(
+                                                    decision.action
+                                                  )}`}
                                                 >
                                                   {decision.action}
                                                 </span>
                                               </div>
                                               <div className="text-xs text-light-text-tertiary dark:text-dark-text-tertiary">
-                                                CONF{" "}
-                                                {decision.confidence !== null &&
-                                                decision.confidence !==
-                                                  undefined
-                                                  ? `${(
-                                                      decision.confidence * 100
-                                                    ).toFixed(0)}%`
-                                                  : "—"}
+                                                CONF {formatConfidencePercent(decision.confidence)}
                                               </div>
                                             </div>
 
@@ -2053,6 +2284,63 @@ export default function PublicDashboard({
                                                 <p className="text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line">
                                                   {decision.analysis}
                                                 </p>
+                                              </div>
+                                            )}
+                                            {decision.system && (
+                                              <div className="text-xs space-y-1 border-t border-white/10 pt-2 mt-2">
+                                                <p className="font-semibold text-light-text-primary dark:text-dark-text-primary">
+                                                  System Decision
+                                                </p>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                  <span
+                                                    className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getDecisionBadgeClasses(
+                                                      decision.system.systemAction
+                                                    )}`}
+                                                  >
+                                                    {decision.system.systemAction}
+                                                  </span>
+                                                  <span
+                                                    className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getSystemOutcomeBadgeClasses(
+                                                      decision.system.outcome
+                                                    )}`}
+                                                  >
+                                                    {decision.system.outcome}
+                                                  </span>
+                                                </div>
+                                                {decision.system.outcomeReason && (
+                                                  <p className="text-light-text-secondary dark:text-dark-text-secondary whitespace-pre-line">
+                                                    {decision.system.outcomeReason}
+                                                  </p>
+                                                )}
+                                                {decision.system.additionalReasons.length >
+                                                  0 && (
+                                                  <ul className="list-disc list-inside text-light-text-secondary dark:text-dark-text-secondary space-y-0.5">
+                                                    {decision.system.additionalReasons.map(
+                                                      (note, noteIndex) => (
+                                                        <li
+                                                          key={`${entry.id}-public-system-note-${index}-${noteIndex}`}
+                                                        >
+                                                          {note}
+                                                        </li>
+                                                      )
+                                                    )}
+                                                  </ul>
+                                                )}
+                                                {decision.system.filters.length >
+                                                  0 && (
+                                                  <ul className="list-disc list-inside text-light-text-secondary dark:text-dark-text-secondary space-y-0.5">
+                                                    {decision.system.filters.map(
+                                                      (filter, filterIndex) => (
+                                                        <li
+                                                          key={`${entry.id}-public-system-filter-${index}-${filterIndex}`}
+                                                        >
+                                                          [{filter.stage}] {filter.status}:{" "}
+                                                          {filter.detail}
+                                                        </li>
+                                                      )
+                                                    )}
+                                                  </ul>
+                                                )}
                                               </div>
                                             )}
                                           </div>
