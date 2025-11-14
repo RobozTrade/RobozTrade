@@ -81,6 +81,7 @@ export interface OrderRequest {
   price?: number;
   stopPrice?: number;
   leverage?: number;
+  reduceOnly?: boolean;
 }
 
 export interface OrderResponse {
@@ -511,6 +512,10 @@ export async function placeOrder(
       params.stopPrice = order.stopPrice.toString();
     }
 
+    if (typeof order.reduceOnly === 'boolean') {
+      params.reduceOnly = order.reduceOnly;
+    }
+
     if (order.leverage) {
       // Set leverage first
       await makeRequest('/fapi/v1/leverage', 'POST', credentials, {
@@ -635,6 +640,7 @@ export async function closePosition(
       side: closeSide,
       type: 'MARKET',
       quantity: position.quantity,
+      reduceOnly: true,
     },
     credentials
   );
